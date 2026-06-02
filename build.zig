@@ -1,57 +1,49 @@
 const std = @import("std");
 
-pub const ArchData = struct {
-    linker : std.Build.LazyPath,
-    target : std.Build.ResolvedTarget,
-    module : *std.Build.Module,
-};
-
-const Arch = enum {
-    x86_64,
-};
-
 pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{
         .preferred_optimize_mode = .Debug,
     });
 
-    const options : std.Build.Module.CreateOptions = .{
+    var options : std.Build.Module.CreateOptions = .{
         .red_zone = false,
         .pic = false,
         .optimize = optimize,
         .code_model = .kernel,
     };
 
-    const arch_option = b.option(Arch, "arch", "Target architecture") orelse .x86_64;
+    var linker : std.Build.LazyPath = undefined;
 
-    const arch : ArchData = switch(arch_option) {
-        .x86_64 => module: {
-            const x86 = @import("kernel/arch/x86_64/build.zig");
-            break :module .{
-                .linker = x86.get_linker(b),
-                .target = x86.get_target(b),
-                .module = x86.module(b, &options),
-            };
-        },
-    };
+    const arch = @import("arch/build.zig");
+    const arch_data : arch.ArchData = arch.module(b, &options, &linker);
+    const arch_module = arch_data.module;
+    const arch_export_module = arch_data.export_module;
 
-    var options_copy : std.Build.Module.CreateOptions = options;
-    options_copy.root_source_file = b.path("kernel/main.zig");
-    options_copy.target = arch.target;
+    const kernel_module = @import("kernel/build.zig").module(b, &options);
 
-    const kernel = b.addExecutable(.{
+    const lib_module =@import("lib/build.zig").module(b, &options);
+
+    arch_module.addImport("lib", lib_module);
+    arch_module.addImport("kernel", kernel_module);
+
+    kernel_module.addImport("kernel", kernel_module);
+    kernel_module.addImport("arch", arch_export_module);
+    kernel_module.addImport("lib", lib_module);
+
+    lib_module.addImport("arch", arch_export_module);
+
+    const famex = b.addExecutable(.{
         .name = "famex.elf",
-        .root_module = b.createModule(options_copy),
+        .root_module = arch_module,
         .use_lld = true,
         .use_llvm = true,
     });
-    kernel.linkage = .static;
-    kernel.entry = .disabled;
-    kernel.setLinkerScript(arch.linker);
-    kernel.root_module.addImport("Arch", arch.module);
-    kernel.link_function_sections = true;
-    kernel.link_data_sections = true;
-    b.installArtifact(kernel);
 
+    famex.setLinkerScript(linker);
+    famex.linkage = .static;
+    famex.entry = .disabled;
+    famex.link_function_sections = true;
+    famex.link_data_sections = true;
 
+    b.installArtifact(famex);
 }

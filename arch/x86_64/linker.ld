@@ -2,7 +2,7 @@
 OUTPUT_FORMAT(elf64-x86-64)
 
 /* We want the symbol kmain to be our entry point */
-ENTRY(kernel_main)
+ENTRY(main)
 
 
 

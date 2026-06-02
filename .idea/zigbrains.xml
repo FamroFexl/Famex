@@ -1,4 +1,33 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
+  <component name="BuildScanner">
+    <option name="projects">
+      <list><![CDATA[{
+  "name": "<root>",
+  "version": null,
+  "path": "/Users/nbenson/Documents/Famex",
+  "steps": [
+    {
+      "name": "install",
+      "description": "Copy build artifacts to prefix path",
+      "kind": "install_artifact"
+    },
+    {
+      "name": "uninstall",
+      "description": "Remove build artifacts from prefix path",
+      "kind": "uninstall"
+    }
+  ],
+  "modules": [
+    {
+      "root": "arch/x86_64/root.zig",
+      "public": false,
+      "imports": []
+    }
+  ],
+  "dependencies": []
+}]]></list>
+    </option>
+  </component>
   <component name="ZigToolchain" toolchain="2eb01d4b-3f33-4b73-8a37-989171b1a15b" />
 </project>

@@ -3,8 +3,8 @@
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
       <excludeFolder url="file://$MODULE_DIR$/.zig-cache" />
-      <excludeFolder url="file://$MODULE_DIR$/kernel/arch/x86_64/.zig-cache" />
       <excludeFolder url="file://$MODULE_DIR$/zig-out" />
+      <excludeFolder url="file://$MODULE_DIR$/arch/x86_64/.zig-cache" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
