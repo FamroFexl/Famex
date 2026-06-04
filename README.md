@@ -1,0 +1,1 @@
+UPPERCASE is reserved for global variables that are const or are effectively const (set once)

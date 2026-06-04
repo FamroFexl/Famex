@@ -25,6 +25,11 @@ pub fn build(b: *std.Build) !void {
 
     arch_module.addImport("lib", lib_module);
     arch_module.addImport("kernel", kernel_module);
+    arch_module.addImport("arch", arch_module);
+    arch_module.addImport("arch_export", arch_export_module);
+
+    arch_export_module.addImport("arch", arch_module);
+    arch_export_module.addImport("kernel", kernel_module);
 
     kernel_module.addImport("kernel", kernel_module);
     kernel_module.addImport("arch", arch_export_module);

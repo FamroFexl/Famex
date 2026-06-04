@@ -35,8 +35,10 @@ pub fn print_size(num : u64, min_align : u6) void {
         return;
     };
 
-    @memset(buf[out.len..min_align], ' ');
-    print_chars(out.ptr, if(out.len > min_align) out.len else min_align);
+    const out_align = if(min_align < out.len) out.len else min_align;
+
+    @memset(buf[out.len..out_align], ' ');
+    print_chars(out.ptr, if(out.len > out_align) out.len else out_align);
 }
 
 pub fn print(comptime str : []const u8, args: anytype) void {
@@ -57,5 +59,13 @@ pub fn print_char(char : u8, num : u8) void {
 
 pub fn panic(comptime str : []const u8, args: anytype) void {
     print(str, args);
-    unreachable;
+    //unreachable;
+}
+
+// Kernel Panic if expr true
+pub fn apanic(expr : bool, comptime str : []const u8, args: anytype) void {
+    if (!expr) return;
+
+    print(str, args);
+    //unreachable;
 }

@@ -6,36 +6,36 @@ const print = @import("kernel").util.log.print;
 const bin = @import("kernel").util.binary;
 const types = @import("kernel").util.types;
 
-pub const paddr = struct {
+pub const Paddr = struct {
     val : u64,
 
-    pub fn to_virt(self : paddr) vaddr {
-        return self + PAGE_OFFSET.val;
+    pub fn to_virt(self : @This()) Vaddr {
+        return .{.val = self.val + PAGE_OFFSET.val};
     }
 
-    pub fn to_info(self : paddr) *paging.page_info {
+    pub fn to_info(self : @This()) *paging.page_info {
         return @ptrFromInt(PAGE_METADATA + (self / types.SIZE_4KB) * @sizeOf(paging.page_info));
     }
 };
 
-pub const vaddr = struct {
+pub const Vaddr = struct {
     val : u64,
 
-    pub fn to_phys(self : vaddr) paddr {
-        return self - PAGE_OFFSET.val;
+    pub fn to_phys(self : @This()) Paddr {
+        return .{.val = self.val - PAGE_OFFSET.val};
     }
 
-    pub fn to_info(self : vaddr) *paging.page_info {
+    pub fn to_info(self : @This()) *paging.page_info {
         return self.to_phys().to_info();
     }
 };
 
 // Physical memory address bits
-pub var PHYS_ADDR_BITS : u6 = undefined;
+pub var PHYS_ADDR_BITS : u8 = undefined;
 pub var PHYS_ADDR_SIZE : u64 = undefined;
 
 // Virtual memory address bits
-pub var VIRT_ADDR_BITS : u6 = undefined;
+pub var VIRT_ADDR_BITS : u8 = undefined;
 pub var VIRT_ADDR_SIZE : u64 = undefined;
 
 pub var PAGE_OFFSET_SIZE : usize = undefined;
@@ -43,17 +43,22 @@ pub var KERNEL_ALLOC_SIZE : usize = undefined;
 pub var PAGE_METADATA_SIZE : usize = undefined;
 pub const PER_CPU_DATA_SIZE : usize = types.SIZE_32MB;
 
-pub var PAGE_OFFSET : vaddr = undefined;
-pub const USER_MEMORY_START : vaddr = 0x10000;
-pub var USER_MEMORY_END : vaddr = undefined;
-pub var KERNEL_MEMORY_START : vaddr = undefined;
-pub var KERNEL_MEMORY : vaddr = undefined;
-pub var KERNEL_ALLOC : vaddr = undefined;
-pub var PAGE_METADATA : vaddr = undefined;
-pub var PER_CPU_DATA : vaddr = undefined;
+pub var PAGE_OFFSET : Vaddr = undefined;
+pub const USER_MEMORY_START : Vaddr = 0x10000;
+pub var USER_MEMORY_END : Vaddr = undefined;
+pub var KERNEL_MEMORY_START : Vaddr = undefined;
+pub var KERNEL_MEMORY : Vaddr = undefined;
+pub var KERNEL_ALLOC : Vaddr = undefined;
+pub var PAGE_METADATA : Vaddr = undefined;
+pub var PER_CPU_DATA : Vaddr = undefined;
 
-pub const KERNEL_IMAGE : vaddr = 0xFFFFFFFF80000000;
-pub const MODULE_IMAGES : vaddr = 0xFFFFFFFFA0000000;
+pub const KERNEL_IMAGE : Vaddr = .{.val =0xFFFFFFFF80000000};
+pub const MODULE_IMAGES : Vaddr = .{.val = 0xFFFFFFFFA0000000};
+
+pub fn memset(ptr : *anyopaque, size : anytype, val : u8) void {
+    const bytes : [*]u8 = @ptrCast(ptr);
+    @memset(bytes[0..size], val);
+}
 
 pub fn setup_mem_mgmt() void {
     print("\nmm: Setting up Memory Management\n", .{});
@@ -74,7 +79,7 @@ pub fn setup_mem_mgmt() void {
     // KERNEL_ALLOC region uses 1/8 of virtual memory
     KERNEL_ALLOC_SIZE = bin.set_bits(VIRT_ADDR_BITS - 3);
 
-    PAGE_METADATA_SIZE = (PAGE_OFFSET_SIZE / @sizeOf(paging.page_info));
+    PAGE_METADATA_SIZE = (PAGE_OFFSET_SIZE / @sizeOf(paging.PageInfo));
 
     KERNEL_MEMORY.val = KERNEL_MEMORY_START.val;
     KERNEL_ALLOC.val = PAGE_OFFSET_SIZE + KERNEL_MEMORY.val;

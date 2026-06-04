@@ -1,0 +1,1 @@
+pub const MAX_MEMORY_REGIONS : u64 = 1024;
