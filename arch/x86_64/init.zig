@@ -17,19 +17,19 @@ fn ensure_features() void {
     log.apanic(leaf_0x0.eax.max_std_leaf < 8, "arch: CPUID max leaf isn't large enough!\n", .{});
 
     cpu.set_cpu_vendor(leaf_0x0);
-    const intel : bool = cpu.VENDOR == cpu.cpu_vendor.INTEL;
 
-    const leaf_0x1 : cpuid.leaf_0x1_0 = cpu.cpuid(cpuid.leaf_0x1_0, 0x1, 0);
-    if(intel) {
-        timers.TSC_DEADLINE = leaf_0x1.ecx.tsc_deadline_timer == 1;
-    }
+    const intel : bool = cpu.VENDOR == cpu.cpu_vendor.intel;
 
     const leaf_0x87 : cpuid.leaf_0x80000007_0 = cpu.cpuid(cpuid.leaf_0x80000007_0, 0x80000007, 0);
     timers.TSC_INVARIANT = leaf_0x87.edx.constant_tsc == 1;
 
     const leaf_0x81 : cpuid.leaf_0x80000001_0 = cpu.cpuid(cpuid.leaf_0x80000001_0, 0x80000001, 0);
 
+    const leaf_0x1 : cpuid.leaf_0x1_0 = cpu.cpuid(cpuid.leaf_0x1_0, 0x1, 0);
+
     if(intel) {
+        timers.TSC_DEADLINE = leaf_0x1.ecx.tsc_deadline_timer == 1;
+
         // We support Nehalem-Clarksfield and later Intel CPUs (because of VT-d support)
         // (we may support Westmere and later only for guaranteed huge page and PCID support)
         log.apanic(leaf_0x1.eax.base_family_id < 0x1A,"arch: Intel CPU model isn't supported!\n", .{});

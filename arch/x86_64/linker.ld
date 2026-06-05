@@ -11,7 +11,7 @@ ENTRY(main)
 /* process. */
 PHDRS
 {
-    limine_requests PT_LOAD FILEHDR PHDRS;
+    limine_requests PT_LOAD;
     text PT_LOAD;
     rodata PT_LOAD;
     data PT_LOAD;
@@ -23,7 +23,7 @@ SECTIONS
     /* and because that is what the Limine spec mandates. */
     /* Any address in this region will do, but often 0xffffffff80000000 is chosen as */
     /* that is the beginning of the region. */
-    . = 0xffffffff80000000 + SIZEOF_HEADERS;
+    . = 0xffffffff80000000;
 
     /* Define a section to contain the Limine requests and assign it to its own PHDR */
     .limine_requests : {
@@ -52,6 +52,10 @@ SECTIONS
     .data : {
         *(.data .data.*)
     } :data
+
+    .percpu (NOLOAD) : {
+        *(.percpu)
+    }
 
     /* NOTE: .bss needs to be the last thing mapped to :data, otherwise lots of */
     /* unnecessary zeros will be written to the binary. */

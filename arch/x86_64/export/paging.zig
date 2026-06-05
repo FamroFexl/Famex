@@ -105,7 +105,7 @@ pub const Pte = packed struct(u64) {
     }
 
     pub fn set_pfe(self : *@This(), level : anytype, pfe : bool) void {
-        debug.assert(level <= cpu.FEATURES.max_page_size);
+        if(level > cpu.FEATURES.max_page_size) return;
 
         if(level == 0) return;
         self.bits.pfe = pfe;

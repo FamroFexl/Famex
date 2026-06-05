@@ -16,6 +16,8 @@ pub var hhdm_request linksection(".limine_requests") = limine.LimineHhdmRequest 
 
 pub var mmap_request linksection(".limine_requests") = limine.LimineMemmapRequest {};
 
+pub var executable_file_request linksection(".limine_requests") = limine.LimineExecutableFileRequest {};
+
 pub var executable_address_request linksection(".limine_requests") = limine.LimineExecutableAddressRequest {};
 
 export const LimineRequestsEnd linksection(".limine_requests_end") = limine.LIMINE_REQUESTS_END_MARKER;

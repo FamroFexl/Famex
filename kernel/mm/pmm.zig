@@ -148,8 +148,6 @@ fn populate_usable() void {
     }
 }
 
-
-
 pub fn alloc_boot_page() memory.Paddr {
     var selected : ?*CachedMmapEntry = null;
     var end : bool = false;
@@ -241,7 +239,8 @@ fn map_kernel_image(root_pt : *paging.Ptable) void {
     log.apanic(kernel.executable_address_request.response.*.virtual_base != memory.KERNEL_IMAGE.val,
         "mm: Limine kernel base doesn't match the expected base!\n", .{});
 
-    const ehdr : *std.elf.Elf64.Ehdr = @ptrFromInt(memory.KERNEL_IMAGE.val);
+    const ehdr : *std.elf.Elf64.Ehdr = @ptrCast(@alignCast(kernel.executable_file_request.response.*.executable_file.address));
+    log.apanic(!std.mem.eql(u8,ehdr.ident[0..4], std.elf.MAGIC), "mm: Kernel ELF file wasn't found! Cannot remap kernel image!\n");
     for(0..ehdr.phnum) |i| {
         const phdr : *std.elf.Elf64.Phdr = @ptrFromInt(@intFromPtr(ehdr) + ehdr.phoff + ehdr.phentsize * i);
         if(phdr.type != std.elf.PT.LOAD) continue;

@@ -5,7 +5,7 @@
       <list><![CDATA[{
   "name": "<root>",
   "version": null,
-  "path": "/Users/nbenson/Documents/Famex",
+  "path": "/Users/nbenson/Projects/Famex",
   "steps": [
     {
       "name": "install",
@@ -22,12 +22,18 @@
     {
       "root": "arch/x86_64/root.zig",
       "public": false,
-      "imports": []
+      "imports": [
+        {
+          "name": "arch",
+          "owner": 0,
+          "module": 0
+        }
+      ]
     }
   ],
   "dependencies": []
 }]]></list>
     </option>
   </component>
-  <component name="ZigToolchain" toolchain="2eb01d4b-3f33-4b73-8a37-989171b1a15b" />
+  <component name="ZigToolchain" toolchain="cbdcbb98-40d7-4720-8db2-d727fce0dbcb" />
 </project>

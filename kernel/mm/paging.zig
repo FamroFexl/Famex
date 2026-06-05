@@ -9,6 +9,7 @@ const pmm = @import("pmm.zig");
 const arch = @import("arch");
 pub const Pte = arch.paging.Pte;
 const cpu = arch.cpu;
+const print = kernel.util.log.print;
 
 pub const PTE_MAX_DEPTH = 5;
 pub const PFE_MAX_DEPTH = 3;
@@ -95,8 +96,8 @@ pub fn map_boot_page(addr : u64, pte : Pte, level : u8, root_pt : *Ptable) void 
     var cur_pt : *Ptable = root_pt;
 
     var current_pte = &cur_pt.pte[get_ptable_entry(addr, PT_LEVELS - 1)];
-
-    for((PT_LEVELS - 1)..level) |i| {
+    var i = PT_LEVELS - 1;
+    while(i > level) : (i -= 1) {
         if(!current_pte.get_present(i)) {
             current_pte.* = PTE_DEFAULTS[i];
             var page : memory.Paddr = pmm.alloc_boot_page();
@@ -123,7 +124,6 @@ fn setup_ptes() void {
         default.set_write(level, true);
         default.set_exec(level, true);
     }
-
 
     for(0..cpu.FEATURES.max_page_size) |level| {
         const default = &PFE_DEFAULTS[level];

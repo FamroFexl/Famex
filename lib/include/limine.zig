@@ -127,7 +127,7 @@ pub const LimineExecutableFileResponse = extern struct {
 };
 
 pub const LimineExecutableFileRequest = extern struct {
-    id : LimineReqId = req_id(0xad97e90e83f1ed67, 0x31eb5d1c5ff23b690),
+    id : LimineReqId = req_id(0xad97e90e83f1ed67, 0x31eb5d1c5ff23b69),
     revision : u64 = LIMINE_REVISION,
     response : *LimineExecutableFileResponse = undefined,
 };

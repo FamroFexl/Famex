@@ -18,7 +18,7 @@ pub const Paddr = struct {
     }
 };
 
-pub const Vaddr = struct {
+pub const Vaddr = extern struct {
     val : u64,
 
     pub fn to_phys(self : @This()) Paddr {
@@ -52,7 +52,7 @@ pub var KERNEL_ALLOC : Vaddr = undefined;
 pub var PAGE_METADATA : Vaddr = undefined;
 pub var PER_CPU_DATA : Vaddr = undefined;
 
-pub const KERNEL_IMAGE : Vaddr = .{.val =0xFFFFFFFF80000000};
+pub const KERNEL_IMAGE : Vaddr = .{.val = 0xFFFFFFFF80000000};
 pub const MODULE_IMAGES : Vaddr = .{.val = 0xFFFFFFFFA0000000};
 
 pub fn memset(ptr : *anyopaque, size : anytype, val : u8) void {
@@ -74,17 +74,17 @@ pub fn setup_mem_mgmt() void {
     KERNEL_MEMORY_START.val = ~USER_MEMORY_END.val;
 
     // PAGE_OFFSET region uses 1/4 of virtual memory
-    PAGE_OFFSET_SIZE = bin.set_bits(VIRT_ADDR_BITS - 2);
+    PAGE_OFFSET_SIZE = bin.set_bit(VIRT_ADDR_BITS - 2);
 
     // KERNEL_ALLOC region uses 1/8 of virtual memory
-    KERNEL_ALLOC_SIZE = bin.set_bits(VIRT_ADDR_BITS - 3);
+    KERNEL_ALLOC_SIZE = bin.set_bit(VIRT_ADDR_BITS - 3);
 
     PAGE_METADATA_SIZE = (PAGE_OFFSET_SIZE / @sizeOf(paging.PageInfo));
 
     KERNEL_MEMORY.val = KERNEL_MEMORY_START.val;
     KERNEL_ALLOC.val = PAGE_OFFSET_SIZE + KERNEL_MEMORY.val;
     PAGE_METADATA.val = KERNEL_ALLOC_SIZE + KERNEL_ALLOC.val;
-    PER_CPU_DATA.val = PAGE_METADATA_SIZE + bin.align_up(PAGE_METADATA.val, PER_CPU_DATA_SIZE);
+    PER_CPU_DATA.val = PAGE_METADATA.val + bin.align_up(PAGE_METADATA_SIZE, PER_CPU_DATA_SIZE);
 
     print("  Kernel Memory Start:   0x{X}\n", .{KERNEL_MEMORY.val});
     print("  Kernel VMalloc Region: 0x{X}\n", .{KERNEL_ALLOC.val});
