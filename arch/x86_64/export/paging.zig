@@ -89,7 +89,7 @@ pub const Pte = packed struct(u64) {
 
     pub fn set_exec(self : *@This(), level : anytype, exec : bool) void {
         _ = level;
-        if(cpu.FEATURES.execute_bit == false) return;
+        if(cpu.FEATURES.EXECUTE_BIT == false) return;
 
         self.no_execute = !exec;
     }
@@ -105,7 +105,7 @@ pub const Pte = packed struct(u64) {
     }
 
     pub fn set_pfe(self : *@This(), level : anytype, pfe : bool) void {
-        if(level > cpu.FEATURES.max_page_size) return;
+        if(level > cpu.FEATURES.MAX_PAGE_SIZE) return;
 
         if(level == 0) return;
         self.bits.pfe = pfe;
@@ -172,7 +172,7 @@ pub const Pte = packed struct(u64) {
 
     pub fn get_exec(self : *@This(), level : anytype) bool {
         _ = level;
-        if(cpu.FEATURES.execute_bit == false) return true;
+        if(cpu.FEATURES.EXECUTE_BIT == false) return true;
 
         return !self.no_execute;
     }

@@ -4,7 +4,9 @@ const kernel = @import("kernel");
 const config = kernel.config;
 const bin = kernel.util.binary;
 const types = kernel.util.types;
-const limine = @import("lib").limine;
+const lib = @import("lib");
+const elf = lib.elf;
+const limine = lib.limine;
 const MmapType = limine.LIMINE_MEMMAP_TYPE;
 const process = kernel.pm.process;
 var kernel_root_pt = process.kernel_process.addr_space.root_pt;
@@ -239,21 +241,20 @@ fn map_kernel_image(root_pt : *paging.Ptable) void {
     log.apanic(kernel.executable_address_request.response.*.virtual_base != memory.KERNEL_IMAGE.val,
         "mm: Limine kernel base doesn't match the expected base!\n", .{});
 
-    const ehdr : *std.elf.Elf64.Ehdr = @ptrCast(@alignCast(kernel.executable_file_request.response.*.executable_file.address));
-    const id : vmm.ElfId = @bitCast(ehdr.ident);
-    log.apanic(!std.mem.eql(u8, &id.magic, std.elf.MAGIC), "mm: Kernel ELF file wasn't found! Cannot remap kernel image!\n", .{});
-    for(0..ehdr.phnum) |i| {
-        const phdr : *std.elf.Elf64.Phdr = @ptrFromInt(@intFromPtr(ehdr) + ehdr.phoff + ehdr.phentsize * i);
-        if(phdr.type != std.elf.PT.LOAD) continue;
+    const elf_hdr : *elf.ElfHdr = @ptrCast(@alignCast(kernel.executable_file_request.response.*.executable_file.address));
+    log.apanic(!std.mem.eql(u8, &elf_hdr.id.magic, std.elf.MAGIC), "mm: Kernel ELF file wasn't found! Cannot remap kernel image!\n", .{});
+    for(0..elf_hdr.ph_num) |i| {
+        const phdr : *elf.ElfPrgHdr = @ptrFromInt(@intFromPtr(elf_hdr) + elf_hdr.ph_off + elf_hdr.ph_ent_size * i);
+        if(phdr.type != elf.ElfPrgHdr.PT.LOAD) continue;
 
         var pfe : paging.Pte = paging.PFE_DEFAULTS[0];
         pfe.set_global(0, true);
-        pfe.set_exec(0, phdr.flags.X);
-        pfe.set_write(0, phdr.flags.W);
-        pfe.set_read(0, phdr.flags.R);
+        pfe.set_exec(0, phdr.flags.execute);
+        pfe.set_write(0, phdr.flags.write);
+        pfe.set_read(0, phdr.flags.read);
 
         const start : u64 = phdr.vaddr;
-        const size : u64 = phdr.memsz;
+        const size : u64 = phdr.mem_sz;
 
         const pstart : u64 = kernel.executable_address_request.response.*.physical_base + start - memory.KERNEL_IMAGE.val;
 

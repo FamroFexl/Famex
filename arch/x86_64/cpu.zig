@@ -11,8 +11,8 @@ const signature_INTEL_edx : u32 = 0x49656e69;
 const signature_INTEL_ecx : u32 = 0x6c65746e;
 
 pub const cpu_vendor = enum {
-    intel,
-    amd
+    INTEL,
+    AMD
 };
 
 pub var VENDOR : cpu_vendor = undefined;
@@ -21,13 +21,13 @@ pub fn set_cpu_vendor(leaf_0x0_0 : cpuid_db.leaf_0x0_0) void {
     if (leaf_0x0_0.ebx.cpu_vendorid_0 == signature_INTEL_ebx and
         leaf_0x0_0.edx.cpu_vendorid_1 == signature_INTEL_edx and
         leaf_0x0_0.ecx.cpu_vendorid_2 == signature_INTEL_ecx) {
-        VENDOR = cpu_vendor.intel;
+        VENDOR = cpu_vendor.INTEL;
     }
     else if (
     leaf_0x0_0.ebx.cpu_vendorid_0 == signature_AMD_ebx and
         leaf_0x0_0.edx.cpu_vendorid_1 == signature_AMD_edx and
         leaf_0x0_0.ecx.cpu_vendorid_2 == signature_AMD_ecx) {
-        VENDOR = cpu_vendor.amd;
+        VENDOR = cpu_vendor.AMD;
     }
     else {
         log.panic("arch: CPU Manufacturer isn't AMD or Intel!\n", .{});

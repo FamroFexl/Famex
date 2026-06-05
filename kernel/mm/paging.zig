@@ -125,7 +125,7 @@ fn setup_ptes() void {
         default.set_exec(level, true);
     }
 
-    for(0..cpu.FEATURES.max_page_size) |level| {
+    for(0..cpu.FEATURES.MAX_PAGE_SIZE) |level| {
         const default = &PFE_DEFAULTS[level];
         default.set_present(level, true);
         default.set_cache(level, PteCache.WRITE_BACK);

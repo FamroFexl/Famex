@@ -18,7 +18,7 @@ fn ensure_features() void {
 
     cpu.set_cpu_vendor(leaf_0x0);
 
-    const intel : bool = cpu.VENDOR == cpu.cpu_vendor.intel;
+    const intel : bool = cpu.VENDOR == cpu.cpu_vendor.INTEL;
 
     const leaf_0x87 : cpuid.leaf_0x80000007_0 = cpu.cpuid(cpuid.leaf_0x80000007_0, 0x80000007, 0);
     timers.TSC_INVARIANT = leaf_0x87.edx.constant_tsc == 1;
@@ -37,7 +37,7 @@ fn ensure_features() void {
         log.apanic(leaf_0x1.ecx.vmx == 0, "arch: Intel VMX extensions are required!\n", .{});
 
         if (leaf_0x1.edx.pse == 1)
-            bin.set_if_larger(u8, &export_cpu.FEATURES.max_page_size, 1);
+            bin.set_if_larger(u8, &export_cpu.FEATURES.MAX_PAGE_SIZE, 1);
     }
     else {
         // We support Bulldozer Family 15h and later AMD CPUs (because of AMD-Vi support)
@@ -47,15 +47,15 @@ fn ensure_features() void {
         log.apanic(leaf_0x81.ecx.svm == 0, "arch: AMD SVM extensions are required!\n", .{});
 
         if (leaf_0x81.edx.e_pse == 1)
-            bin.set_if_larger(u8, &export_cpu.FEATURES.max_page_size, 1);
+            bin.set_if_larger(u8, &export_cpu.FEATURES.MAX_PAGE_SIZE, 1);
 
     }
 
     if (leaf_0x81.edx.page1gb == 1)
-        bin.set_if_larger(u8, &export_cpu.FEATURES.max_page_size, 2);
+        bin.set_if_larger(u8, &export_cpu.FEATURES.MAX_PAGE_SIZE, 2);
 
-    export_cpu.FEATURES.execute_bit = leaf_0x81.edx.nx == 1;
-    export_cpu.FEATURES.read_bit = false;
+    export_cpu.FEATURES.EXECUTE_BIT = leaf_0x81.edx.nx == 1;
+    export_cpu.FEATURES.READ_BIT = false;
 }
 
 pub fn init() void {
