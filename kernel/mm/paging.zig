@@ -9,7 +9,8 @@ const pmm = @import("pmm.zig");
 const arch = @import("arch");
 pub const Pte = arch.paging.Pte;
 const cpu = arch.cpu;
-const print = kernel.util.log.print;
+const log = kernel.util.log;
+const print = log.print;
 
 pub const PTE_MAX_DEPTH = 5;
 pub const PFE_MAX_DEPTH = 3;
@@ -17,11 +18,10 @@ pub const PFE_MAX_DEPTH = 3;
 pub var PTE_DEFAULTS : [PTE_MAX_DEPTH]Pte = undefined;
 pub var PFE_DEFAULTS : [PFE_MAX_DEPTH]Pte = undefined;
 
-
-pub const PteCache = enum {
-    WRITE_BACK,
-    WRITE_COMBINING,
-    UNCACHED
+pub const PteCache = enum(u4) {
+    WRITE_BACK = 0,
+    WRITE_COMBINING = 1,
+    UNCACHED = 2,
 };
 
 pub const PTE_SIZE_BITS = 12;
@@ -35,46 +35,30 @@ pub const Ptable = struct {
 // Max page table levels
 pub var PT_LEVELS : u8 = undefined;
 
-// Packed page info, as small as possible
+/// Packed page info, as small as possible.
+/// This is the main memory hog, since one of these
+/// exists for every 4096 bytes
 pub const PageInfo = struct {
     data : [3]u8,
 
-    const DataLayout = struct {
+    /// Somehow, packed structs require pow2 aligned types, so we
+    /// can't have a packed struct with an arbitrary number of bytes.
+    const DataLayout = packed struct {
         flags : u8,
         order : u5,
         region : u11,
     };
 
-    pub fn get_flags(self : @This()) u8 {
-        const out : DataLayout = @bitCast(self.data);
-        return out.flags;
+    pub fn get_data(self : @This()) DataLayout {
+        return @bitCast(self);
     }
 
-    pub fn set_flags(self : @This(), flags : u8) void {
-        const out : DataLayout = @bitCast(self.data);
-        out.flags = flags;
-        self.data = @bitCast(out);
-    }
-
-    pub fn get_order(self : @This()) u5 {
-        const out : DataLayout = @bitCast(self.data);
-        return out.order;
-    }
-
-    pub fn set_order(self : @This(), order : u5) void {
-        const out : DataLayout = @bitCast(self.data);
-        out.order = order;
-        self.data = @bitCast(out);
-    }
-
-    pub fn set_region(self : @This(), region : u11) void {
-        const out : DataLayout = @bitCast(self.data);
-        out.region = region;
-        self.data = @bitCast(out);
+    pub fn set_data(self : *@This(), data : DataLayout) void {
+        self.*.data = @bitCast(data);
     }
 
     pub fn to_phys(self : *@This()) memory.Paddr {
-        return (@intFromPtr(self) - memory.PAGE_METADATA) / @sizeOf(@This()) * types.SIZE_4KB;
+        return .{.val = ((@intFromPtr(self) - memory.PAGE_METADATA) / @sizeOf(@This())) * types.SIZE_4KB};
     }
 
     pub fn to_virt(self : *@This()) memory.Vaddr {
@@ -83,33 +67,86 @@ pub const PageInfo = struct {
 
     comptime {
         if (@sizeOf(PageInfo) != 3) {
-            @compileError("page_info is not 3 bytes!");
+            @compileError("PageInfo is not 3 bytes!");
         }
     }
 };
 
-fn get_ptable_entry(addr : u64, level : anytype) u16 {
-    return @intCast(bin.get_bits(PTE_ENTRY_BITS, PTE_SIZE_BITS + level * PTE_ENTRY_BITS, addr));
+pub fn get_ptable_entry(addr : memory.Vaddr, level : anytype) u9 {
+    return @intCast(bin.get_bits(PTE_ENTRY_BITS, PTE_SIZE_BITS + level * PTE_ENTRY_BITS, addr.val));
 }
 
-pub fn map_boot_page(addr : u64, pte : Pte, level : u8, root_pt : *Ptable) void {
+const PteType = enum {
+    EMPTY,
+    PFE,
+    TABLE
+};
+
+fn get_pte_type(pte : *Pte, level : anytype) PteType {
+    if(pte.get_empty(level)) return PteType.EMPTY;
+
+    if (pte.get_present(level)) {
+        if (pte.get_pfe(level))
+            return PteType.PFE;
+
+        return PteType.TABLE;
+    }
+
+    return PteType.PFE;
+}
+
+pub fn print_ptables(root_pt : *Ptable, level : anytype, min : anytype) void {
+    outer: for (0..PTE_ENTRIES) |i| {
+        const pte : *Pte = &root_pt.pte[i];
+
+        switch (get_pte_type(pte, level)) {
+            PteType.EMPTY => continue :outer,
+            PteType.TABLE => {
+                const page : memory.Paddr = pte.get_entry(level);
+                const table : *Ptable = @ptrFromInt(page.to_virt().val);
+                log.print_char(' ', (PT_LEVELS - 1 - level) * 4);
+                print("Table {d} 0x{X}\n", .{i, page.val});
+                if (level - 1 >= min)
+                    print_ptables(table, level - 1, min);
+            },
+            PteType.PFE => {
+                const page : memory.Paddr = pte.get_entry(level);
+                log.print_char(' ', (PT_LEVELS - 1 - level) * 4);
+                print("Page {d} 0x{X}\n", .{i, page.val});
+            },
+        }
+    }
+}
+
+pub fn map_boot_page(addr : memory.Vaddr, pte : Pte, level : u8, root_pt : *Ptable) void {
     var cur_pt : *Ptable = root_pt;
 
-    var current_pte = &cur_pt.pte[get_ptable_entry(addr, PT_LEVELS - 1)];
     var i = PT_LEVELS - 1;
+    var current_pte = &cur_pt.pte[get_ptable_entry(addr, i)];
+
     while(i > level) : (i -= 1) {
         if(!current_pte.get_present(i)) {
             current_pte.* = PTE_DEFAULTS[i];
-            var page : memory.Paddr = pmm.alloc_boot_page();
+            const page : memory.Paddr = pmm.alloc_boot_page();
             memory.memset(@ptrFromInt(page.to_virt().val), types.SIZE_4KB, 0);
             current_pte.set_entry(i, page);
         }
 
         cur_pt = @ptrFromInt(current_pte.get_entry(i).to_virt().val);
-        current_pte = &cur_pt.pte[get_ptable_entry(addr, i)];
+        current_pte = &cur_pt.pte[get_ptable_entry(addr, i - 1)];
     }
 
     current_pte.* = pte;
+}
+
+// Switches to new table and returns the old tables
+pub fn switch_page_tables(new_tables : *Ptable) *Ptable {
+    const cur : *Ptable = arch.paging.get_page_tables();
+    if(cur == new_tables) return new_tables;
+
+    arch.paging.set_page_tables(new_tables);
+
+    return cur;
 }
 
 fn setup_ptes() void {
@@ -125,7 +162,7 @@ fn setup_ptes() void {
         default.set_exec(level, true);
     }
 
-    for(0..cpu.FEATURES.MAX_PAGE_SIZE) |level| {
+    for(0..(cpu.FEATURES.MAX_PAGE_SIZE + 1)) |level| {
         const default = &PFE_DEFAULTS[level];
         default.set_present(level, true);
         default.set_cache(level, PteCache.WRITE_BACK);

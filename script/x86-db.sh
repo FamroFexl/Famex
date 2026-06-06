@@ -9,7 +9,6 @@ if [ -n "$pid" ]; then
     kill -9 $pid
 fi
 
-#qemu-system-x86_64 -nographic -m 300M -no-reboot -no-shutdown -s -S -d int,guest_errors -D qemu.log -cdrom ./BaseOS.iso
-qemu-system-x86_64 -L . --bios ../../limine/efi/x64/DEBUGX64_OVMF.fd -nographic -cpu qemu64 -accel tcg -smp 1 -m 300M -no-reboot -no-shutdown -s -S -d cpu_reset,int,guest_errors -D qemu.log -cdrom ./famex.iso
 
+qemu-system-x86_64 -L . --bios ../../limine/efi/x64/DEBUGX64_OVMF.fd -d cpu_reset,guest_errors -D qemu.log -debugcon stdio -global isa-debugcon.iobase=0x3f8 -accel tcg -rtc base=utc -display none -no-reboot -no-shutdown -cpu qemu64 -smp 1 -m 300M -s -S -cdrom ./famex.iso
 
