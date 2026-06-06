@@ -4,7 +4,17 @@ const mem = kernel.mm.memory;
 const bin = kernel.util.binary;
 const debug = @import("std").debug;
 
+const reg = @import("arch").reg;
+
 const cpu = @import("cpu.zig");
+
+pub fn set_page_tables(tables : *paging.Ptable) void {
+    reg.set_cr3(mem.Vaddr.as_virt(@intFromPtr(tables)).to_phys().val);
+}
+
+pub fn get_page_tables() *paging.Ptable {
+    return @ptrFromInt(mem.Paddr.as_phys(reg.get_cr3()).to_virt().val);
+}
 
 pub const Pte = packed struct(u64) {
     present : bool,
@@ -36,6 +46,10 @@ pub const Pte = packed struct(u64) {
         prot_key : u4,  // Only used if enabled
     },
     no_execute : bool,
+
+    comptime {
+        debug.assert(@bitSizeOf(Pte) == 64);
+    }
 
     fn set_pat(pte : *Pte, level : anytype, pat : u3) void {
         pte.pwt = bin.get_bit(0, pat);
@@ -112,13 +126,13 @@ pub const Pte = packed struct(u64) {
     }
 
     pub fn set_entry(self : *@This(), level : anytype, entry : mem.Paddr) void {
-        const mask : u64 = bin.set_bits((level * paging.PTE_ENTRY_BITS * @as(u64, @intFromBool(self.get_pfe(level)))) + paging.PTE_SIZE_BITS);
+        const mask : u64 = mem.PHYS_ADDR_SIZE & (~bin.set_bits((level * paging.PTE_ENTRY_BITS * @as(u64, @intFromBool(self.get_pfe(level)))) + paging.PTE_SIZE_BITS));
         self.* = @bitCast((@as(u64, @bitCast(self.*)) & ~mask) | (entry.val & mask));
     }
 
     pub fn set_empty(self : *@This(), level : anytype) void {
         _ = level;
-        self = @bitCast(@as(u64, 0));
+        self.* = @bitCast(@as(u64, 0));
     }
 
     pub fn set_accessed(self : *@This(), level : anytype, accessed : bool) void {
@@ -193,14 +207,13 @@ pub const Pte = packed struct(u64) {
     }
 
     pub fn get_entry(self : *@This(), level : anytype) mem.Paddr {
-        const mask : u64 = bin.set_bits((level * paging.PTE_ENTRY_BITS * @intFromBool(self.get_pfe(level))) + paging.PTE_SIZE_BITS);
-
+        const mask : u64 = mem.PHYS_ADDR_SIZE & (~bin.set_bits((level * paging.PTE_ENTRY_BITS * @as(u64, @intFromBool(self.get_pfe(level)))) + paging.PTE_SIZE_BITS));
         return .{.val = @as(u64, @bitCast(self.*)) & mask,};
     }
 
     pub fn get_empty(self : *@This(), level : anytype) bool {
         _ = level;
-        return @as(u64, @bitCast(self)) == 0;
+        return @as(u64, @bitCast(self.*)) == 0;
     }
 
     pub fn get_accessed(self : *@This(), level : anytype) bool {

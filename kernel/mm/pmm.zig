@@ -14,6 +14,9 @@ var kernel_root_pt = process.kernel_process.addr_space.root_pt;
 const memory = @import("memory.zig");
 const vmm = @import("vmm.zig");
 const paging = @import("paging.zig");
+const Addr = memory.Addr;
+
+const cpu = @import("arch").cpu;
 
 const log = @import("kernel").util.log;
 const print = log.print;
@@ -47,6 +50,15 @@ fn memtype_to_string(memtype : MmapType) []const u8 {
         MmapType.BAD_MEMORY => "Bad Memory",
         MmapType.FRAMEBUFFER => "Framebuffer",
         else => "Unknown"
+    };
+}
+
+fn page_level_to_size(level : anytype) usize {
+    return switch (level) {
+        0 => types.SIZE_4KB,
+        1 => types.SIZE_2MB,
+        2 => types.SIZE_1GB,
+        else => types.SIZE_4KB,
     };
 }
 
@@ -119,7 +131,7 @@ fn sanitize_mmap() u64 {
     log.print_char('-', 60);
     print("\n", .{});
 
-    for(0..kernel.mmap_request.response.*.entry_count) |i| {
+    for (0..kernel.mmap_request.response.*.entry_count) |i| {
         const entry = &kernel.mmap_request.response.*.entries[i].*;
         if(entry.length == 0)
             continue;
@@ -201,6 +213,8 @@ pub fn alloc_boot_page() memory.Paddr {
 }
 
 fn map_page_mdata(root_pt : *paging.Ptable) void {
+    print("  Mapping Page Metadata:\n", .{});
+
     var pframe : paging.Pte = paging.PFE_DEFAULTS[0];
     pframe.set_global(0, true);
 
@@ -222,7 +236,7 @@ fn map_page_mdata(root_pt : *paging.Ptable) void {
         var page : u64 = page_start;
         while (page < page_end) : (page += types.SIZE_4KB) {
             pframe.set_entry(0, alloc_boot_page());
-            paging.map_boot_page(page, pframe, 0, root_pt);
+            paging.map_boot_page(memory.Vaddr.as_virt(page), pframe, 0, root_pt);
         }
     }
 
@@ -233,11 +247,60 @@ fn map_page_mdata(root_pt : *paging.Ptable) void {
     print("\n", .{});
 }
 
+/// Higher Half Direct Map of all memory, excluding reserved and bad regions
 fn map_new_hhdm(root_pt : *paging.Ptable) void {
-    _ = root_pt;
+    print("  Mapping HHDM\n", .{});
+
+    var pframes : [paging.PFE_MAX_DEPTH]paging.Pte = undefined;
+    @memcpy(pframes[0..cpu.FEATURES.MAX_PAGE_SIZE + 1], paging.PFE_DEFAULTS[0..cpu.FEATURES.MAX_PAGE_SIZE + 1]);
+
+    for (&pframes, 0..) |*pte, i| {
+        pte.set_global(i, true);
+    }
+
+    outer: for(0..kernel.mmap_request.response.*.entry_count) |i| {
+        const entry = &kernel.mmap_request.response.*.entries[i].*;
+        if (entry.length == 0) continue;
+
+        const memtype : MmapType = @enumFromInt(entry.type);
+
+        switch (memtype) {
+            MmapType.BAD_MEMORY, MmapType.RESERVED, MmapType.EXECUTABLE_AND_MODULES => continue :outer,
+            else => {},
+        }
+
+        const cache : paging.PteCache = switch (memtype) {
+            MmapType.ACPI_NVS => paging.PteCache.UNCACHED,
+            MmapType.FRAMEBUFFER => paging.PteCache.WRITE_COMBINING,
+            else => paging.PteCache.WRITE_BACK,
+        };
+
+        for (&pframes, 0..) |*pte, j|
+            pte.set_cache(j, cache);
+
+        const end : memory.Paddr = .{.val = entry.base + entry.length};
+        var cur_addr : memory.Paddr = .{.val = entry.base};
+
+        while (cur_addr.val < end.val) {
+            var cur_level = cpu.FEATURES.MAX_PAGE_SIZE;
+            var page_size = page_level_to_size(cur_level);
+
+            while (bin.align_down(cur_addr.val, page_size) != cur_addr.val or cur_addr.val + page_size > end.val) {
+                cur_level -= 1;
+                page_size = page_level_to_size(cur_level);
+            }
+
+            pframes[cur_level].set_entry(cur_level, cur_addr);
+            paging.map_boot_page(.{.val = memory.KERNEL_MEMORY.val + cur_addr.val}, pframes[cur_level], cur_level, root_pt);
+
+            cur_addr.val += page_size;
+        }
+    }
 }
 
 fn map_kernel_image(root_pt : *paging.Ptable) void {
+    print("  Mapping Kernel Image\n", .{});
+
     log.apanic(kernel.executable_address_request.response.*.virtual_base != memory.KERNEL_IMAGE.val,
         "mm: Limine kernel base doesn't match the expected base!\n", .{});
 
@@ -249,28 +312,50 @@ fn map_kernel_image(root_pt : *paging.Ptable) void {
 
         var pfe : paging.Pte = paging.PFE_DEFAULTS[0];
         pfe.set_global(0, true);
-        pfe.set_exec(0, phdr.flags.execute);
-        pfe.set_write(0, phdr.flags.write);
-        pfe.set_read(0, phdr.flags.read);
+        pfe.set_exec(0, true); //phdr.flags.execute);
+        pfe.set_write(0, true); //phdr.flags.write);
+        pfe.set_read(0, true); //phdr.flags.read);
 
-        const start : u64 = phdr.vaddr;
-        const size : u64 = phdr.mem_sz;
+        const start : memory.Vaddr = .{.val = phdr.vaddr};
+        const size : usize = phdr.mem_sz;
 
-        const pstart : u64 = kernel.executable_address_request.response.*.physical_base + start - memory.KERNEL_IMAGE.val;
+        const pstart : u64 = kernel.executable_address_request.response.*.physical_base + start.val - memory.KERNEL_IMAGE.val;
 
         var addr : u64 = 0;
         while(addr < size) : (addr += types.SIZE_4KB) {
             pfe.set_entry(0, .{.val = pstart + addr});
-            paging.map_boot_page(start + addr, pfe, 0, root_pt);
+            paging.map_boot_page(.{.val = start.val + addr}, pfe, 0, root_pt);
         }
     }
 }
 
 fn map_modules(root_pt : *paging.Ptable) void {
-    _ = root_pt;
+    print("  Mapping Kernel Modules\n", .{});
+
+    if (kernel.module_request.response == null) return;
+
+    var pfe : paging.Pte = paging.PFE_DEFAULTS[0];
+    pfe.set_global(0, true);
+    pfe.set_write(0, true);
+    pfe.set_exec(0, true);
+    pfe.set_read(0, true);
+
+    for(0..kernel.mmap_request.response.*.entry_count) |i| {
+        const module = &kernel.module_request.response.?.modules[i].*;
+
+        const vaddr : memory.Vaddr = memory.Vaddr.as_virt(bin.align_down(@intFromPtr(module.address), types.SIZE_4KB));
+        const paddr : memory.Paddr = vaddr.to_phys();
+
+        var j : u64 = 0;
+        while (j < bin.align_up(module.size, types.SIZE_4KB)) : (j += types.SIZE_4KB) {
+            pfe.set_entry(0, .{.val = paddr.val + j});
+            paging.map_boot_page(.{.val = vaddr.val + j}, pfe, 0, root_pt);
+        }
+    }
 }
 
 fn map_page_cache(root_pt : *paging.Ptable) void {
+    print("  Mapping per-cpu Page Cache\n", .{});
     _ = root_pt;
 }
 
@@ -283,27 +368,23 @@ fn switch_to_new_ptables() void {
     memory.memset(kernel_root_pt, types.SIZE_4KB, 0);
 
     // Setup page metadata
-    print("  Mapping Page Metadata:\n", .{});
     map_page_mdata(kernel_root_pt);
 
     // Setup the Higher-Half Direct Map for applicable regions
-    print("  Mapping HHDM\n", .{});
     map_new_hhdm(kernel_root_pt);
 
     // Setup mappings for kernel sections
-    print("  Mapping Kernel Image\n", .{});
     map_kernel_image(kernel_root_pt);
 
     // Setup mappings for modules
-    print("  Mapping Kernel Modules\n", .{});
     map_modules(kernel_root_pt);
 
     // Setup page caches in the per-cpu storage region
-    print("  Mapping per-cpu Page Cache\n", .{});
     map_page_cache(kernel_root_pt);
 
     // Switch to the new page tables
     print("  Switching to new Page Tables\n", .{});
+    _ = paging.switch_page_tables(kernel_root_pt);
 }
 
 pub fn setup_phys_mem_mgmt() void {
@@ -311,7 +392,7 @@ pub fn setup_phys_mem_mgmt() void {
 
     memory.PAGE_OFFSET.val = kernel.hhdm_request.response.*.offset;
     if(memory.PAGE_OFFSET.val != memory.KERNEL_MEMORY.val) {
-        panic("mm: Limine specified a different PAGE_OFFSET than expected! {} vs {}\n", .{memory.PAGE_OFFSET.val, memory.KERNEL_MEMORY.val});
+        panic("mm: Limine specified a different PAGE_OFFSET than expected! {} vs {}\n", .{memory.PAGE_OFFSET, memory.KERNEL_MEMORY});
     }
 
     const num_usable : u64 = sanitize_mmap();

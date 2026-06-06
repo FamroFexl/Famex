@@ -101,12 +101,10 @@ pub const ElfSecHdr = extern struct {
     };
 
     pub const SecFlag = packed struct(u64) {
-        unused1 : u1,
         write : bool,   // Section contains writable data
         alloc : bool,   // Section is allocated in memory image of program
-        unused2 : u1,
         execinstr : bool,  // Section contains executable instructions
-        unused3 : u59,
+        unused3 : u61,
     };
 };
 
@@ -158,12 +156,10 @@ pub const ElfPrgHdr = extern struct {
     };
 
     pub const SegFlag = packed struct(u32) {
-        unused1 : u1,
         execute : bool, // Execute permission
         write : bool,   // Write permission
-        unused2 : u1,
         read : bool,    // Read permission
-        unused3 : u27,
+        unused3 : u29,
     };
 };
 

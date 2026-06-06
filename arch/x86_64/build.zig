@@ -23,6 +23,8 @@ pub fn module(b : *std.Build, options : *std.Build.Module.CreateOptions, linker 
     x86_module.root_source_file = b.path(cwd ++ "root.zig");
     arch_data.module = x86_module;
 
+    x86_module.addAssemblyFile(b.path(cwd ++ "registers.S"));
+
     const x86_export_module = b.createModule(options.*);
     x86_export_module.root_source_file = b.path(cwd ++ "export/root.zig");
     arch_data.export_module = x86_export_module;

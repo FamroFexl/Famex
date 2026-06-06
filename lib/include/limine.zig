@@ -112,13 +112,13 @@ pub const LimineModuleResponse = extern struct {
 };
 
 pub const LimineModuleRequest = extern struct {
-    id : req_id(0x3e7e279702be32af, 0xca1c4f3bd1280cee),
-    revision : LIMINE_REVISION,
-    response : *LimineModuleResponse = undefined,
+    id : LimineReqId = req_id(0x3e7e279702be32af, 0xca1c4f3bd1280cee),
+    revision : u64 = LIMINE_REVISION,
+    response : ?*LimineModuleResponse = null,
 
     // Request revision 1
-    internal_module_count : u64,
-    internal_modules : [*]*LimineInternalModule,
+    internal_module_count : u64 = undefined,
+    internal_modules : [*]*LimineInternalModule = undefined,
 };
 
 pub const LimineExecutableFileResponse = extern struct {

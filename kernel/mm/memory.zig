@@ -6,26 +6,36 @@ const print = @import("kernel").util.log.print;
 const bin = @import("kernel").util.binary;
 const types = @import("kernel").util.types;
 
+pub const Addr = u64;
+
 pub const Paddr = struct {
     val : u64,
+
+    pub fn as_phys(num : u64) Paddr {
+        return .{.val = num};
+    }
 
     pub fn to_virt(self : @This()) Vaddr {
         return .{.val = self.val + PAGE_OFFSET.val};
     }
 
-    pub fn to_info(self : @This()) *paging.page_info {
-        return @ptrFromInt(PAGE_METADATA + (self / types.SIZE_4KB) * @sizeOf(paging.page_info));
+    pub fn to_info(self : @This()) *paging.PageInfo {
+        return @ptrFromInt(PAGE_METADATA + ((self / types.SIZE_4KB) * @sizeOf(paging.PageInfo)));
     }
 };
 
 pub const Vaddr = extern struct {
     val : u64,
 
+    pub fn as_virt(num : u64) Vaddr {
+        return .{.val = num};
+    }
+
     pub fn to_phys(self : @This()) Paddr {
         return .{.val = self.val - PAGE_OFFSET.val};
     }
 
-    pub fn to_info(self : @This()) *paging.page_info {
+    pub fn to_info(self : @This()) *paging.PageInfo {
         return self.to_phys().to_info();
     }
 };
@@ -53,8 +63,9 @@ pub var PAGE_METADATA : Vaddr = undefined;
 pub var PER_CPU_DATA : Vaddr = undefined;
 
 pub const KERNEL_IMAGE : Vaddr = .{.val = 0xFFFFFFFF80000000};
-pub const MODULE_IMAGES : Vaddr = .{.val = 0xFFFFFFFFA0000000};
+pub const MODULE_IMAGES : Vaddr = .{.val =0xFFFFFFFFA0000000};
 
+/// raw @memset usage is way too finicky to get right
 pub fn memset(ptr : *anyopaque, size : anytype, val : u8) void {
     const bytes : [*]u8 = @ptrCast(ptr);
     @memset(bytes[0..size], val);
