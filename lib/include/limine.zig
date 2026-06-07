@@ -1,3 +1,5 @@
+const builtin = @import("builtin");
+
 pub const LIMINE_REQUESTS_START_MARKER : [4]u64 =  .{ 0xf6b8f4b39de7d1ae, 0xfab91a6940fcb9cf, 0x785c6ed015d3e316, 0x181e920a7852b9d9 };
 pub const LIMINE_REQUESTS_END_MARKER : [2]u64 = .{ 0xadc0e0531bb10d03, 0x9572709f31764c62 };
 
@@ -64,7 +66,7 @@ pub const LimineHhdmRequest = extern struct {
     response : *LimineHhdmResponse = undefined,
 };
 
-pub const LIMINE_MEMMAP_TYPE = enum(u8) {
+pub const LimineMemmapType = enum(u8) {
     USABLE,
     RESERVED,
     ACPI_RECLAIMABLE,
@@ -94,9 +96,101 @@ pub const LimineMemmapRequest = extern struct {
     response : *LimineMemmapResponse = undefined,
 };
 
-pub const LIMINE_INTERNAL_MODULE_FLAGS = enum(u64) {
-    required = 0,
-    compressed = 1,
+pub const LIMINE_PAGING_MODE_X86_64_4LVL = 0;
+pub const LIMINE_PAGING_MODE_X86_64_5LVL = 1;
+
+pub const LIMINE_PAGING_MODE_AARCH64_4LVL = 0;
+pub const LIMINE_PAGING_MODE_AARCH64_5LVL = 1;
+
+pub const LIMINE_PAGING_MODE_RISCV_SV39 = 0;
+pub const LIMINE_PAGING_MODE_RISCV_SV48 = 1;
+pub const LIMINE_PAGING_MODE_RISCV_SV57 = 2;
+
+pub const LiminePagingModeResponse = extern struct {
+    revision : u64,
+    mode : u64,
+};
+
+pub const LiminePagingModeRequest = extern struct {
+    id : LimineReqId = req_id(0x95c1a0edab0944cb, 0xa4e5cb3842f7488a),
+    revision : u64 = LIMINE_REVISION,
+    response : *LiminePagingModeResponse = undefined,
+    mode : u64,
+    max_mode : u64,
+    min_mode : u64,
+};
+
+pub const LimineMpInfoX86 = extern struct {
+    processor_id : u32,
+    lapic_id : u32,
+    reserved : u64,
+    goto_address : u64,
+    extra_argument : u64,
+};
+
+pub const LimineMpInfoAarch = extern struct {
+    processor_id : u32,
+    reserved1 : u32,
+    mpidr : u64,
+    reserved : u64,
+    goto_address : u64,
+    extra_argument : u64,
+};
+
+pub const LimineMpInfoRiscv = extern struct {
+    processor_id : u64,
+    hartid : u64,
+    reserved : u64,
+    goto_address : u64,
+    extra_argument : u64,
+};
+
+const InfoUnion = extern union {
+    x86 : [*]*LimineMpInfoX86,
+    aarch : [*]*LimineMpInfoAarch,
+    riscv : [*]*LimineMpInfoRiscv,
+};
+
+pub const LimineMpResponseX86 = extern struct {
+    revision : u64,
+    flags : u32,
+    bsp_lapic_id : u32,
+    cpu_count : u64,
+    cpus : InfoUnion,
+};
+
+pub const LimineMpResponseAarch = extern struct {
+    revision : u64,
+    flags : u64,
+    bsp_mpidr : u64,
+    cpu_count : u64,
+    cpus : InfoUnion,
+};
+
+pub const LimineMpResponseRiscv = extern struct {
+    revision : u64,
+    flags : u64,
+    bsp_hartid : u64,
+    cpu_count : u64,
+    cpus : InfoUnion,
+};
+
+pub const LIMINE_MP_REQUEST_X86_64_X2APIC = 1;
+
+pub const LimineMpRequest = extern struct {
+    id : LimineReqId = req_id(0x95a67b819a1b857e, 0xa0b61b723b6a73e0),
+    revision : u64 = LIMINE_REVISION,
+    response : extern union {
+        x86 : *LimineMpResponseX86,
+        aarch : *LimineMpResponseAarch,
+        riscv : *LimineMpResponseRiscv,
+    },
+    flags : u64,
+};
+
+pub const LimineInternalModuleFlags = enum(u64) {
+    REQUIRED = 0,
+    COMPRESSED = 1,
 };
 
 pub const LimineInternalModule = extern struct {

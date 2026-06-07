@@ -17,16 +17,22 @@ pub const cpu_vendor = enum {
 
 pub var VENDOR : cpu_vendor = undefined;
 
-pub fn set_cpu_vendor(leaf_0x0_0 : cpuid_db.leaf_0x0_0) void {
-    if (leaf_0x0_0.ebx.cpu_vendorid_0 == signature_INTEL_ebx and
-        leaf_0x0_0.edx.cpu_vendorid_1 == signature_INTEL_edx and
-        leaf_0x0_0.ecx.cpu_vendorid_2 == signature_INTEL_ecx) {
+pub var leaf_0x0 : cpuid_db.leaf_0x0_0 = undefined;
+pub var leaf_0x1 : cpuid_db.leaf_0x1_0 = undefined;
+pub var leaf_0x81 : cpuid_db.leaf_0x80000001_0 = undefined;
+pub var leaf_0x87 : cpuid_db.leaf_0x80000007_0 = undefined;
+pub var leaf_0x88 : cpuid_db.leaf_0x80000008_0 = undefined;
+
+pub fn set_cpu_vendor() void {
+    if (leaf_0x0.ebx.cpu_vendorid_0 == signature_INTEL_ebx and
+        leaf_0x0.edx.cpu_vendorid_1 == signature_INTEL_edx and
+        leaf_0x0.ecx.cpu_vendorid_2 == signature_INTEL_ecx) {
         VENDOR = cpu_vendor.INTEL;
     }
     else if (
-    leaf_0x0_0.ebx.cpu_vendorid_0 == signature_AMD_ebx and
-        leaf_0x0_0.edx.cpu_vendorid_1 == signature_AMD_edx and
-        leaf_0x0_0.ecx.cpu_vendorid_2 == signature_AMD_ecx) {
+    leaf_0x0.ebx.cpu_vendorid_0 == signature_AMD_ebx and
+        leaf_0x0.edx.cpu_vendorid_1 == signature_AMD_edx and
+        leaf_0x0.ecx.cpu_vendorid_2 == signature_AMD_ecx) {
         VENDOR = cpu_vendor.AMD;
     }
     else {
@@ -60,4 +66,14 @@ pub fn cpuid(comptime T: type, leaf : u32, subleaf : u32) T {
         .ecx = @bitCast(ecx),
         .edx = @bitCast(edx)
     };
+}
+
+pub fn init_cpuid() void {
+    leaf_0x0 = cpuid(cpuid_db.leaf_0x0_0, 0x0, 0);
+    leaf_0x1 = cpuid(cpuid_db.leaf_0x1_0, 0x1, 0);
+    leaf_0x81 = cpuid(cpuid_db.leaf_0x80000001_0, 0x80000001, 0);
+    leaf_0x87 = cpuid(cpuid_db.leaf_0x80000007_0, 0x80000007, 0);
+    leaf_0x88 = cpuid(cpuid_db.leaf_0x80000008_0, 0x80000008, 0);
+
+    set_cpu_vendor();
 }

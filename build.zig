@@ -17,7 +17,7 @@ pub fn build(b: *std.Build) !void {
     const arch = @import("arch/build.zig");
     const arch_data : arch.ArchData = arch.module(b, &options, &linker);
     const arch_module = arch_data.module;
-    const arch_export_module = arch_data.export_module;
+    const arch_api_module = arch_data.api_module;
 
     const kernel_module = @import("kernel/build.zig").module(b, &options);
 
@@ -26,16 +26,16 @@ pub fn build(b: *std.Build) !void {
     arch_module.addImport("lib", lib_module);
     arch_module.addImport("kernel", kernel_module);
     arch_module.addImport("arch", arch_module);
-    arch_module.addImport("arch_export", arch_export_module);
+    arch_module.addImport("arch_api", arch_api_module);
 
-    arch_export_module.addImport("arch", arch_module);
-    arch_export_module.addImport("kernel", kernel_module);
+    arch_api_module.addImport("arch", arch_module);
+    arch_api_module.addImport("kernel", kernel_module);
 
     kernel_module.addImport("kernel", kernel_module);
-    kernel_module.addImport("arch", arch_export_module);
+    kernel_module.addImport("arch", arch_api_module);
     kernel_module.addImport("lib", lib_module);
 
-    lib_module.addImport("arch", arch_export_module);
+    lib_module.addImport("arch", arch_api_module);
 
     const famex = b.addExecutable(.{
         .name = "famex.elf",

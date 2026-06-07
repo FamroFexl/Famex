@@ -25,9 +25,9 @@ pub fn module(b : *std.Build, options : *std.Build.Module.CreateOptions, linker 
 
     x86_module.addAssemblyFile(b.path(cwd ++ "registers.S"));
 
-    const x86_export_module = b.createModule(options.*);
-    x86_export_module.root_source_file = b.path(cwd ++ "export/root.zig");
-    arch_data.export_module = x86_export_module;
+    const x86_api_module = b.createModule(options.*);
+    x86_api_module.root_source_file = b.path(cwd ++ "api/root.zig");
+    arch_data.api_module = x86_api_module;
 
     return arch_data;
 }

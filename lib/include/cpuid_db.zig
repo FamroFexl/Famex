@@ -111,6 +111,42 @@ pub const leaf_0x1_0 = packed struct {
     },
 };
 
+pub const leaf_0xd_0 = packed struct {
+    eax: packed struct(u32) {
+        xcr0_x87: u1, // XCR0.X87 (bit 0) supported
+        xcr0_sse: u1, // XCR0.SEE (bit 1) supported
+        xcr0_avx: u1, // XCR0.AVX (bit 2) supported
+        xcr0_mpx_bndregs: u1, // XCR0.BNDREGS (bit 3) supported (MPX BND0-BND3 registers)
+        xcr0_mpx_bndcsr: u1, // XCR0.BNDCSR (bit 4) supported (MPX BNDCFGU/BNDSTATUS registers)
+        xcr0_avx512_opmask: u1, // XCR0.OPMASK (bit 5) supported (AVX-512 k0-k7 registers)
+        xcr0_avx512_zmm_hi256: u1, // XCR0.ZMM_Hi256 (bit 6) supported (AVX-512 ZMM0->ZMM7/15 registers)
+        xcr0_avx512_hi16_zmm: u1, // XCR0.HI16_ZMM (bit 7) supported (AVX-512 ZMM16->ZMM31 registers)
+        reserved_0: u1, // Reserved
+        xcr0_pkru: u1, // XCR0.PKRU (bit 9) supported (XSAVE PKRU registers)
+        reserved_1: u1, // Reserved
+        xcr0_cet_u: u1, // XCR0.CET_U (bit 11) supported (CET user state)
+        xcr0_cet_s: u1, // XCR0.CET_S (bit 12) supported (CET supervisor state)
+        reserved_2: u4, // Reserved
+        xcr0_tileconfig: u1, // XCR0.TILECONFIG (bit 17) supported (AMX can manage TILECONFIG)
+        xcr0_tiledata: u1, // XCR0.TILEDATA (bit 18) supported (AMX can manage TILEDATA)
+        reserved_3: u13, // Reserved
+    },
+
+    ebx: packed struct(u32) {
+        xsave_sz_xcr0_enabled: u32, // XSAVE/XRSTOR area byte size, for XCR0 enabled features
+    },
+
+    ecx: packed struct(u32) {
+        xsave_sz_max: u32, // XSAVE/XRSTOR area max byte size, all CPU features
+    },
+
+    edx: packed struct(u32) {
+        u32: u30, // Reserved
+        xcr0_lwp: u1, // AMD XCR0.LWP (bit 62) supported (Light-weight Profiling)
+        reserved_0: u1, // Reserved
+    },
+};
+
 /// Leaf 0x80000001
 /// Extended CPU feature identifiers
 pub const leaf_0x80000001_0 = packed struct {

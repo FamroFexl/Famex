@@ -6,6 +6,8 @@ const print = @import("kernel").util.log.print;
 const bin = @import("kernel").util.binary;
 const types = @import("kernel").util.types;
 
+const cpu = @import("arch").cpu;
+
 pub const Addr = u64;
 
 pub const Paddr = struct {
@@ -40,12 +42,8 @@ pub const Vaddr = extern struct {
     }
 };
 
-// Physical memory address bits
-pub var PHYS_ADDR_BITS : u8 = undefined;
 pub var PHYS_ADDR_SIZE : u64 = undefined;
 
-// Virtual memory address bits
-pub var VIRT_ADDR_BITS : u8 = undefined;
 pub var VIRT_ADDR_SIZE : u64 = undefined;
 
 pub var PAGE_OFFSET_SIZE : usize = undefined;
@@ -74,21 +72,21 @@ pub fn memset(ptr : *anyopaque, size : anytype, val : u8) void {
 pub fn setup_mem_mgmt() void {
     print("\nmm: Setting up Memory Management\n", .{});
 
-    print("  Phys Addr Bits: {}, Virt Addr Bits: {}\n", .{PHYS_ADDR_BITS, VIRT_ADDR_BITS});
+    print("  Phys Addr Bits: {}, Virt Addr Bits: {}\n", .{cpu.FEATURES.PHYS_ADDR_BITS, cpu.FEATURES.VIRT_ADDR_BITS});
 
     //Set the max size for virt and phys memory addresses
-    PHYS_ADDR_SIZE = bin.set_bits(PHYS_ADDR_BITS);
-    VIRT_ADDR_SIZE = bin.set_bits(VIRT_ADDR_BITS);
+    PHYS_ADDR_SIZE = bin.set_bits(cpu.FEATURES.PHYS_ADDR_BITS);
+    VIRT_ADDR_SIZE = bin.set_bits(cpu.FEATURES.VIRT_ADDR_BITS);
 
     // The start of kernel memory depending on the number of virtual address bits
-    USER_MEMORY_END.val = bin.set_bits(VIRT_ADDR_BITS - 1);
+    USER_MEMORY_END.val = bin.set_bits(cpu.FEATURES.VIRT_ADDR_BITS - 1);
     KERNEL_MEMORY_START.val = ~USER_MEMORY_END.val;
 
     // PAGE_OFFSET region uses 1/4 of virtual memory
-    PAGE_OFFSET_SIZE = bin.set_bit(VIRT_ADDR_BITS - 2);
+    PAGE_OFFSET_SIZE = bin.set_bit(cpu.FEATURES.VIRT_ADDR_BITS - 2);
 
     // KERNEL_ALLOC region uses 1/8 of virtual memory
-    KERNEL_ALLOC_SIZE = bin.set_bit(VIRT_ADDR_BITS - 3);
+    KERNEL_ALLOC_SIZE = bin.set_bit(cpu.FEATURES.VIRT_ADDR_BITS - 3);
 
     PAGE_METADATA_SIZE = (PAGE_OFFSET_SIZE / @sizeOf(paging.PageInfo));
 

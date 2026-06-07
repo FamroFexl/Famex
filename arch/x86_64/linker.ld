@@ -53,10 +53,6 @@ SECTIONS
         *(.data .data.*)
     } :data
 
-    .percpu (NOLOAD) : {
-        *(.percpu)
-    }
-
     /* NOTE: .bss needs to be the last thing mapped to :data, otherwise lots of */
     /* unnecessary zeros will be written to the binary. */
     /* If you need, for example, .init_array and .fini_array, those should be placed */
@@ -67,6 +63,10 @@ SECTIONS
     } :data
 
     . = ALIGN(0x1000);
+
+    .percpu (NOLOAD) :{
+        KEEP(*(.percpu))
+    }
 
     /* Discard .note.* and .eh_frame* since they may cause issues on some hosts. */
     /DISCARD/ : {

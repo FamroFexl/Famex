@@ -32,9 +32,6 @@ pub const Ptable = struct {
     pte : [PTE_ENTRIES]Pte,
 };
 
-// Max page table levels
-pub var PT_LEVELS : u8 = undefined;
-
 /// Packed page info, as small as possible.
 /// This is the main memory hog, since one of these
 /// exists for every 4096 bytes
@@ -104,14 +101,14 @@ pub fn print_ptables(root_pt : *Ptable, level : anytype, min : anytype) void {
             PteType.TABLE => {
                 const page : memory.Paddr = pte.get_entry(level);
                 const table : *Ptable = @ptrFromInt(page.to_virt().val);
-                log.print_char(' ', (PT_LEVELS - 1 - level) * 4);
+                log.print_char(' ', (cpu.FEATURES.PAGE_TABLE_LEVELS - 1 - level) * 4);
                 print("Table {d} 0x{X}\n", .{i, page.val});
                 if (level - 1 >= min)
                     print_ptables(table, level - 1, min);
             },
             PteType.PFE => {
                 const page : memory.Paddr = pte.get_entry(level);
-                log.print_char(' ', (PT_LEVELS - 1 - level) * 4);
+                log.print_char(' ', (cpu.FEATURES.PAGE_TABLE_LEVELS - 1 - level) * 4);
                 print("Page {d} 0x{X}\n", .{i, page.val});
             },
         }
@@ -121,7 +118,7 @@ pub fn print_ptables(root_pt : *Ptable, level : anytype, min : anytype) void {
 pub fn map_boot_page(addr : memory.Vaddr, pte : Pte, level : u8, root_pt : *Ptable) void {
     var cur_pt : *Ptable = root_pt;
 
-    var i = PT_LEVELS - 1;
+    var i = cpu.FEATURES.PAGE_TABLE_LEVELS - 1;
     var current_pte = &cur_pt.pte[get_ptable_entry(addr, i)];
 
     while(i > level) : (i -= 1) {
@@ -150,7 +147,7 @@ pub fn switch_page_tables(new_tables : *Ptable) *Ptable {
 }
 
 fn setup_ptes() void {
-    for(1..PT_LEVELS) |level| {
+    for(1..cpu.FEATURES.PAGE_TABLE_LEVELS) |level| {
         const default = &PTE_DEFAULTS[level];
         default.set_present(level, true);
         default.set_cache(level, PteCache.WRITE_BACK);

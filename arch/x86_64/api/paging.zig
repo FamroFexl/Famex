@@ -9,11 +9,19 @@ const reg = @import("arch").reg;
 const cpu = @import("cpu.zig");
 
 pub fn set_page_tables(tables : *paging.Ptable) void {
-    reg.set_cr3(mem.Vaddr.as_virt(@intFromPtr(tables)).to_phys().val);
+    reg.set_cr3(@bitCast(mem.Vaddr.as_virt(@intFromPtr(tables)).to_phys().val));
 }
 
 pub fn get_page_tables() *paging.Ptable {
-    return @ptrFromInt(mem.Paddr.as_phys(reg.get_cr3()).to_virt().val);
+    return @ptrFromInt(mem.Paddr.as_phys(@bitCast(reg.get_cr3())).to_virt().val);
+}
+
+pub fn flush_tlb() void {
+    reg.set_cr3(reg.get_cr3());
+}
+
+pub fn flush_page(page : *anyopaque) void {
+    reg.tlb_page_flush(page);
 }
 
 pub const Pte = packed struct(u64) {
@@ -51,18 +59,19 @@ pub const Pte = packed struct(u64) {
         debug.assert(@bitSizeOf(Pte) == 64);
     }
 
-    fn set_pat(pte : *Pte, level : anytype, pat : u3) void {
-        pte.pwt = bin.get_bit(0, pat);
-        pte.pcd = bin.get_bit(1, pat);
+    fn set_pat(pte : *Pte, level : anytype, pat : reg.PatTypes) void {
+        const bits = @intFromEnum(pat);
+        pte.pwt = bin.get_bit(0, bits);
+        pte.pcd = bin.get_bit(1, bits);
 
         if(level == 0) {
-            pte.bits.pat = bin.get_bit(2, pat);
+            pte.bits.pat = bin.get_bit(2, bits);
         }
         else
-            pte.bits3.pat = bin.get_bit(2, pat);
+            pte.bits3.pat = bin.get_bit(2, bits);
     }
 
-    fn get_pat(pte : *Pte, level : anytype) u3 {
+    fn get_pat(pte : *Pte, level : anytype) reg.PatTypes {
         var pat : u8 = 0;
 
         pat &= pte.pwt;
@@ -73,7 +82,7 @@ pub const Pte = packed struct(u64) {
         else
             pat &= (pte.bits3.pat << 2);
 
-        return pat;
+        return @enumFromInt(pat);
     }
 
     pub fn set_os_bits(self : *@This(), bits : u64) void {
@@ -83,9 +92,9 @@ pub const Pte = packed struct(u64) {
 
     pub fn set_cache(self : *@This(), level : anytype, cache : paging.PteCache) void {
         set_pat(self, level,switch(cache) {
-            paging.PteCache.WRITE_BACK => 0,
-            paging.PteCache.WRITE_COMBINING => 1,
-            paging.PteCache.UNCACHED => 3,
+            paging.PteCache.WRITE_BACK => reg.PatTypes.WRITE_BACK,
+            paging.PteCache.WRITE_COMBINING => reg.PatTypes.WRITE_COMBINING,
+            paging.PteCache.UNCACHED => reg.PatTypes.UNCACHEABLE,
         });
     }
 
@@ -167,9 +176,9 @@ pub const Pte = packed struct(u64) {
 
     pub fn get_cache(self : *@This(), level : anytype) paging.PteCache {
         return switch(get_pat(self, level)) {
-            0 => paging.PteCache.WRITE_BACK,
-            1 => paging.PteCache.WRITE_COMBINING,
-            3 => paging.PteCache.UNCACHED,
+            reg.PatTypes.WRITE_BACK => paging.PteCache.WRITE_BACK,
+            reg.PatTypes.WRITE_COMBINING => paging.PteCache.WRITE_COMBINING,
+            reg.PatTypes.UNCACHEABLE => paging.PteCache.UNCACHED,
         };
     }
 

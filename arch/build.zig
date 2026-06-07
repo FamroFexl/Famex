@@ -8,7 +8,7 @@ const Arch = enum {
 
 pub const ArchData = struct {
     module : *std.Build.Module,
-    export_module : *std.Build.Module,
+    api_module : *std.Build.Module,
 };
 
 pub fn module(b : *std.Build, options : *std.Build.Module.CreateOptions, linker : *std.Build.LazyPath) ArchData {

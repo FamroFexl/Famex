@@ -7,7 +7,7 @@ const types = kernel.util.types;
 const lib = @import("lib");
 const elf = lib.elf;
 const limine = lib.limine;
-const MmapType = limine.LIMINE_MEMMAP_TYPE;
+const MmapType = limine.LimineMemmapType;
 const process = kernel.pm.process;
 var kernel_root_pt = process.kernel_process.addr_space.root_pt;
 
