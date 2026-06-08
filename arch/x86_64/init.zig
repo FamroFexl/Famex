@@ -92,7 +92,7 @@ fn ensure_features() void {
     api.cpu.FEATURES.READ_BIT = false;
 }
 
-pub fn init() void {
+pub export fn init() void {
     cpu.init_cpuid();
 
     // Ensure the CPU is supported with the required features

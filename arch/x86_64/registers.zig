@@ -21,15 +21,69 @@ pub const CpuState = extern struct {
 
     fs_base : u64,  // User FS.Base
     gs_base : u64,  // User GS.Base
+
+    /// Save general registers from the CPU
+    pub extern fn save(state : *CpuState) callconv(.c) void;
+
+    /// Load general registers into the CPU
+    pub extern fn load(state : *CpuState) callconv(.c) void;
+
+    /// Get a state's program counter
+    pub fn get_pc(state : *@This()) u64 {
+        return state.rip;
+    }
+
+    /// Set a state's program counter
+    pub fn set_pc(state : *@This(), pc : u64) void {
+        state.rip = pc;
+    }
+
+    /// Get a state's stack
+    pub fn get_stack(state : *@This()) u64 {
+        return state.rsp;
+    }
+
+    /// Set a state's stack
+    pub fn set_stack(state : *@This(), stack : u64) void {
+        state.rsp = stack;
+    }
+
+    /// Get a state's flags
+    pub fn get_flags(state : *@This()) u64 {
+        return state.rflags;
+    }
+
+    /// Set a state's flags
+    pub fn set_flags(state : *@This(), flags : u64) void {
+        state.rflags = flags;
+    }
+
+    /// Get a register pointer from an argument number
+    pub fn get_arg(state : *@This(), arg : u8) *u64 {
+        return switch (arg) {
+            0 => &state.rdi,
+            1 => &state.rsi,
+            2 => &state.rdx,
+            3 => &state.rcx,
+            4 => &state.r8,
+            5 => &state.r9,
+            else => unreachable,
+        };
+    }
+
+    /// Get the return register pointer
+    pub fn get_ret(state : *@This()) *u64 {
+        return &state.rax;
+    }
+
+    /// Get a register pointer from an argument number (for syscall register format)
+    pub fn get_arg_syscall(state : *@This(), arg : u8) *u64 {
+        return switch (arg) {
+            2 => &state.r10,
+            else => get_arg(state, arg),
+        };
+    }
 };
-
-pub extern fn save_regs(cpu_state : *CpuState) callconv(.c) void;
-
-pub extern fn load_regs(cpu_state : *CpuState) callconv(.c) void;
-
-pub extern fn save_regs_fpu(fpu_state : *anyopaque) callconv(.c) void;
-
-pub extern fn load_regs_fpu(fpu_state : *anyopaque) callconv(.c) void;
 
 pub const Cr0 = packed struct(u64) {
     pe : bool,      //Protected Mode Enable
@@ -144,16 +198,65 @@ pub extern fn get_rflags() callconv(.c) Rflags;
 
 pub extern fn set_rflags(rflags : Rflags) callconv(.c) void;
 
+pub const SegDesc = packed struct(u64) {
+    seg_limit1 : u16,   //Segment limit
+    address1 : u24,
+    seg_type : u4,
+    desc_type : u1,     //0 is system, 1 is code or data
+    priv_level : u2,    //Descriptor Privilege Level
+    present : bool,     //Segment Present flag
+    limit2 : u4,        //Segment limit
+    available : bool,   //Unused flag for other use
+    code_seg : bool,    //64-bit code segment (IA-32e)
+    size : bool,        //Operation size 0 is 16-bit segment, 1 is 32-bit segment
+    granularity : bool,
+    address2 : u8,
+};
+
 pub const Gdtr = packed struct {
     limit : u16,
     base : u64,
 };
+
+/// We just need to init a null segment, 4 code/data segments, and a tss segment for each cpu core
+///
+/// The ordering is important and is expected by the syscall/sysret instructions. Null descriptor
+/// must be first, Kmode data must be after Kmode code and Umode data must be after Umode code. This
+/// ordering is required by x86. Other segments and their positions are kernel-defined.
+pub const GdtLayout = packed struct {
+    null_desc : SegDesc,          // Null descriptor
+    kmode_code : SegDesc,         // Kernel Mode Code Segment
+    kmode_data : SegDesc,         // Kernel Mode Data Segment
+    umode_code : SegDesc,         // User Mode Code Segment
+    umode_data : SegDesc,         // User Mode Data Segment
+    //union tss_desc tss[];   // Task-State Segments, one for each logical core (irq stacks)
+};
+
+pub const KMODE_CODE_OFST = @offsetOf(GdtLayout, "kmode_code");
+pub const KMODE_DATA_OFST = @offsetOf(GdtLayout, "kmode_data");
+pub const UMODE_CODE_OFST = @offsetOf(GdtLayout, "umode_code");
+pub const UMODE_DATA_OFST = @offsetOf(GdtLayout, "umode_data");
+
+// CS and SS segment default descriptors
+pub const CS_PL0 = KMODE_CODE_OFST | 0;
+pub const SS_PL0 = KMODE_DATA_OFST | 0;
+pub const CS_PL3 = UMODE_CODE_OFST | 0;
+pub const SS_PL3 = UMODE_DATA_OFST | 0;
 
 pub const Idtr = Gdtr;
 
 pub extern fn get_gdt(gdtr : *Gdtr) callconv(.c) void;
 
 pub extern fn set_gdt(gdtr : *Gdtr) callconv(.c) void;
+
+pub const IrqFrame = packed struct {
+    err : u64,      // Error code
+    rip : u64,      // Program counter
+    cs : u64,       // Code segment
+    rflags : u64,   // CPU flags
+    rsp : u64,      // Stack pointer
+    ss : u64        // Stack segment
+};
 
 pub extern fn get_idt(idtr : *Idtr) callconv(.c)void;
 
@@ -185,7 +288,7 @@ pub const Msrs = enum(u32) {
     TSC_DEADLINE = 1760,        // Local APIC Timer TSC Target for Deadline Mode
     EFER = 0xC0000080,
     SYSCALL_STAR = 0xC0000081,
-    SYSCALL_LSTAR = 0xC0000081,
+    SYSCALL_LSTAR = 0xC0000082,
     SYSCALL_FMASK = 0xC0000084,
     FS_BASE = 0xC0000100,
     GS_BASE = 0xC0000101,

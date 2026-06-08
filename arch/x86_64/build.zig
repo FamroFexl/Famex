@@ -2,6 +2,9 @@ const std = @import("std");
 
 const arch = @import("../build.zig");
 
+const gen_offsets = @import("scripts/gen_offsets/build.zig");
+const gen_irq_entries = @import("scripts/gen_irq_entries/build.zig");
+
 const cwd = "arch/x86_64/";
 
 pub fn module(b : *std.Build, options : *std.Build.Module.CreateOptions, linker : *std.Build.LazyPath) arch.ArchData {
@@ -23,7 +26,14 @@ pub fn module(b : *std.Build, options : *std.Build.Module.CreateOptions, linker 
     x86_module.root_source_file = b.path(cwd ++ "root.zig");
     arch_data.module = x86_module;
 
+    const gen_offsets_file = gen_offsets.exec(b, b.path(cwd ++ "registers.zig"),"asm_offsets.h");
+    x86_module.addIncludePath(gen_offsets_file.dirname());
+
     x86_module.addAssemblyFile(b.path(cwd ++ "registers.S"));
+    x86_module.addAssemblyFile(b.path(cwd ++ "entry.S"));
+
+    const gen_irq_entries_file = gen_irq_entries.exec(b, "irq_entries.s");
+    x86_module.addAssemblyFile(gen_irq_entries_file);
 
     const x86_api_module = b.createModule(options.*);
     x86_api_module.root_source_file = b.path(cwd ++ "api/root.zig");

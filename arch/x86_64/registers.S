@@ -1,7 +1,11 @@
+#include <asm_offsets.h>
+
 .code64
 .intel_syntax noprefix
 
 .section .entry.text, "ax"
+
+.extern in_kmode
 
 .macro FUNC name
 .globl \name
@@ -12,9 +16,6 @@
 .macro FUNC_END name
 .size \name, .-\name
 .endmacro
-
-#define KMODE_CODE_OFST 8
-#define KMODE_DATA_OFST 16
 
 // return RAX
 // arguments RDI, RSI, RDX, RCX, R8, R9
@@ -147,6 +148,26 @@ FUNC tlb_page_flush
     ret
 FUNC_END tlb_page_flush
 
+FUNC spin_wait_loop
+    pause
+    ret
+FUNC_END spin_wait_loop
+
+FUNC idle_entry
+    sti
+    hlt
+FUNC_END idle_entry
+
+FUNC irq_enable
+    sti
+    ret
+FUNC_END irq_enable
+
+FUNC irq_disable
+    cli
+    ret
+FUNC_END irq_disable
+
 /*
  * Because this is called, the RDI pushed to the stack is buried beneath the ret value, so we must
  * pop off the return, grab the RDI, and push the return
@@ -157,7 +178,6 @@ FUNC_END tlb_page_flush
  *
  * Output: All registers same out as in. u64 stack[0] is consumed.
 */
-/*
 FUNC save_regs
     // Save rax so we can use it as a scratch register
     mov [rdi + RAX_OFST], rax
@@ -206,7 +226,7 @@ FUNC save_regs
 
     ret
 FUNC_END save_regs
-*/
+
 /*
  * RDI must point to a cpu state
  *
@@ -214,7 +234,6 @@ FUNC_END save_regs
  *
  * Output: All registers as defined in cpu state
 */
-/*
 FUNC load_regs
     // Set User FS Base
     mov ecx, FS_BASE
@@ -250,4 +269,109 @@ FUNC load_regs
 
     ret
 FUNC_END load_regs
-*/
+
+FUNC save_state
+    // Dummy RDI to satisfy save_regs requirements
+    push rdi
+    call save_regs
+
+    // Save RFLAGS
+    pushfq
+    pop rsi
+    mov [rdi + RFLAGS_OFST], rsi
+
+    // Save RSP
+    mov [rdi + RSP_OFST], rsp
+
+    // Save current RIP (usually not used)
+    call 1f
+    1: pop [rdi + RIP_OFST]
+
+    ret
+FUNC_END save_state
+
+FUNC load_state
+    // Setup interrupt frame for return
+
+    // Save stack
+    mov rsi, rsp
+    and rsp, -16
+    push rdi
+    push rsi
+
+    // Stack: cpu_state, old_rsp
+
+    // RDI contains cpu_state, as required by in_kmode
+    call in_kmode
+
+    // Restore stack
+    pop rsi
+    mov rsp, rsi
+
+    // Stack: cpu_state
+
+    // Restore rdi
+    pop rdi
+
+    // Stack:
+
+    // Set correct segments
+    mov r10, SS_0
+    mov r11, CS_0
+
+    cmp rax, 1
+    je 1f
+        mov r10, SS_3
+        mov r11, CS_3
+    1:
+
+    // Push correct Data Segment
+    push r10
+
+    // Push RSP
+    mov rdx, [rdi + RSP_OFST]
+    push rdx
+
+    // Push RFLAGS
+    mov rdx, [rdi + RFLAGS_OFST]
+    push rdx
+
+    // Push correct Code Segment
+    push r11
+
+    // Push RIP
+    mov rdx, [rdi + RIP_OFST]
+    push rdx
+
+    // Stack: data_seg, rsp, rflags, code_seg, rip
+
+    // Save in_kmode
+    push rax
+
+    // Stack: data_seg, rsp, rflags, code_seg, rip, in_kmode
+
+    call load_regs
+
+    // Save new rax
+    push rax
+
+    // Stack: data_seg, rsp, rflags, code_seg, rip, in_kmode, rax
+
+    // Use in_kmode to decide if swapgs is required
+    mov rax, [rsp + 8]
+    cmp rax, 1
+    je 1f
+        swapgs
+    1:
+
+    // Restore new rax
+    pop rax
+
+    // Stack: data_seg, rsp, rflags, code_seg, rip, in_kmode
+
+    add rsp, 8
+
+    // Stack: data_seg, rsp, rflags, code_seg, rip
+
+    iretq
+FUNC_END load_state

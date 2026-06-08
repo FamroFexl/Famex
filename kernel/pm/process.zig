@@ -23,9 +23,9 @@ fn get_global_percpu(comptime T: type, cpu : u8, addr : u64) *T {
 
 /// Static per-cpu allocation that is resolved at comptime
 /// Use as "const per_cpu = PerCpuStat(u64);" or whatever type you need.
-pub fn PerCpuStat(comptime T: type, alignment : u12) type {
+pub fn PerCpuStat(comptime T: type) type {
     return struct {
-        export const data: T align(alignment) linksection(".percpu") = undefined;
+        export const data: T linksection(".percpu") = undefined;
 
         pub fn get_local() *T {
             return get_local_percpu(T, &data);
@@ -36,8 +36,6 @@ pub fn PerCpuStat(comptime T: type, alignment : u12) type {
         }
     };
 }
-
-const vcd = PerCpuStat(u64, 8);
 
 /// Dynamic per-cpu allocations that are created at runtime
 pub fn PerCpuDyn(comptime T: type) type {
@@ -60,5 +58,9 @@ pub fn PerCpuDyn(comptime T: type) type {
             return get_global_percpu(T, cpu, self.data);
         }
     };
+}
+
+pub export fn in_kmode(state : *arch_cpu.CpuState) callconv(.c) bool {
+    return state.get_stack() >= mem.KERNEL_MEMORY.val;
 }
 
