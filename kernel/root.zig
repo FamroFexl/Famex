@@ -22,4 +22,7 @@ pub var executable_file_request linksection(".limine_requests") = limine.LimineE
 
 pub var executable_address_request linksection(".limine_requests") = limine.LimineExecutableAddressRequest {};
 
+// Defined by the architecture. and just for reference here
+pub var smp_request : *limine.LimineMpRequest = undefined;
+
 const LIMINE_REQUESTS_END linksection(".limine_requests_end") = limine.LIMINE_REQUESTS_END_MARKER;

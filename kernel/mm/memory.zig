@@ -22,7 +22,11 @@ pub const Paddr = struct {
     }
 
     pub fn to_info(self : @This()) *paging.PageInfo {
-        return @ptrFromInt(PAGE_METADATA + ((self / types.SIZE_4KB) * @sizeOf(paging.PageInfo)));
+        return @ptrFromInt(PAGE_METADATA.val + ((self.val / types.SIZE_4KB) * @sizeOf(paging.PageInfo)));
+    }
+
+    pub fn ptr(self : @This()) *anyopaque {
+        return @ptrFromInt(self.val);
     }
 };
 
@@ -39,6 +43,10 @@ pub const Vaddr = extern struct {
 
     pub fn to_info(self : @This()) *paging.PageInfo {
         return self.to_phys().to_info();
+    }
+
+    pub fn ptr(self : @This()) *anyopaque {
+        return @ptrFromInt(self.val);
     }
 };
 
@@ -100,9 +108,9 @@ pub fn setup_mem_mgmt() void {
     print("  Page Metadata Region:  0x{X}\n", .{PAGE_METADATA.val});
     print("  Per CPU Data Region:   0x{X}\n", .{PER_CPU_DATA.val});
 
-    pmm.setup_phys_mem_mgmt();
+    pmm.setup();
 
-    vmm.setup_virt_mem_mgmt();
+    vmm.setup();
 
     print("mm: Setting up Read-Copy-Update\n", .{});
 }

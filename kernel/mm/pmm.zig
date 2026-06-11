@@ -14,16 +14,18 @@ var kernel_root_pt = process.kernel_process.addr_space.root_pt;
 const memory = @import("memory.zig");
 const vmm = @import("vmm.zig");
 const paging = @import("paging.zig");
+const buddy_alloc = @import("buddy_alloc.zig");
 const Addr = memory.Addr;
 
-const cpu = @import("arch").cpu;
+const arch = @import("arch");
+const cpu = arch.cpu;
 
 const log = @import("kernel").util.log;
 const print = log.print;
 const panic = log.panic;
 
 var usable_array : [config.MAX_MEMORY_REGIONS]CachedMmapEntry = undefined;
-var USABLE : []CachedMmapEntry = undefined;
+pub var USABLE : []CachedMmapEntry = undefined;
 
 fn overlap_priority(memtype : MmapType) u8 {
     return switch(memtype) {
@@ -356,6 +358,9 @@ fn map_modules(root_pt : *paging.Ptable) void {
 
 fn map_page_cache(root_pt : *paging.Ptable) void {
     print("  Mapping per-cpu Page Cache\n", .{});
+
+    //const elf_hdr : *elf.ElfHdr = @ptrCast(@alignCast(kernel.executable_file_request.response.*.executable_file.address));
+
     _ = root_pt;
 }
 
@@ -387,7 +392,7 @@ fn switch_to_new_ptables() void {
     _ = paging.switch_page_tables(kernel_root_pt);
 }
 
-pub fn setup_phys_mem_mgmt() void {
+pub fn setup() void {
     print("\nmm: Setting up Physical Memory Management\n", .{});
 
     memory.PAGE_OFFSET.val = kernel.hhdm_request.response.*.offset;
@@ -405,4 +410,14 @@ pub fn setup_phys_mem_mgmt() void {
 
     print("\nmm: Setting up new page tables:\n", .{});
     switch_to_new_ptables();
+
+    // Temporary way to set the cpu data of the bootstrap processor
+    for (0..kernel.smp_request.response.x86.cpu_count) |i| {
+        const smp_info : limine.LimineMpInfoX86 = kernel.smp_request.response.x86.cpus.x86[i].*;
+        if (smp_info.lapic_id == kernel.smp_request.response.x86.bsp_lapic_id) {
+            arch.cpu.set_per_cpu(@ptrFromInt(memory.PER_CPU_DATA.val + memory.PER_CPU_DATA_SIZE * i));
+        }
+    }
+
+    buddy_alloc.setup();
 }

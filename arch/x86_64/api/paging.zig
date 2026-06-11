@@ -135,7 +135,7 @@ pub const Pte = packed struct(u64) {
     }
 
     pub fn set_entry(self : *@This(), level : anytype, entry : mem.Paddr) void {
-        const mask : u64 = mem.PHYS_ADDR_SIZE & (~bin.set_bits((level * paging.PTE_ENTRY_BITS * @as(u64, @intFromBool(self.get_pfe(level)))) + paging.PTE_SIZE_BITS));
+        const mask : u64 = mem.PHYS_ADDR_SIZE & (~bin.set_bits((@as(u64, level) * paging.PTE_ENTRY_BITS * @as(u64, @intFromBool(self.get_pfe(level)))) + paging.PTE_SIZE_BITS));
         self.* = @bitCast((@as(u64, @bitCast(self.*)) & ~mask) | (entry.val & mask));
     }
 

@@ -21,12 +21,75 @@
   "modules": [
     {
       "root": "arch/x86_64/root.zig",
-      "public": false,
+      "public": true,
+      "imports": [
+        {
+          "name": "lib",
+          "owner": 0,
+          "module": 3
+        },
+        {
+          "name": "kernel",
+          "owner": 0,
+          "module": 2
+        },
+        {
+          "name": "arch",
+          "owner": 0,
+          "module": 0
+        },
+        {
+          "name": "arch_api",
+          "owner": 0,
+          "module": 1
+        }
+      ]
+    },
+    {
+      "root": "arch/x86_64/api/root.zig",
+      "public": true,
       "imports": [
         {
           "name": "arch",
           "owner": 0,
           "module": 0
+        },
+        {
+          "name": "kernel",
+          "owner": 0,
+          "module": 2
+        }
+      ]
+    },
+    {
+      "root": "kernel/root.zig",
+      "public": true,
+      "imports": [
+        {
+          "name": "kernel",
+          "owner": 0,
+          "module": 2
+        },
+        {
+          "name": "arch",
+          "owner": 0,
+          "module": 1
+        },
+        {
+          "name": "lib",
+          "owner": 0,
+          "module": 3
+        }
+      ]
+    },
+    {
+      "root": "lib/root.zig",
+      "public": true,
+      "imports": [
+        {
+          "name": "arch",
+          "owner": 0,
+          "module": 1
         }
       ]
     }

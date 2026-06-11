@@ -38,10 +38,15 @@ pub const Ptable = struct {
 pub const PageInfo = struct {
     data : [3]u8,
 
+    const Flags = packed struct(u8) {
+        free : bool,
+        pad : u7 = undefined,
+    };
+
     /// Somehow, packed structs require pow2 aligned types, so we
     /// can't have a packed struct with an arbitrary number of bytes.
     const DataLayout = packed struct {
-        flags : u8,
+        flags : Flags,
         order : u5,
         region : u11,
     };

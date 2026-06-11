@@ -25,14 +25,14 @@ fn get_global_percpu(comptime T: type, cpu : u8, addr : u64) *T {
 /// Use as "const per_cpu = PerCpuStat(u64);" or whatever type you need.
 pub fn PerCpuStat(comptime T: type) type {
     return struct {
-        export const data: T linksection(".percpu") = undefined;
+        const data: T linksection(".percpu") = undefined;
 
         pub fn get_local() *T {
-            return get_local_percpu(T, &data);
+            return get_local_percpu(T, @intFromPtr(&data));
         }
 
-        pub fn get_global(cpu : u8) *T {
-            return get_global_percpu(T, cpu, &data);
+        pub fn get_global(cpu : anytype) *T {
+            return get_global_percpu(T, @intCast(cpu), @intFromPtr(&data));
         }
     };
 }
@@ -63,4 +63,3 @@ pub fn PerCpuDyn(comptime T: type) type {
 pub export fn in_kmode(state : *arch_cpu.CpuState) callconv(.c) bool {
     return state.get_stack() >= mem.KERNEL_MEMORY.val;
 }
-

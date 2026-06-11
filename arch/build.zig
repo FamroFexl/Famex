@@ -7,20 +7,16 @@ const Arch = enum {
 };
 
 pub const ArchData = struct {
-    module : *std.Build.Module,
+    arch_module : *std.Build.Module,
     api_module : *std.Build.Module,
+    linker_script : std.Build.LazyPath,
+    target : std.Build.ResolvedTarget,
 };
 
-pub fn module(b : *std.Build, options : *std.Build.Module.CreateOptions, linker : *std.Build.LazyPath) ArchData {
+pub fn module(b : *std.Build, options : *std.Build.Module.CreateOptions) ArchData {
     const arch_option = b.option(Arch, "arch", "Target architecture") orelse .x86_64;
 
-    var arch_data : ArchData = undefined;
-
-    switch(arch_option) {
-        .x86_64 => {
-            arch_data = @import("x86_64/build.zig").module(b, options, linker);
-        }
-    }
-
-    return arch_data;
+    return switch(arch_option) {
+        .x86_64 => @import("x86_64/build.zig").module(b, options),
+    };
 }

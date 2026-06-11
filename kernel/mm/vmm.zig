@@ -10,6 +10,6 @@ pub const VmSpace = struct {
     root_pt : *paging.Ptable,
 };
 
-pub fn setup_virt_mem_mgmt() void {
+pub fn setup() void {
 
 }

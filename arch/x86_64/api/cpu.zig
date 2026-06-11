@@ -3,16 +3,17 @@ pub const CpuState = @import("arch").reg.CpuState;
 const reg = @import("arch").reg;
 
 const CpuFeatures = struct {
-    PHYS_ADDR_BITS : u8 = 0,        // Physical memory address bits
-    VIRT_ADDR_BITS : u8 = 0,        // Virtual memory address bits
-    MAX_PAGE_SIZE : u8 = 0,         // Max page size in levels (starting from 0)
-    PAGE_TABLE_LEVELS : u8 = 0,     // Number of page table levels
-    EXECUTE_BIT : bool = false,
-    READ_BIT : bool = false,
-    NUM_CPU_CORES : u64 = 0,
+    PHYS_ADDR_BITS : u8,        // Physical memory address bits
+    VIRT_ADDR_BITS : u8,        // Virtual memory address bits
+    MAX_PAGE_SIZE : u3,         // Max page size in levels (starting from 0)
+    PAGE_TABLE_LEVELS : u8,     // Number of page table levels
+    EXECUTE_BIT : bool,
+    READ_BIT : bool,
+    NUM_CPU_CORES : u64,
+    CACHELINE_SIZE : u16,
 };
 
-pub var FEATURES : CpuFeatures = CpuFeatures {};
+pub var FEATURES : CpuFeatures = undefined;
 
 /// Save state for FPU registers
 pub const FpuState = struct {
@@ -43,12 +44,12 @@ pub fn set_cur_flags(flags : u64) void {
 
 /// Get the per-CPU pointer
 pub fn get_per_cpu() *anyopaque {
-    reg.get_msr(reg.Msrs.GS_BASE);
+    return @ptrFromInt(reg.get_msr(reg.Msrs.GS_BASE));
 }
 
 /// Set the per-CPU pointer
 pub fn set_per_cpu(per_cpu : *anyopaque) void {
-    reg.set_msr(reg.Msrs.GS_BASE, per_cpu);
+    reg.set_msr(reg.Msrs.GS_BASE, @intFromPtr(per_cpu));
 }
 
 /// Spin loop optimization

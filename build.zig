@@ -12,12 +12,10 @@ pub fn build(b: *std.Build) !void {
         .code_model = .kernel,
     };
 
-    var linker : std.Build.LazyPath = undefined;
-
-    const arch = @import("arch/build.zig");
-    const arch_data : arch.ArchData = arch.module(b, &options, &linker);
-    const arch_module = arch_data.module;
+    const arch_data = @import("arch/build.zig").module(b, &options);
+    const arch_module = arch_data.arch_module;
     const arch_api_module = arch_data.api_module;
+    options.target = arch_data.target;
 
     const kernel_module = @import("kernel/build.zig").module(b, &options);
 
@@ -44,7 +42,7 @@ pub fn build(b: *std.Build) !void {
         .use_llvm = true,
     });
 
-    famex.setLinkerScript(linker);
+    famex.setLinkerScript(arch_data.linker_script);
     famex.linkage = .static;
     famex.entry = .disabled;
     famex.link_function_sections = true;

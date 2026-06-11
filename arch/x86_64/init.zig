@@ -21,7 +21,7 @@ pub var paging_mode_request = limine.LiminePagingModeRequest {
     .max_mode = limine.LIMINE_PAGING_MODE_X86_64_4LVL,
 };
 
-pub var mp_request = limine.LimineMpRequest {
+pub var smp_request = limine.LimineMpRequest {
     .flags = limine.LIMINE_MP_REQUEST_X86_64_X2APIC,
     .response = undefined,
 };
@@ -71,7 +71,7 @@ fn ensure_features() void {
         log.apanic(cpu.leaf_0x1.ecx.vmx == 0, "arch: Intel VMX extensions are required!\n", .{});
 
         if (cpu.leaf_0x1.edx.pse == 1)
-            bin.set_if_larger(u8, &api.cpu.FEATURES.MAX_PAGE_SIZE, 1);
+            bin.set_if_larger(u3, &api.cpu.FEATURES.MAX_PAGE_SIZE, 1);
     }
     else {
         // We support Bulldozer Family 15h and later AMD CPUs (because of AMD-Vi support)
@@ -81,18 +81,20 @@ fn ensure_features() void {
         log.apanic(cpu.leaf_0x81.ecx.svm == 0, "arch: AMD SVM extensions are required!\n", .{});
 
         if (cpu.leaf_0x81.edx.e_pse == 1)
-            bin.set_if_larger(u8, &api.cpu.FEATURES.MAX_PAGE_SIZE, 1);
+            bin.set_if_larger(u3, &api.cpu.FEATURES.MAX_PAGE_SIZE, 1);
 
     }
 
     if (cpu.leaf_0x81.edx.page1gb == 1)
-        bin.set_if_larger(u8, &api.cpu.FEATURES.MAX_PAGE_SIZE, 2);
+        bin.set_if_larger(u3, &api.cpu.FEATURES.MAX_PAGE_SIZE, 2);
 
     api.cpu.FEATURES.EXECUTE_BIT = cpu.leaf_0x81.edx.nx == 1;
     api.cpu.FEATURES.READ_BIT = false;
 }
 
 pub export fn init() void {
+    kernel.smp_request = &smp_request;
+
     cpu.init_cpuid();
 
     // Ensure the CPU is supported with the required features
@@ -102,7 +104,9 @@ pub export fn init() void {
     api.cpu.FEATURES.VIRT_ADDR_BITS = @intCast(cpu.leaf_0x88.eax.virt_addr_bits);
     api.cpu.FEATURES.PAGE_TABLE_LEVELS = 4;
 
-    api.cpu.FEATURES.NUM_CPU_CORES = mp_request.response.x86.cpu_count;
+    api.cpu.FEATURES.CACHELINE_SIZE = 64;
+
+    api.cpu.FEATURES.NUM_CPU_CORES = smp_request.response.x86.cpu_count;
 
     mm.memory.setup_mem_mgmt();
 }

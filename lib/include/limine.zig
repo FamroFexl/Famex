@@ -185,7 +185,7 @@ pub const LimineMpRequest = extern struct {
         aarch : *LimineMpResponseAarch,
         riscv : *LimineMpResponseRiscv,
     },
-    flags : u64,
+    flags : u64 = undefined,
 };
 
 pub const LimineInternalModuleFlags = enum(u64) {
