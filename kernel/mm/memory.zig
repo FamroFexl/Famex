@@ -30,7 +30,7 @@ pub const Paddr = struct {
     }
 };
 
-pub const Vaddr = extern struct {
+pub const Vaddr = struct {
     val : u64,
 
     pub fn as_virt(num : u64) Vaddr {

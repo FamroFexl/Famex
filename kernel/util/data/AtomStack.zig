@@ -1,4 +1,6 @@
 const std = @import("std");
+const Order = std.builtin.AtomicOrder;
+const Op = std.builtin.AtomicRmwOp;
 
 next : ?*@This(),
 
@@ -9,7 +11,7 @@ pub fn init(stack : *@This()) void {
 }
 
 pub fn empty(stack : *@This()) bool {
-    _ = stack;
+    return @atomicLoad(?*Node, &stack.next, Order.seq_cst) == null;
 }
 
 pub fn push(stack : *@This(), node : *Node) void {

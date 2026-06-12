@@ -8,6 +8,7 @@ const List = util.data.List;
 const Stack = util.data.Stack;
 const print = log.print;
 const std = @import("std");
+const builtin = @import("builtin");
 const AtomicOrder = std.builtin.AtomicOrder;
 const AtomicRmwOp = std.builtin.AtomicRmwOp;
 
@@ -58,7 +59,7 @@ const Slab = struct {
 
         // Slab is empty, add to free list
         if (inuse == 0 and @atomicLoad(bool, &slab.flags.frozen, AtomicOrder.seq_cst)) {
-            // spin_lock(&pool->lock);
+            pool.spinlock.lock();
 
             pool.slabs_partial.remove(&slab.link);
             pool.slabs_empty.insert_front(&slab.link);
@@ -67,12 +68,12 @@ const Slab = struct {
             if (pool.cur_slabs_empty == pool.max_slabs_empty) {
                 const old_slab : *Slab = @fieldParentPtr("link", pool.slabs_empty.remove_back());
 
-                // spin_unlock(&pool->lock);
+                pool.spinlock.unlock();
                 old_slab.free();
             }
             else {
                 pool.cur_slabs_empty += 1;
-                // spin_unlock(&pool->lock);
+                    pool.spinlock.unlock();
             }
             return;
         }
@@ -89,9 +90,9 @@ const Slab = struct {
 
 };
 
-const SlabDyn = proc.PerCpuDyn(*Slab);
-
 const SlubPool = struct {
+    const SlabDyn = proc.PerCpuDyn(*Slab);
+
     local_slab : SlabDyn,
     max_slabs_empty : u16,  // Max number of free slabs this pool can allocate
     cur_slabs_empty : u16,  // The current number of free slabs
@@ -243,14 +244,17 @@ const SlubPool = struct {
         return stack.pop();
     }
 
-    pub fn free(addr : *anyopaque) void {
+    pub fn free(pool : *@This(), addr : *anyopaque) void {
         const new_addr : mem.Vaddr = .{.val = @intFromPtr(addr)};
         const info = addr.to_info();
         const slab : *Slab = @ptrFromInt(bin.align_down(new_addr, buddy.order_to_size(info.get_data().order)));
-        const local_slab = slab.pool.local_slab.get_local().*;
+
+        if (builtin.mode == .Debug) {
+            log.apanic(slab.pool != pool, "A free was requested on the wrong SLUB pool!\n", .{});
+        }
 
         // Local free
-        if (slab == local_slab) {
+        if (slab == slab.pool.local_slab.get_local().*) {
             slab.local_free.push(new_addr.ptr());
             @atomicRmw(u16, &slab.inuse, AtomicRmwOp.Sub, 1, AtomicOrder.seq_cst);
         }
@@ -260,13 +264,36 @@ const SlubPool = struct {
         }
     }
 
-    pub fn free_bulk(stack : Stack) void {
+    pub fn free_bulk(pool : *@This(), stack : Stack) void {
         var node : *Stack.Node = stack.pop();
         while (node) : (node = stack.pop()) {
-            free(node);
+            free(pool, node);
         }
     }
 };
+
+pub fn SlubPoolTyped(comptime T: type, obj_init : ?fn (*anyopaque) void) type {
+    const new_pool = SlubPool.create(@sizeOf(type), @alignOf(type), obj_init);
+    return struct {
+        pool : *SlubPool = new_pool,
+
+        pub fn alloc_bulk(typed : *@This(), num : u64) Stack {
+            return typed.pool.alloc_bulk(num);
+        }
+
+        pub fn alloc(typed : *@This()) *T {
+            return @ptrCast(typed.pool.alloc());
+        }
+
+        pub fn free(typed : *@This(), addr : *T) void {
+            typed.pool.free(typed.pool, addr);
+        }
+
+        pub fn free_bulk(typed : *@This(), stack : Stack) void {
+            typed.pool.free_bulk(typed.pool, stack);
+        }
+    };
+}
 
 var MAX_SLUB_ORDER : u8 = undefined;
 var MAX_SLUB_SIZE : usize = undefined;

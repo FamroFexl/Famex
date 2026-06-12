@@ -13,7 +13,7 @@ const lock_data = switch (builtin.mode) {
     else => void,
 };
 
-pub inline fn lock_held(lock : *anyopaque) void {
+pub fn lock_held(lock : *anyopaque) void {
     if (builtin.mode == .Debug) {
         const data : *LockData  = lock_data.get_local();
         for (0..data.cur_lock) |i| {
@@ -24,7 +24,7 @@ pub inline fn lock_held(lock : *anyopaque) void {
     }
 }
 
-pub inline fn lock_add(lock : *anyopaque) void {
+pub fn lock_add(lock : *anyopaque) void {
     if (builtin.mode == .Debug) {
         const data : *LockData  = lock_data.get_local();
         data.held_locks[data.cur_lock] = lock;
@@ -32,7 +32,7 @@ pub inline fn lock_add(lock : *anyopaque) void {
     }
 }
 
-pub inline fn lock_remove(lock : *anyopaque) void {
+pub fn lock_remove(lock : *anyopaque) void {
     _ = lock;
     if (builtin.mode == .Debug) {
         const data : *LockData  = lock_data.get_local();
