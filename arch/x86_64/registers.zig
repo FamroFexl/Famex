@@ -1,4 +1,4 @@
-pub const CpuState = extern struct {
+pub const CpuState = struct {
     rax : u64,  // Accumulator
     rbx : u64,  // Base
     rcx : u64,  // Counter
@@ -213,7 +213,7 @@ pub const SegDesc = packed struct(u64) {
     address2 : u8,
 };
 
-pub const Gdtr = packed struct {
+pub const Gdtr = packed struct(u80) {
     limit : u16,
     base : u64,
 };

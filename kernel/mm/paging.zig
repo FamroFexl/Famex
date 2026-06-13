@@ -35,7 +35,7 @@ pub const Ptable = struct {
 /// Packed page info, as small as possible.
 /// This is the main memory hog, since one of these
 /// exists for every 4096 bytes
-pub const PageInfo = struct {
+pub const PageInfo = packed struct {
     data : [3]u8,
 
     const Flags = packed struct(u8) {

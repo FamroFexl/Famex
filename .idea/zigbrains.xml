@@ -5,7 +5,7 @@
       <list><![CDATA[{
   "name": "<root>",
   "version": null,
-  "path": "/Users/nbenson/Projects/Famex",
+  "path": "/Users/nbenson/Documents/Famex",
   "steps": [
     {
       "name": "install",
@@ -98,5 +98,5 @@
 }]]></list>
     </option>
   </component>
-  <component name="ZigToolchain" toolchain="cbdcbb98-40d7-4720-8db2-d727fce0dbcb" />
+  <component name="ZigToolchain" toolchain="2eb01d4b-3f33-4b73-8a37-989171b1a15b" />
 </project>
