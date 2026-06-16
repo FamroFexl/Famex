@@ -5,6 +5,7 @@ const bin = kernel.util.binary;
 const debug = @import("std").debug;
 
 const reg = @import("arch").reg;
+const PatType = reg.Pat.Layout.PatType;
 
 const cpu = @import("cpu.zig");
 
@@ -59,7 +60,7 @@ pub const Pte = packed struct(u64) {
         debug.assert(@bitSizeOf(Pte) == 64);
     }
 
-    fn setPat(pte : *Pte, level : anytype, pat : reg.Pat.PatType) void {
+    fn setPat(pte : *Pte, level : anytype, pat : PatType) void {
         const bits = @intFromEnum(pat);
         pte.pwt = bin.getBit(0, bits);
         pte.pcd = bin.getBit(1, bits);
@@ -71,7 +72,7 @@ pub const Pte = packed struct(u64) {
             pte.bits3.pat = bin.getBit(2, bits);
     }
 
-    fn getPat(pte : *Pte, level : anytype) reg.Pat.PatType {
+    fn getPat(pte : *Pte, level : anytype) PatType {
         var pat : u8 = 0;
 
         pat &= pte.pwt;
@@ -92,9 +93,9 @@ pub const Pte = packed struct(u64) {
 
     pub fn setCache(self : *@This(), level : anytype, cache : paging.PteCache) void {
         setPat(self, level,switch(cache) {
-            paging.PteCache.WRITE_BACK => reg.Pat.PatType.WRITE_BACK,
-            paging.PteCache.WRITE_COMBINING => reg.Pat.PatType.WRITE_COMBINING,
-            paging.PteCache.UNCACHED => reg.Pat.PatType.UNCACHEABLE,
+            .WRITE_BACK => .WRITE_BACK,
+            .WRITE_COMBINING => .WRITE_COMBINING,
+            .UNCACHED => .UNCACHEABLE,
         });
     }
 
@@ -176,9 +177,9 @@ pub const Pte = packed struct(u64) {
 
     pub fn getCache(self : *@This(), level : anytype) paging.PteCache {
         return switch(getPat(self, level)) {
-            reg.Pat.PatType.WRITE_BACK => paging.PteCache.WRITE_BACK,
-            reg.Pat.PatType.WRITE_COMBINING => paging.PteCache.WRITE_COMBINING,
-            reg.Pat.PatType.UNCACHEABLE => paging.PteCache.UNCACHED,
+            .WRITE_BACK => .WRITE_BACK,
+            .WRITE_COMBINING => .WRITE_COMBINING,
+            .UNCACHEABLE => .UNCACHED,
         };
     }
 

@@ -1,6 +1,7 @@
 /// Save state for general registers
 pub const CpuState= @import("arch").reg.CpuState;
 const reg = @import("arch").reg;
+const cpu = @import("arch").cpu;
 
 const CpuFeatures = struct {
     PHYS_ADDR_BITS : u8,        // Physical memory address bits
@@ -11,45 +12,68 @@ const CpuFeatures = struct {
     READ_BIT : bool,
     NUM_CPU_CORES : u64,
     CACHELINE_SIZE : u16,
+    FLOATING_POINT : bool,
 };
 
 pub var FEATURES : CpuFeatures = undefined;
 
 /// Save state for FPU registers
 pub const FpuState = struct {
-    regs : anyopaque,
+    regs : *anyopaque,
 
-    // /// Allocate an appropriately-sized FPU register state
-    //pub fn alloc() *@This() {}
+    /// Allocate an appropriately-sized FPU register state
+    pub fn alloc() *@This() {
+        return .{.regs = cpu.XSAVE_POOL.alloc()};
+    }
 
-    // /// Free a FPU state
-    //pub fn free(state : *@This()) void {}
+    /// Free a FPU state
+    pub fn free(state : *@This()) void {
+        cpu.XSAVE_POOL.free(state.regs);
+    }
 
-    // /// Save FPU registers from the CPU
-    //pub extern fn save(state : *@This()) void;
+    extern fn fxSave(state : *anyopaque) callconv(.c) void;
+    extern fn xSave(state : *anyopaque) callconv(.c) void;
+    /// Save FPU registers from the CPU
+    pub fn save(state : *@This()) void {
+        if (cpu.XSAVE_ON) {
+            xSave(state.regs);
+        }
+        else {
+            fxSave(state.regs);
+        }
+    }
 
-    // /// Load FPU registers into the CPU
-    //pub extern fn load(state : *@This()) void;
+    extern fn fxLoad(state : *anyopaque) callconv(.c) void;
+    extern fn xLoad(state : *anyopaque) callconv(.c) void;
+    /// Load FPU registers into the CPU
+    pub fn load(state : *@This()) void {
+        if (cpu.XSAVE_ON) {
+            xLoad(state.regs);
+        }
+        else {
+            fxLoad(state.regs);
+        }
+    }
 };
 
 /// Get the current CPU flags
 pub fn getCurFlags() u64 {
-    return reg.get_rflags();
+    return reg.Rflags.get();
 }
 
 /// Set the current CPU flags
 pub fn setCurFlags(flags : u64) void {
-    reg.set_rflags(flags);
+    reg.Rflags.set(flags);
 }
 
 /// Get the per-CPU pointer
 pub fn getPerCpu() *anyopaque {
-    return @ptrFromInt(reg.Msr.get(.GS_BASE));
+    return @ptrFromInt(reg.GsBase.get());
 }
 
 /// Set the per-CPU pointer
 pub fn setPerCpu(per_cpu : *anyopaque) void {
-    reg.Msr.set(.GS_BASE, @intFromPtr(per_cpu));
+    reg.GsBase.set(@intFromPtr(per_cpu));
 }
 
 /// Spin loop optimization

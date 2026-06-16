@@ -45,6 +45,8 @@ pub fn sizeToOrder(size : usize) u64 {
 
 // Initialize the page cache states
 fn setupPageCache() void {
+    print("  Initializing page cache\n", .{});
+
     for(0..cpu.FEATURES.NUM_CPU_CORES) |i| {
         const pool = local_page_pool.getGlobal(i);
         pool.current = 0;
@@ -53,6 +55,8 @@ fn setupPageCache() void {
 }
 
 fn setupRegions() void {
+    print("  Gathering usable memory regions\n", .{});
+
     var num_regions : u64 = 0;
     for (0..pmm.USABLE.len) |i| {
         const entry = pmm.USABLE[i];
@@ -68,6 +72,8 @@ fn setupRegions() void {
 }
 
 fn setupRegionOrders() void {
+    print("  Filling page orders with first pages\n", .{});
+
     for (0..NUM_ORDERS) |i| {
         orders[i].free.init();
         orders[i].num_free = 0;
@@ -282,12 +288,9 @@ pub fn setup() void {
 
     MAX_BUDDY_ORDER = @intCast(bin.max(config.MIN_BUDDY_ORDER, sizeToOrder(@as(usize, types.SIZE_4KB) << (@as(u6, cpu.FEATURES.MAX_PAGE_SIZE)*9))));
 
-    print("  Initializing page cache\n", .{});
     setupPageCache();
 
-    print("  Gathering usable memory regions\n", .{});
     setupRegions();
 
-    print("  Filling page orders with first pages\n", .{});
     setupRegionOrders();
 }

@@ -65,6 +65,47 @@ FUNC setCr8
     ret
 FUNC_END setCr8
 
+FUNC getXCr
+    mov ecx, edi
+    xgetbv
+    shl rdx, 32
+    or rax, rdx
+    ret
+FUNC_END getXCr
+
+FUNC setXCr
+    mov ecx, edi
+    mov rdx, rsi
+    shr rdx, 32
+    mov rax, rsi
+    xsetbv
+    ret
+FUNC_END setXCr
+
+FUNC fxSave
+    fxsave [rdi]
+    ret
+FUNC_END fxSave
+
+FUNC fxLoad
+    fxrstor [rdi]
+    ret
+FUNC_END fxLoad
+
+FUNC xSave
+    mov eax, -1
+    mov edx, -1
+    xsave [rdi]
+    ret
+FUNC_END xSave
+
+FUNC xLoad
+    mov eax, -1
+    mov edx, -1
+    xrstor [rdi]
+    ret
+FUNC_END xLoad
+
 FUNC getRflags
     pushfq
     pop rax

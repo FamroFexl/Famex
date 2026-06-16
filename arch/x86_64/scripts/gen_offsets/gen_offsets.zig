@@ -11,9 +11,9 @@ fn gen_pair(name : []const u8, num : anytype) void {
 pub fn main(init: std.process.Init) !void {
     writer = std.Io.File.stdout().writerStreaming(init.io, &buf);
 
-    gen_pair("KERNEL_GS_BASE", reg.Msr.KERNEL_GS_BASE);
-    gen_pair("GS_BASE", reg.Msr.GS_BASE);
-    gen_pair("FS_BASE", reg.Msr.FS_BASE);
+    gen_pair("KERNEL_GS_BASE", reg.KernelGsBase.addr);
+    gen_pair("GS_BASE", reg.GsBase.addr);
+    gen_pair("FS_BASE", reg.FsBase.addr);
 
     gen_pair("KMODE_CODE_OFST", @offsetOf(reg.Gdtr.Layout, "kmode_code"));
     gen_pair("KMODE_DATA_OFST", @offsetOf(reg.Gdtr.Layout, "kmode_data"));

@@ -1,5 +1,5 @@
 const cpu = @import("arch").cpu;
 
-pub export fn syscallHandler(state : cpu.CpuState) void {
+pub export fn syscallHandler(state : cpu.CpuState) callconv(.c) void {
     _ = state;
 }

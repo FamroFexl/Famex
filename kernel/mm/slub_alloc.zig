@@ -112,16 +112,14 @@ pub const SlubPool = struct {
 
     fn slubNoInit(none : *anyopaque) void {_ = none;}
 
-    fn init(pool : *@This(), size : anytype, alignment : anytype, order : anytype, count : anytype, obj_init : ?fn (*anyopaque) void) void {
-        pool = .{
-            .object_size = size,
-            .order = order,
-            .object_count = count,
-            .max_slabs_empty = 4,
-            .cur_slabs_empty = 0,
-            .alignment = alignment,
-            .spinlock = false,
-        };
+    fn __init(pool : *@This(), size : anytype, alignment : anytype, order : anytype, count : anytype, obj_init : ?fn (*anyopaque) void) void {
+        pool.object_size = @intCast(size);
+        pool.order = order;
+        pool.object_count = @intCast(count);
+        pool.max_slabs_empty = 4;
+        pool.cur_slabs_empty = 0;
+        pool.alignment = @intCast(alignment);
+        pool.spinlock.init();
 
         pool.obj_init = obj_init orelse slubNoInit;
 
@@ -131,25 +129,29 @@ pub const SlubPool = struct {
 
         pool.local_slab.alloc();
         for(0..cpu.FEATURES.NUM_CPU_CORES) |i| {
-            pool.local_slab.getGlobal(i).* = null;
+            pool.local_slab.getGlobal(@intCast(i)).* = null;
         }
     }
 
-    pub fn create(size : usize, alignment : u16, obj_init : ?fn (*anyopaque) void) *SlubPool {
+    pub fn init(pool : *@This(), size : usize, alignment : u16, obj_init : ?fn (*anyopaque) void) void {
         // We do not support less than minimum word size alignment
         const new_align = if (alignment < 8) 8 else bin.roundUpPow2(alignment);
         const size_aligned = bin.alignUp(size, new_align);
 
         const order = getSlubOrder(size_aligned, new_align);
         const block_size = buddy.orderToSize(order) - @sizeOf(Slab);
-        const count = block_size / size_aligned;
+        var count = block_size / size_aligned;
 
         // Extra object can fit
         if (block_size % size_aligned >= size)
             count += 1;
 
+        pool.__init(size, new_align, order, count, obj_init);
+    }
+
+    pub fn create(size : usize, alignment : u16, obj_init : ?fn (*anyopaque) void) *SlubPool {
         const pool : *SlubPool = slub_pool_pool.alloc();
-        pool.init(size, new_align, order, count, obj_init);
+        pool.init(size, alignment, obj_init);
 
         return pool;
     }
@@ -334,12 +336,12 @@ fn getSlubOrder(size : anytype, alignment : anytype) u8 {
 
         // Order selection behavior
         const per_obj_waste = (waste*scaling + count/2) / count;
-        const order_weight = (1 << i*2) * scaling;
+        const order_weight : u64 = (@as(u64, 1) << (@as(u6, @intCast(i))*2)) * scaling;
         const comp_ratio = per_obj_waste + order_weight;
 
         if (comp_ratio < best_ratio) {
             best_ratio = comp_ratio;
-            out_order = i;
+            out_order = @intCast(i);
         }
     }
 
@@ -353,7 +355,7 @@ fn setupSlubPoolPool() void {
     const order = getSlubOrder(size, 8);
     const count = (buddy.orderToSize(order) - @sizeOf(Slab)) / size;
 
-    slub_pool_pool.init(size, 8, order, count, null);
+    slub_pool_pool.__init(size, 8, order, count, null);
 
     // Setup the main list
     var i : i64 = size >> 3;
@@ -391,7 +393,7 @@ fn slubPoolPmalloc(size : u64) void {
         return;
 
     const new_pool : *SlubPool = slub_pool_pool.alloc();
-    new_pool.init(aligned_8, 8, order, count, null);
+    new_pool.__init(aligned_8, 8, order, count, null);
 
     // Initialize pool in object array
     var i : i64 = size >> 3;
@@ -436,5 +438,5 @@ fn setup() void {
     print("  Setting up first power-of-2 pools for PMalloc\n", .{});
     setupPow2Pools();
 
-    cacheline_pool = SlubPool.create(cpu.FEATURES.CACHELINE_SIZE, cpu.FEATURES.CACHELINE_SIZE, null);
+    cacheline_pool.init(cpu.FEATURES.CACHELINE_SIZE, cpu.FEATURES.CACHELINE_SIZE, null);
 }

@@ -7,7 +7,6 @@ const types = kernel.util.types;
 const lib = @import("lib");
 const elf = lib.elf;
 const limine = lib.limine;
-const MmapType = limine.LimineMemmapType;
 const process = kernel.pm.process;
 var kernel_root_pt = process.kernel_process.addr_space.root_pt;
 
@@ -27,30 +26,30 @@ const panic = log.panic;
 var usable_array : [config.MAX_MEMORY_REGIONS]CachedMmapEntry = undefined;
 pub var USABLE : []CachedMmapEntry = undefined;
 
-fn overlapPriority(memtype : MmapType) u8 {
+fn overlapPriority(memtype : limine.LimineMemmapEntry.MemType) u8 {
     return switch(memtype) {
-        MmapType.USABLE => 0,
-        MmapType.BOOTLOADER_RECLAIMABLE => 1,
-        MmapType.ACPI_RECLAIMABLE => 2,
-        MmapType.ACPI_NVS => 3,
-        MmapType.EXECUTABLE_AND_MODULES => 4,
-        MmapType.FRAMEBUFFER => 5,
-        MmapType.RESERVED => 6,
-        MmapType.BAD_MEMORY => 7,
+        .USABLE => 0,
+        .BOOTLOADER_RECLAIMABLE => 1,
+        .ACPI_RECLAIMABLE => 2,
+        .ACPI_NVS => 3,
+        .EXECUTABLE_AND_MODULES => 4,
+        .FRAMEBUFFER => 5,
+        .RESERVED => 6,
+        .BAD_MEMORY => 7,
         else => 8
     };
 }
 
-fn memtypeToString(memtype : MmapType) []const u8 {
+fn memtypeToString(memtype : limine.LimineMemmapEntry.MemType) []const u8 {
     return switch (memtype) {
-        MmapType.USABLE => "Usable",
-        MmapType.BOOTLOADER_RECLAIMABLE => "Bootloader Reclaimable",
-        MmapType.ACPI_RECLAIMABLE => "ACPI Reclaimable",
-        MmapType.ACPI_NVS => "APCI NVS",
-        MmapType.EXECUTABLE_AND_MODULES => "Executable/Modules",
-        MmapType.RESERVED => "Reserved",
-        MmapType.BAD_MEMORY => "Bad Memory",
-        MmapType.FRAMEBUFFER => "Framebuffer",
+        .USABLE => "Usable",
+        .BOOTLOADER_RECLAIMABLE => "Bootloader Reclaimable",
+        .ACPI_RECLAIMABLE => "ACPI Reclaimable",
+        .ACPI_NVS => "APCI NVS",
+        .EXECUTABLE_AND_MODULES => "Executable/Modules",
+        .RESERVED => "Reserved",
+        .BAD_MEMORY => "Bad Memory",
+        .FRAMEBUFFER => "Framebuffer",
         else => "Unknown"
     };
 }
@@ -82,7 +81,7 @@ fn sanitizeMmap() u64 {
 
         print("  0x{X:<18} 0x{X:<18} ", .{entry.base, entry.base + entry.length});
         log.printSize(entry.length, 10);
-        print(" {s:<8}\n", .{memtypeToString(@enumFromInt(entry.type))});
+        print(" {s:<8}\n", .{memtypeToString(entry.type)});
     }
 
     var num_usable : u64 = 0;
@@ -94,8 +93,7 @@ fn sanitizeMmap() u64 {
         entry.base = bin.alignDown(entry.base, types.SIZE_4KB);
         entry.length = bin.alignUp(entry.length, types.SIZE_4KB);
 
-        const memtype : MmapType = @enumFromInt(entry.type);
-        if(memtype == MmapType.USABLE) {
+        if(entry.type == .USABLE) {
             // We do not like page 0 in physical memory
             if(entry.base == 0) {
                 entry.base += types.SIZE_4KB;
@@ -117,7 +115,7 @@ fn sanitizeMmap() u64 {
 
         if (entry.base + entry.length > next_entry.base) {
             // First has higher priority, move next up
-            if (overlapPriority(@enumFromInt(entry.type)) > overlapPriority(@enumFromInt(next_entry.type))) {
+            if (overlapPriority(entry.type) > overlapPriority(next_entry.type)) {
                 const new_base : u64 = entry.base + entry.length;
                 next_entry.length -= new_base - next_entry.base;
                 next_entry.base = new_base;
@@ -140,7 +138,7 @@ fn sanitizeMmap() u64 {
 
         print("  0x{X:<18} 0x{X:<18} ", .{entry.base, entry.base + entry.length});
         log.printSize(entry.length, 10);
-        print(" {s:<8}\n", .{memtypeToString(@enumFromInt(entry.type))});
+        print(" {s:<8}\n", .{memtypeToString(entry.type)});
     }
 
     return num_usable;
@@ -151,9 +149,8 @@ fn populateUsable() void {
 
     for(0..kernel.mmap_request.response.*.entry_count) |i| {
         const entry = &kernel.mmap_request.response.*.entries[i].*;
-        const memtype : MmapType = @enumFromInt(entry.type);
 
-        if (memtype != MmapType.USABLE) continue;
+        if (entry.type != .USABLE) continue;
 
         USABLE[usable_index].block_start = 0;
         USABLE[usable_index].block_end = 0;
@@ -225,9 +222,8 @@ fn mapPageMdata(root_pt : *paging.Ptable) void {
 
     for(0..kernel.mmap_request.response.*.entry_count) |i| {
         const entry = &kernel.mmap_request.response.*.entries[i].*;
-        const memtype : MmapType = @enumFromInt(entry.type);
 
-        if (memtype != MmapType.USABLE) continue;
+        if (entry.type != .USABLE) continue;
 
         const page_start : u64 = memory.PAGE_METADATA.val + bin.alignDown((entry.base / types.SIZE_4KB) * @sizeOf(paging.PageInfo), types.SIZE_4KB);
         const page_end : u64 = memory.PAGE_METADATA.val + bin.alignUp(((entry.base + entry.length) / types.SIZE_4KB) * @sizeOf(paging.PageInfo), types.SIZE_4KB);
@@ -264,16 +260,14 @@ fn mapNewHhdm(root_pt : *paging.Ptable) void {
         const entry = &kernel.mmap_request.response.*.entries[i].*;
         if (entry.length == 0) continue;
 
-        const memtype : MmapType = @enumFromInt(entry.type);
-
-        switch (memtype) {
-            MmapType.BAD_MEMORY, MmapType.RESERVED, MmapType.EXECUTABLE_AND_MODULES => continue :outer,
+        switch (entry.type) {
+            .BAD_MEMORY, .RESERVED, .EXECUTABLE_AND_MODULES => continue :outer,
             else => {},
         }
 
-        const cache : paging.PteCache = switch (memtype) {
-            MmapType.ACPI_NVS => paging.PteCache.UNCACHED,
-            MmapType.FRAMEBUFFER => paging.PteCache.WRITE_COMBINING,
+        const cache : paging.PteCache = switch (entry.type) {
+            .ACPI_NVS => paging.PteCache.UNCACHED,
+            .FRAMEBUFFER => paging.PteCache.WRITE_COMBINING,
             else => paging.PteCache.WRITE_BACK,
         };
 
@@ -307,16 +301,16 @@ fn mapKernelImage(root_pt : *paging.Ptable) void {
         "mm: Limine kernel base doesn't match the expected base!\n", .{});
 
     const elf_hdr : *elf.ElfHdr = @ptrCast(@alignCast(kernel.executable_file_request.response.*.executable_file.address));
-    log.apanic(!std.mem.eql(u8, &elf_hdr.id.magic, std.elf.MAGIC), "mm: Kernel ELF file wasn't found! Cannot remap kernel image!\n", .{});
+    log.apanic(!elf_hdr.isElf(), "mm: Kernel ELF file wasn't found! Cannot remap kernel image!\n", .{});
     for(0..elf_hdr.ph_num) |i| {
-        const phdr : *elf.ElfPrgHdr = @ptrFromInt(@intFromPtr(elf_hdr) + elf_hdr.ph_off + elf_hdr.ph_ent_size * i);
-        if(phdr.type != elf.ElfPrgHdr.PT.LOAD) continue;
+        const phdr = elf_hdr.getPhdrByIndex(i).?;
+        if(phdr.type != .LOAD) continue;
 
         var pfe : paging.Pte = paging.PFE_DEFAULTS[0];
         pfe.setGlobal(0, true);
-        pfe.setExec(0, true); //phdr.flags.execute);
-        pfe.setWrite(0, true); //phdr.flags.write);
-        pfe.setRead(0, true); //phdr.flags.read);
+        pfe.setExec(0, phdr.flags.execute);
+        pfe.setWrite(0, phdr.flags.write);
+        pfe.setRead(0, phdr.flags.read);
 
         const start : memory.Vaddr = .{.val = phdr.vaddr};
         const size : usize = phdr.mem_sz;
@@ -353,12 +347,27 @@ fn mapModules(root_pt : *paging.Ptable) void {
     }
 }
 
-fn mapPageCache(root_pt : *paging.Ptable) void {
-    print("  Mapping per-cpu Page Cache\n", .{});
+fn mapPercpu(root_pt : *paging.Ptable) void {
+    print("  Mapping per-cpu static region\n", .{});
 
-    //const elf_hdr : *elf.ElfHdr = @ptrCast(@alignCast(kernel.executable_file_request.response.*.executable_file.address));
+    const elf_hdr : *elf.ElfHdr = @ptrCast(@alignCast(kernel.executable_file_request.response.*.executable_file.address));
+    const shdr = elf_hdr.getShdrByName(".percpu").?;
+    const size = bin.alignUp(shdr.size, types.SIZE_4KB);
 
-    _ = root_pt;
+    process.PER_CPU_LINKER_OFFSET = .{.val = shdr.addr};
+    process.PER_CPU_STARTING_OFFSET = size;
+
+    var pfe : paging.Pte = paging.PFE_DEFAULTS[0];
+    pfe.setGlobal(0, true);
+
+    for (0..cpu.FEATURES.NUM_CPU_CORES) |j| {
+        const vaddr_start = memory.PER_CPU_DATA.val + memory.PER_CPU_DATA_SIZE * j;
+        var cur : u64 = 0;
+        while (cur < size) : (cur += types.SIZE_4KB) {
+            pfe.setEntry(0, allocBootPage());
+            paging.mapBootPage(.{.val = vaddr_start + cur}, pfe, 0, root_pt);
+        }
+    }
 }
 
 fn switchToNewPtables() void {
@@ -382,7 +391,7 @@ fn switchToNewPtables() void {
     mapModules(kernel_root_pt);
 
     // Setup page caches in the per-cpu storage region
-    mapPageCache(kernel_root_pt);
+    mapPercpu(kernel_root_pt);
 
     // Switch to the new page tables
     print("  Switching to new Page Tables\n", .{});

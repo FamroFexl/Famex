@@ -11,14 +11,18 @@ pub const Process = struct {
 
 pub const kernel_process : Process = undefined;
 
-var PER_CPU_LINKER_OFFSET : mem.Vaddr = undefined;
+/// For static percpu allocations, this is used to get the actual index relative to the percpu region
+pub var PER_CPU_LINKER_OFFSET : mem.Vaddr = undefined;
+
+/// This gets the offset that dynamic allocations start at
+pub var PER_CPU_STARTING_OFFSET : usize = undefined;
 
 fn getLocalPercpu(comptime T: type, addr : u64) *T {
-    return @ptrFromInt(@intFromPtr(cpu.getPerCpu()) + addr - PER_CPU_LINKER_OFFSET.val);
+    return @ptrFromInt(@intFromPtr(cpu.getPerCpu()) + addr);
 }
 
 fn getGlobalPercpu(comptime T: type, cpu_num : u8, addr : u64) *T {
-    return @ptrFromInt(mem.PER_CPU_DATA.val + mem.PER_CPU_DATA_SIZE * cpu_num + addr - PER_CPU_LINKER_OFFSET.val);
+    return @ptrFromInt(mem.PER_CPU_DATA.val + mem.PER_CPU_DATA_SIZE * cpu_num + addr);
 }
 
 /// Static per-cpu allocation that is resolved at comptime
@@ -28,11 +32,11 @@ pub fn PerCpuStat(comptime T: type) type {
         const data: T linksection(".percpu") = undefined;
 
         pub fn getLocal() *T {
-            return getLocalPercpu(T, @intFromPtr(&data));
+            return getLocalPercpu(T, @intFromPtr(&data) - PER_CPU_LINKER_OFFSET.val);
         }
 
         pub fn getGlobal(cpu_num : anytype) *T {
-            return getGlobalPercpu(T, @intCast(cpu_num), @intFromPtr(&data));
+            return getGlobalPercpu(T, @intCast(cpu_num), @intFromPtr(&data) - PER_CPU_LINKER_OFFSET.val);
         }
     };
 }

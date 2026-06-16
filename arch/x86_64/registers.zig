@@ -1,7 +1,7 @@
 const builtin = @import("builtin");
 const is_kernel = builtin.target.os.tag == .freestanding;
-
 const MAX_NUM_CPUS = if (is_kernel) @import("kernel").config.MAX_NUM_CPUS else 0;
+
 const std = @import("std");
 
 pub const CpuState = struct {
@@ -168,6 +168,7 @@ pub const Cr4 = packed struct(u64) {
     uintr : bool,       //User-Interrupts
     __pad2 : u2,        // Reserved
     lam_sup : bool,     //Supervisor Linear-Address Masking
+    __pad3 : u35,
 
     extern fn getCr4() callconv(.c) Cr4;
     pub const get = getCr4;
@@ -185,6 +186,34 @@ pub const Cr8 = packed struct(u64) {
 
     extern fn setCr8(cr8 : Cr8) callconv(.c) void;
     pub const set = setCr8;
+};
+
+extern fn getXCr(xcr : u32) callconv(.c) u64;
+extern fn setXCr(xcr : u32, val : u64) callconv(.c) void;
+
+pub const Xcr0 = packed struct(u64) {
+    x87 : bool,         //Must be 1
+    sse : bool,         //XSAVE can manage MXCSR and XMM registers
+    avx : bool,         //AVX instructions supported and XSAVE can manage upper YMM registers
+    bndreg : bool,      //MPX instructions supported and XSAVE can manage bounds registers BND0-BND3
+    bndcsr : bool,      //MPX instructions supported and XSAVE can manage the BNDCFGU and BNDSTATUS registers
+    opmask : bool,      //AVX-512 instructions supported and XSAVE can manage K0-K7 opmask registers
+    zmm_hi256 : bool,   //AVX-512 instructions supported and XSAVE can manage ZMM0-ZMM15 registers
+    hi16_zmm : bool,    //AVX-512 instructions supported and XSAVE can manage ZMM16-ZMM31 registers
+    __pad : u1,         // Reserved
+    pkru : bool,          //XSAVE can manage PKRU register
+    __pad2 : u1,        // Reserved
+    tilecfg : bool,     //If and tiledata, AMX instructions supported and XSAVE can manage TILECFG register
+    tiledata : bool,    //If and tilecfg, AMX instructions supported and XSAVE can manage TILEDATA register
+    __pad3 : u51,
+
+    pub fn get() Xcr0 {
+        return @bitCast(getXCr(0));
+    }
+
+    pub fn set(val : Xcr0) void {
+        setXCr(0, @bitCast(val));
+    }
 };
 
 pub const Rflags = packed struct(u64) {
@@ -367,134 +396,75 @@ pub extern fn getTsc() callconv(.c) u64;
 
 pub extern fn tlbPageFlush(page : *anyopaque) callconv(.c) void;
 
-pub const Msr = enum(u32) {
+extern fn getMsr(msr : u64) callconv(.c) u64;
+extern fn setMsr(msr : u64, val : u64) callconv(.c) void;
+
+pub fn CreateMsr(comptime msr : u32, comptime T : type) type {
+    comptime {
+        if (@bitSizeOf(T) != 64)
+            @compileError("Msr must be 64 bits!");
+    }
+
+    return struct {
+        pub const Layout = T;
+        pub const addr = msr;
+
+        pub fn get() Layout {
+            return @bitCast(getMsr(addr));
+        }
+
+        pub fn set(reg : Layout) void {
+            setMsr(addr, reg);
+        }
+    };
+}
+
+pub fn CreateReadMsr(comptime msr : u32, comptime T : type) type {
+    comptime {
+        if (@bitSizeOf(T) != 64)
+            @compileError("Msr must be 64 bits!");
+    }
+
+    return struct {
+        pub const Layout = T;
+        pub const addr = msr;
+
+        pub fn get() Layout {
+            return @bitCast(getMsr(addr));
+        }
+    };
+}
+
+const Msr = enum(u32) {
     MONITOR_FILTER_SIZE = 6,    // Provides info useful for sleeping CPU cores
-    APIC_BASE = 27,
     FEATURE_CONTROL = 58,       // Determines virtualization capabilities (VT-x) (practically read only)
     XAPIC_DISABLE_STATUS = 189, // XAPIC disabled in favor of X2APIC
     MTRRCAP = 254,              // Used to determine memory cache capabilities (read only)
-    ARCH_CAPABILITIES = 266,    // Enumeration of Architectural Features (read only)
     MCG_CAP = 377,              // Machine error states (read only)
     MCG_STATUS,                 // Machine error check status (read only)
     MCG_CTL,                    // Machine error check control
     THERM_INTERRUPT = 411,      // Enable or disable different processor temperature interrupts
     THERM_STATUS,               // Processor thermals status (read only)
-    MISC_ENABLE = 416,          // Misc features
     ENERGY_PERF_BIA = 432,      // Energy policy
-    PAT = 631,                  // Page Attribute Table entries
-    TSC_DEADLINE = 1760,        // Local APIC Timer TSC Target for Deadline Mode
-    EFER = 0xC0000080,
-    SYSCALL_STAR = 0xC0000081,
-    SYSCALL_LSTAR = 0xC0000082,
-    SYSCALL_FMASK = 0xC0000084,
-    FS_BASE = 0xC0000100,
-    GS_BASE = 0xC0000101,
-    KERNEL_GS_BASE = 0xC0000102,
-
-    extern fn getMsr(msr : Msr) callconv(.c) u64;
-    pub const get = getMsr;
-
-    extern fn setMsr(msr : Msr, val : u64) callconv(.c) void;
-    pub const set = setMsr;
 };
 
-pub const Efer = packed struct(u64) {
-    sce : bool,     //SYSCALL/SYSRET instructions enable
-    __pad : u8,     // Reserved
-    lme : bool,     //IA-32e mode operation enable
-    __pad2 : u1,    // Reserved
-    lma : bool,     //IA-32e mode operation active
-    nxe : bool,     //Execute Disable Bit enable
-
-    pub fn get() Efer {
-        return @bitCast(Msr.get(.EFER));
-    }
-
-    pub fn set(efer : Efer) void {
-        Msr.set(.EFER, @bitCast(efer));
-    }
-};
-
-pub const Pat = packed struct(u64) {
-    pa0 : PatType,
-    pa1 : PatType,
-    pa2 : PatType,
-    pa3 : PatType,
-    pa4 : PatType,
-    pa5 : PatType,
-    pa6 : PatType,
-    pa7 : PatType,
-
-    // Selected via paging bits from high to low: PAT, PCD, PWT
-    pub const PatType = enum(u8) {
-        UNCACHEABLE = 0,        // (UC) Used for MMIO, etc
-        WRITE_COMBINING = 1,    // (WC) Speculative Reads
-        WRITE_THROUGH = 4,      // (WT) Cacheable and Speculative Reads
-        WRITE_PROTECTED = 5,    // (WP) Cacheable (reads only) and Speculative Reads
-        WRITE_BACK = 6,         // (WB) Cacheable and Writeback Cacheable and Speculative Reads
-        UNCACHED = 7,           // (UC-) Can be overridden by MTRRs using WC, otherwise identical to (UC)
-    };
-};
-
-pub const ApicBase = packed struct(u64) {
+pub const ApicBase = CreateMsr(27, packed struct(u64) {
     __pad : u8,         // Reserved
     bsp : bool,         // Bootstrap Processor (set by bios and read-only)
     __pad2 : u1,        // Reserved
     x2apic : bool,      // x2APIC Mode Enable
     apic_ge : bool,     // APIC Global Enable
     apic_base : u52,  // Base Address of APIC is 4KiB aligned, identical to CR3
-};
+});
 
-pub const XapicDisableStatus = packed struct(u64) {
+/// XAPIC disabled in favor of X2APIC
+pub const XapicDisableStatus = CreateMsr(189, packed struct(u64) {
     xapic_off : bool,   // Legacy XAPIC (0) Enabled (1) Disabled
     __pad : u63,
-};
+});
 
-pub const Xcr0 = packed struct(u64) {
-    x87 : bool,         //Must be 1
-    sse : bool,         //XSAVE can manage MXCSR and XMM registers
-    avx : bool,         //AVX instructions supported and XSAVE can manage upper YMM registers
-    bndreg : bool,      //MPX instructions supported and XSAVE can manage bounds registers BND0-BND3
-    bndcsr : bool,      //MPX instructions supported and XSAVE can manage the BNDCFGU and BNDSTATUS registers
-    opmask : bool,      //AVX-512 instructions supported and XSAVE can manage K0-K7 opmask registers
-    zmm_hi256 : bool,   //AVX-512 instructions supported and XSAVE can manage ZMM0-ZMM15 registers
-    hi16_zmm : bool,    //AVX-512 instructions supported and XSAVE can manage ZMM16-ZMM31 registers
-    __pad : u1,         // Reserved
-    pkru : u1,          //XSAVE can manage PKRU register
-    __pad2 : u1,        // Reserved
-    tilecfg : bool,     //If and tiledata, AMX instructions supported and XSAVE can manage TILECFG register
-    tiledata : bool,    //If and tilecfg, AMX instructions supported and XSAVE can manage TILEDATA register
-};
-
-pub const MiscEnable = packed struct(u64) {
-    fse : bool,         //Fast-Strings Enable
-    __pad : u2,         // Reserved
-    atcce : bool,       //Automatic Thermal Control Circuit Enable
-    __pad2 : u3,        // Reserved
-    pma : bool,         //Performance Monitoring Available
-    __pad3 : u1,        // Reserved
-    hpd : bool,         //Hardware Prefetcher Disable
-    fme : bool,         //FERR# Multiplexing Enable
-    btsu : bool,        //Branch Trace Storage Unavailable
-    pebsu : bool,       //Processor Event Based Sampling Unavailable
-    tm2e : bool,        //TM2 Enable
-    __pad4 : u2,        // Reserved
-    eisste : bool,      //Enhanced Intel SpeedStep Technology Enable
-    fsmme : bool,       //Monitor FSM Enable
-    aclpd : bool,       //Adjacent Cache Line Prefetch Disable
-    eisstsl : bool,     //Enhanced Intel SpeedStep Technology Select Lock
-    __pad5 : u1,        // Reserved
-    cpuidmax : bool,    //Limit CPUID Maxval
-    xtprmd : bool,      //xTPR Message Disable
-    __pad6 : u8,        // Reserved
-    xdd : bool,         //XD Bit Disable
-    __pad7 : u2,        // Reserved
-    dcupd : bool,       //DCU Prefetcher Disable
-    idad : bool,        //IDA Disable
-    ippd : bool,        //IP Prefetcher Disable
-};
-
-pub const ArchCap = packed struct(u64) {
+/// Enumeration of Architectural Features (read only)
+pub const ArchCap = CreateReadMsr(266, packed struct(u64) {
     rdcl_no : bool,
     rsba : bool,
     skip_l1dfl_vmentry : bool,
@@ -524,6 +494,76 @@ pub const ArchCap = packed struct(u64) {
     rfds_clear : bool,
     ign_umonitor_sup : bool,
     mon_umon_mitg_sup : bool,
-};
+});
+
+/// Page Attribute Table entries
+pub const Pat = CreateMsr(631, packed struct(u64) {
+    pa0 : PatType,
+    pa1 : PatType,
+    pa2 : PatType,
+    pa3 : PatType,
+    pa4 : PatType,
+    pa5 : PatType,
+    pa6 : PatType,
+    pa7 : PatType,
+
+    // Selected via paging bits from high to low: PAT, PCD, PWT
+    pub const PatType = enum(u8) {
+        UNCACHEABLE = 0,        // (UC) Used for MMIO, etc
+        WRITE_COMBINING = 1,    // (WC) Speculative Reads
+        WRITE_THROUGH = 4,      // (WT) Cacheable and Speculative Reads
+        WRITE_PROTECTED = 5,    // (WP) Cacheable (reads only) and Speculative Reads
+        WRITE_BACK = 6,         // (WB) Cacheable and Writeback Cacheable and Speculative Reads
+        UNCACHED = 7,           // (UC-) Can be overridden by MTRRs using WC, otherwise identical to (UC)
+    };
+});
+
+/// Misc features
+pub const MiscEnable = CreateMsr(416, packed struct(u64) {
+    fse : bool,         //Fast-Strings Enable
+    __pad : u2,         // Reserved
+    atcce : bool,       //Automatic Thermal Control Circuit Enable
+    __pad2 : u3,        // Reserved
+    pma : bool,         //Performance Monitoring Available
+    __pad3 : u1,        // Reserved
+    hpd : bool,         //Hardware Prefetcher Disable
+    fme : bool,         //FERR# Multiplexing Enable
+    btsu : bool,        //Branch Trace Storage Unavailable
+    pebsu : bool,       //Processor Event Based Sampling Unavailable
+    tm2e : bool,        //TM2 Enable
+    __pad4 : u2,        // Reserved
+    eisste : bool,      //Enhanced Intel SpeedStep Technology Enable
+    fsmme : bool,       //Monitor FSM Enable
+    aclpd : bool,       //Adjacent Cache Line Prefetch Disable
+    eisstsl : bool,     //Enhanced Intel SpeedStep Technology Select Lock
+    __pad5 : u1,        // Reserved
+    cpuidmax : bool,    //Limit CPUID Maxval
+    xtprmd : bool,      //xTPR Message Disable
+    __pad6 : u8,        // Reserved
+    xdd : bool,         //XD Bit Disable
+    __pad7 : u2,        // Reserved
+    dcupd : bool,       //DCU Prefetcher Disable
+    idad : bool,        //IDA Disable
+    ippd : bool,        //IP Prefetcher Disable
+});
+
+/// Local APIC Timer TSC Target for Deadline Mode
+pub const TscDeadline = CreateMsr(1760, u64);
+
+pub const Efer = CreateMsr(0xC0000080, packed struct(u64) {
+    sce : bool,     //SYSCALL/SYSRET instructions enable
+    __pad : u8,     // Reserved
+    lme : bool,     //IA-32e mode operation enable
+    __pad2 : u1,    // Reserved
+    lma : bool,     //IA-32e mode operation active
+    nxe : bool,     //Execute Disable Bit enable
+});
+
+pub const SyscallStar = CreateMsr(0xC0000081, u64);
+pub const SyscallLStar = CreateMsr(0xC0000082, u64);
+pub const SyscallFMask = CreateMsr(0xC0000084, u64);
+pub const FsBase = CreateMsr(0xC0000100, u64);
+pub const GsBase = CreateMsr(0xC0000101, u64);
+pub const KernelGsBase = CreateMsr(0xC0000102, u64);
 
 

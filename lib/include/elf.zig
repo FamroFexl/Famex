@@ -1,7 +1,9 @@
+const std = @import("std");
+
 pub const ElfHdr = extern struct {
     id : ElfId,                 // ELF identification
     type : ET,                  // Object file type
-    machine : MACHINE,       // Machine ID
+    machine : MACHINE,          // Machine ID
     version : u32,              // Object file version
     entry : u32,                // Entry point address
     ph_off : u64,               // Program header offset
@@ -70,11 +72,47 @@ pub const ElfHdr = extern struct {
         AARCH64          = 183,  // AARCH64 (ARM64)
         RISCV            = 243   // RISC-V
     };
+
+    /// Check if ELF signature matches
+    pub fn isElf(hdr : *@This()) bool {
+        return std.mem.eql(u8, &hdr.id.magic, "\x7fELF");
+    }
+
+    /// Get a program header by it's index
+    pub fn getPhdrByIndex(hdr : *@This(), num : anytype) ?*ElfPrgHdr {
+        if (num > hdr.ph_num) return null;
+        return @ptrFromInt(@intFromPtr(hdr) + hdr.ph_off + hdr.ph_ent_size * num);
+    }
+
+    /// Get a section header by it's index
+    pub fn getShdrByIndex(hdr : *@This(), num : anytype) ?*ElfSecHdr {
+        if (num > hdr.sh_num) return null;
+        return @ptrFromInt(@intFromPtr(hdr) + hdr.sh_off + hdr.sh_ent_size * num);
+    }
+
+    /// Get a section header by it's name
+    pub fn getShdrByName(hdr : *@This(), comptime str : []const u8) ?*ElfSecHdr {
+        const hdr_int = @intFromPtr(hdr);
+        const str_shdr = hdr.getShdrByIndex(hdr.sh_str_ndx).?;
+        for (0..hdr.sh_num) |i| {
+            const shdr = hdr.getShdrByIndex(i).?;
+            if (shdr.name > str_shdr.size)
+                continue;
+
+            const name : [*:0]u8 = @ptrFromInt(hdr_int + str_shdr.offset + shdr.name);
+            const slice = std.mem.sliceTo(name, 0);
+
+            if (std.mem.eql(u8, slice, str))
+                return shdr;
+        }
+
+        return null;
+    }
 };
 
 pub const ElfSecHdr = extern struct {
-    name : u32,             // Section name
-    type : ST,    // Section type
+    name : u32,             // Section name offset
+    type : ST,              // Section type
     flag : SecFlag,         // Section attributes
     addr : u64,             // Virtual address in memory
     offset : u64,           // Offset in file

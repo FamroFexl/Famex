@@ -1,4 +1,4 @@
-pub const cpu = @import("registers.zig");
+pub const cpu = @import("cpu.zig");
 pub const reg = @import("registers.zig");
 pub const irq = @import("irq.zig");
 

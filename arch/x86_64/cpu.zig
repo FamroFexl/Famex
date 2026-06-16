@@ -1,5 +1,9 @@
 const cpuid_db = @import("lib").cpuid_db;
-const log = @import("kernel").util.log;
+const kernel = @import("kernel");
+const log = kernel.util.log;
+
+pub var FP_SAVE_POOL : kernel.mm.slub_alloc.SlubPool = undefined;
+pub var XSAVE_ON : bool = false;
 
 ///  AMD:     "AuthenticAMD"
 const signature_AMD_ebx : u32 =  0x68747541;

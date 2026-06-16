@@ -39,7 +39,7 @@ pub fn maxAlignBetween(addr : anytype, limit : anytype) u64 {
 pub fn roundUpPow2(val : anytype) u64 {
     if (val <= 1) return 1;
 
-    return setBit(64 - @clz(val - 1));
+    return setBit(64 - @clz(@as(u64, val) - 1));
 }
 
 pub fn setFlag(flag : anytype, bin : *u64) void {
@@ -80,4 +80,10 @@ pub fn setIfSmaller(comptime T: type, current: *T, new_value: T) void {
     if (new_value < current.*) {
         current.* = new_value;
     }
+}
+
+pub fn SizedType(comptime size: usize, comptime alignment: u29) type {
+    return struct {
+        data: [size]u8 align(alignment),
+    };
 }

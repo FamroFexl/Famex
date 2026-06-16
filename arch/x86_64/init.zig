@@ -52,15 +52,13 @@ fn validateCpuState() void {
     log.apanic(paging_mode_request.response.mode != limine.LIMINE_PAGING_MODE_X86_64_4LVL, "arch: Paging Mode isn't 4 level!\n", .{});
 
     if (cpu.leaf_0x1.ecx.x2apic) {
-        const apic : reg.ApicBase = @bitCast(reg.Msr.get(.APIC_BASE));
+        const apic = reg.ApicBase.get();
         log.apanic(apic.x2apic == 0, "arch: X2APIC isn't enabled!\n", .{});
     }
 }
 
 fn ensureFeatures() void {
     print("arch: Ensuring CPU meets minimum requirements\n", .{});
-
-    log.apanic(cpu.leaf_0x0.eax.max_std_leaf < 8, "arch: CPUID max leaf isn't large enough!\n", .{});
 
     const intel : bool = cpu.VENDOR == cpu.CpuVendor.INTEL;
 
@@ -71,9 +69,11 @@ fn ensureFeatures() void {
 
         // We support Nehalem-Clarksfield and later Intel CPUs (because of VT-d support)
         // (we may support Westmere and later only for guaranteed huge page and PCID support)
-        log.apanic(cpu.leaf_0x1.eax.base_family_id < 0x1A,"arch: Intel CPU model isn't supported!\n", .{});
+        if (cpu.leaf_0x1.eax.base_family_id < 0x06 and cpu.leaf_0x1.eax.base_model < 0x1A) {
+            log.panic("arch: Intel CPU model isn't supported!\n", .{});
+        }
 
-        log.apanic(cpu.leaf_0x1.ecx.vmx == 0, "arch: Intel VMX extensions are required!\n", .{});
+        //log.apanic(cpu.leaf_0x1.ecx.vmx == 0, "arch: Intel VMX extensions are required!\n", .{});
 
         if (cpu.leaf_0x1.edx.pse == 1)
             bin.setIfLarger(u3, &api.cpu.FEATURES.MAX_PAGE_SIZE, 1);
@@ -83,7 +83,7 @@ fn ensureFeatures() void {
         log.apanic(cpu.leaf_0x81.eax.e_base_family < 0x15, "arch: AMD CPU model isn't supported!\n", .{});
 
         // We need SVM for AMD-Vi (IOMMU)
-        log.apanic(cpu.leaf_0x81.ecx.svm == 0, "arch: AMD SVM extensions are required!\n", .{});
+        //log.apanic(cpu.leaf_0x81.ecx.svm == 0, "arch: AMD SVM extensions are required!\n", .{});
 
         if (cpu.leaf_0x81.edx.e_pse == 1)
             bin.setIfLarger(u3, &api.cpu.FEATURES.MAX_PAGE_SIZE, 1);
@@ -95,6 +95,45 @@ fn ensureFeatures() void {
 
     api.cpu.FEATURES.EXECUTE_BIT = cpu.leaf_0x81.edx.nx == 1;
     api.cpu.FEATURES.READ_BIT = false;
+}
+
+fn setupFp() void {
+    print("\narch: Setting up Floating Point (X87, SSE", .{});
+    // No XSave, just FXSave
+    if (cpu.leaf_0x1.ecx.xsave == 0) {
+        print(") Size 512\n", .{});
+        cpu.FP_SAVE_POOL.init(512, 64, null);
+        return;
+    }
+    cpu.XSAVE_ON = true;
+
+    if (cpu.leaf_0x1.ecx.osxsave == 0) {
+        var cr4 = reg.Cr4.get();
+        cr4.osxsave = true;
+        reg.Cr4.set(cr4);
+    }
+
+    var leaf = cpu.cpuid(cpuid.leaf_0xd_0, 0xd, 0);
+    var xcr0 = reg.Xcr0.get();
+
+    // Disable all the features we don't want and just enable X87, SSE, and AVX
+    xcr0.x87 = true;    // This must be the case for any cpu we support
+    if (leaf.eax.xcr0_sse == 1)              xcr0.sse = true;
+    if (leaf.eax.xcr0_avx == 1)              {xcr0.avx = true; print(", AVX)", .{});}
+    if (leaf.eax.xcr0_mpx_bndregs == 1)      xcr0.bndreg = false;
+    if (leaf.eax.xcr0_mpx_bndcsr == 1)       xcr0.bndcsr = false;
+    if (leaf.eax.xcr0_avx512_opmask == 1)    xcr0.opmask = false;
+    if (leaf.eax.xcr0_avx512_zmm_hi256 == 1) xcr0.zmm_hi256 = false;
+    if (leaf.eax.xcr0_avx512_hi16_zmm == 1)  xcr0.hi16_zmm = false;
+    if (leaf.eax.xcr0_pkru == 1)             xcr0.pkru = false;
+    if (leaf.eax.xcr0_tileconfig == 1)       xcr0.tilecfg = false;
+    if (leaf.eax.xcr0_tiledata == 1)         xcr0.tiledata = false;
+
+    reg.Xcr0.set(xcr0);
+    leaf = cpu.cpuid(cpuid.leaf_0xd_0, 0xd, 0);
+
+    print(" Size {})\n", .{leaf.ebx.xsave_sz_xcr0_enabled});
+    cpu.FP_SAVE_POOL.init(leaf.ebx.xsave_sz_xcr0_enabled, 64, null);
 }
 
 /// Only one GDT for all cores
@@ -186,7 +225,7 @@ fn setupSyscalls() void {
     reg.Efer.set(efer);
 
     // Set the syscall entry point (asm)
-    reg.Msr.set(.SYSCALL_LSTAR, kernel.pm.syscall.syscallHandler);
+    reg.SyscallLStar.set(kernel.pm.syscall.syscallHandler);
 
     // Set the RFLAGS mask on syscall entry
     var rflags : reg.Rflags = @bitCast(0);
@@ -197,12 +236,12 @@ fn setupSyscalls() void {
     rflags.direction = true;
     rflags.irq_enable = true;
 
-    reg.Msr.set(.SYSCALL_FMASK, @bitCast(rflags));
+    reg.SyscallFMask.set(@bitCast(rflags));
 
     // Set the Kernel CS and SS segments on syscall entry and exit
     const kernel_cs : u64 = @offsetOf(reg.Gdtr.Layout, "kmode_code") << 32;
     const user_cs : u64 = @offsetOf(reg.Gdtr.Layout, "umode_code") << 48;
-    reg.Msr.set(.SYSCALL_STAR, kernel_cs | user_cs);
+    reg.SyscallStar.set(kernel_cs | user_cs);
 }
 
 pub export fn init() void {
@@ -222,6 +261,8 @@ pub export fn init() void {
     api.cpu.FEATURES.NUM_CPU_CORES = smp_request.response.x86.cpu_count;
 
     mm.memory.setup();
+
+    setupFp();
 
     setupGdt();
 

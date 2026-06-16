@@ -37,16 +37,16 @@ pub const LimineFile = extern struct {
     part_uuid : LimineUuid,
 };
 
-pub const LIMINE_FIRMWARE_TYPE = enum(u8) {
-    X86BIOS,
-    EFI32,
-    EFI64,
-    SBI
-};
-
 pub const LimineFirmwareTypeResponse = extern struct {
     revision : u64,
-    firmware_type : u64,
+    firmware_type : FirmwareType,
+
+    pub const FirmwareType = enum(u64) {
+        X86BIOS,
+        EFI32,
+        EFI64,
+        SBI
+    };
 };
 
 pub const LimineFirmwareTypeRequest = extern struct {
@@ -66,22 +66,23 @@ pub const LimineHhdmRequest = extern struct {
     response : *LimineHhdmResponse = undefined,
 };
 
-pub const LimineMemmapType = enum(u8) {
-    USABLE,
-    RESERVED,
-    ACPI_RECLAIMABLE,
-    ACPI_NVS,
-    BAD_MEMORY,
-    BOOTLOADER_RECLAIMABLE,
-    EXECUTABLE_AND_MODULES,
-    FRAMEBUFFER,
-    RESERVED_MAPPED,
-};
-
 pub const LimineMemmapEntry = extern struct {
     base : u64,
     length : u64,
-    type : u64,
+    type : MemType,
+
+    pub const MemType = enum(u64) {
+        USABLE,
+        RESERVED,
+        ACPI_RECLAIMABLE,
+        ACPI_NVS,
+        BAD_MEMORY,
+        BOOTLOADER_RECLAIMABLE,
+        EXECUTABLE_AND_MODULES,
+        FRAMEBUFFER,
+        RESERVED_MAPPED,
+    };
+
 };
 
 pub const LimineMemmapResponse = extern struct {
