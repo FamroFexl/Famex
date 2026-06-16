@@ -19,14 +19,14 @@ pub fn empty(list : *@This()) bool {
     return list.next == list;
 }
 
-pub fn insert_front(list : *@This(), node : *Node) void {
+pub fn insertFront(list : *@This(), node : *Node) void {
     node.prev = list;
     node.next = list.next;
     list.next.prev = node;
     list.next = node;
 }
 
-pub fn insert_back(list : *@This(), node : *Node) void {
+pub fn insertBack(list : *@This(), node : *Node) void {
     node.next = list;
     node.prev = list.prev;
     list.prev.next = node;
@@ -47,16 +47,16 @@ pub fn remove(list : *@This(), node : *Node) void {
     node.prev.next = node.next;
 }
 
-pub fn remove_front(list : *@This()) *Node {
+pub fn removeFront(list : *@This()) *Node {
     const next = list.next;
-    remove(list.next);
+    remove(list, list.next);
 
     return next;
 }
 
-pub fn remove_back(list : *@This()) *Node {
+pub fn removeBack(list : *@This()) *Node {
     const prev = list.prev;
-    remove(list.prev);
+    remove(list, list.prev);
 
     return prev;
 }
@@ -70,7 +70,7 @@ pub fn contains(list : *@This(), node : *Node) bool {
     return false;
 }
 
-pub fn index_of(list : *@This(), node : *Node) !usize {
+pub fn indexOf(list : *@This(), node : *Node) !usize {
     var next = list.next;
     var i = 0;
     while (next != list.prev) : (next = next.next) {

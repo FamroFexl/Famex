@@ -1,5 +1,5 @@
 /// Save state for general registers
-pub const CpuState = @import("arch").reg.CpuState;
+pub const CpuState= @import("arch").reg.CpuState;
 const reg = @import("arch").reg;
 
 const CpuFeatures = struct {
@@ -33,38 +33,38 @@ pub const FpuState = struct {
 };
 
 /// Get the current CPU flags
-pub fn get_cur_flags() u64 {
+pub fn getCurFlags() u64 {
     return reg.get_rflags();
 }
 
 /// Set the current CPU flags
-pub fn set_cur_flags(flags : u64) void {
+pub fn setCurFlags(flags : u64) void {
     reg.set_rflags(flags);
 }
 
 /// Get the per-CPU pointer
-pub fn get_per_cpu() *anyopaque {
-    return @ptrFromInt(reg.get_msr(reg.Msrs.GS_BASE));
+pub fn getPerCpu() *anyopaque {
+    return @ptrFromInt(reg.Msr.get(.GS_BASE));
 }
 
 /// Set the per-CPU pointer
-pub fn set_per_cpu(per_cpu : *anyopaque) void {
-    reg.set_msr(reg.Msrs.GS_BASE, @intFromPtr(per_cpu));
+pub fn setPerCpu(per_cpu : *anyopaque) void {
+    reg.Msr.set(.GS_BASE, @intFromPtr(per_cpu));
 }
 
 /// Spin loop optimization
-pub extern fn spin_wait_loop() callconv(.c) void;
+pub extern fn spinWaitLoop() callconv(.c) void;
 
 /// Entry position for the idle task
-pub extern fn idle_entry() callconv(.c) noreturn;
+pub extern fn idleEntry() callconv(.c) noreturn;
 
 /// Enable IRQs
-pub extern fn irq_enable() callconv(.c) void;
+pub extern fn irqEnable() callconv(.c) void;
 
 /// Disable IRQs
-pub extern fn irq_disable() callconv(.c) void;
+pub extern fn irqDisabled() callconv(.c) void;
 
 /// Get if IRQs are enabled
-pub fn irq_enabled() bool {
-    return reg.get_rflags().irq_enable;
+pub fn irqEnabled() bool {
+    return reg.Rflags.get().irq_enable;
 }

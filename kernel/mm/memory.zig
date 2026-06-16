@@ -1,7 +1,10 @@
 const paging = @import("paging.zig");
 const pmm = @import("pmm.zig");
 const vmm = @import("vmm.zig");
+const slub = @import("slub_alloc.zig");
+const buddy = @import("buddy_alloc.zig");
 
+const std = @import("std");
 const print = @import("kernel").util.log.print;
 const bin = @import("kernel").util.binary;
 const types = @import("kernel").util.types;
@@ -77,31 +80,60 @@ pub fn memset(ptr : *anyopaque, size : anytype, val : u8) void {
     @memset(bytes[0..size], val);
 }
 
-pub fn setup_mem_mgmt() void {
+pub fn pmallocBytes(size : usize) *anyopaque {
+    // Size is larger than max slub size
+    if (size > slub.MAX_SLUB_SIZE) {
+        return buddy.allocPage(@intCast(buddy.sizeToOrder(size))).to_virt().ptr();
+    }
+
+    return slub.SlubPool.alloc(slub.object_pools[size >> 3].load(.acquire));
+}
+
+pub fn pmalloc(comptime T: type) *T {
+    return @ptrCast(@alignCast(pmallocBytes(@sizeOf(T))));
+}
+
+pub fn pfreeBytes(addr : *anyopaque) void {
+    // Is a page, not a slub object
+    const vaddr : Vaddr = @intFromPtr(addr);
+    const info = vaddr.to_info();
+    if (bin.alignDown(vaddr.val, buddy.orderToSize(info.getData().order) == vaddr.val)) {
+        buddy.freePage(vaddr.to_phys().val);
+        return;
+    }
+
+    slub.SlubPool.free(slub.SlubPool.getPool(addr));
+}
+
+pub fn pfree(comptime T: type, addr : *T) void {
+    pfreeBytes(addr);
+}
+
+pub fn setup() void {
     print("\nmm: Setting up Memory Management\n", .{});
 
     print("  Phys Addr Bits: {}, Virt Addr Bits: {}\n", .{cpu.FEATURES.PHYS_ADDR_BITS, cpu.FEATURES.VIRT_ADDR_BITS});
 
     //Set the max size for virt and phys memory addresses
-    PHYS_ADDR_SIZE = bin.set_bits(cpu.FEATURES.PHYS_ADDR_BITS);
-    VIRT_ADDR_SIZE = bin.set_bits(cpu.FEATURES.VIRT_ADDR_BITS);
+    PHYS_ADDR_SIZE = bin.setBits(cpu.FEATURES.PHYS_ADDR_BITS);
+    VIRT_ADDR_SIZE = bin.setBits(cpu.FEATURES.VIRT_ADDR_BITS);
 
     // The start of kernel memory depending on the number of virtual address bits
-    USER_MEMORY_END.val = bin.set_bits(cpu.FEATURES.VIRT_ADDR_BITS - 1);
+    USER_MEMORY_END.val = bin.setBits(cpu.FEATURES.VIRT_ADDR_BITS - 1);
     KERNEL_MEMORY_START.val = ~USER_MEMORY_END.val;
 
     // PAGE_OFFSET region uses 1/4 of virtual memory
-    PAGE_OFFSET_SIZE = bin.set_bit(cpu.FEATURES.VIRT_ADDR_BITS - 2);
+    PAGE_OFFSET_SIZE = bin.setBit(cpu.FEATURES.VIRT_ADDR_BITS - 2);
 
     // KERNEL_ALLOC region uses 1/8 of virtual memory
-    KERNEL_ALLOC_SIZE = bin.set_bit(cpu.FEATURES.VIRT_ADDR_BITS - 3);
+    KERNEL_ALLOC_SIZE = bin.setBit(cpu.FEATURES.VIRT_ADDR_BITS - 3);
 
     PAGE_METADATA_SIZE = (PAGE_OFFSET_SIZE / @sizeOf(paging.PageInfo));
 
     KERNEL_MEMORY.val = KERNEL_MEMORY_START.val;
     KERNEL_ALLOC.val = PAGE_OFFSET_SIZE + KERNEL_MEMORY.val;
     PAGE_METADATA.val = KERNEL_ALLOC_SIZE + KERNEL_ALLOC.val;
-    PER_CPU_DATA.val = PAGE_METADATA.val + bin.align_up(PAGE_METADATA_SIZE, PER_CPU_DATA_SIZE);
+    PER_CPU_DATA.val = PAGE_METADATA.val + bin.alignUp(PAGE_METADATA_SIZE, PER_CPU_DATA_SIZE);
 
     print("  Kernel Memory Start:   0x{X}\n", .{KERNEL_MEMORY.val});
     print("  Kernel VMalloc Region: 0x{X}\n", .{KERNEL_ALLOC.val});

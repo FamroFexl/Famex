@@ -11,17 +11,20 @@ fn gen_pair(name : []const u8, num : anytype) void {
 pub fn main(init: std.process.Init) !void {
     writer = std.Io.File.stdout().writerStreaming(init.io, &buf);
 
-    gen_pair("KERNEL_GS_BASE", reg.Msrs.KERNEL_GS_BASE);
-    gen_pair("GS_BASE", reg.Msrs.GS_BASE);
-    gen_pair("FS_BASE", reg.Msrs.FS_BASE);
+    gen_pair("KERNEL_GS_BASE", reg.Msr.KERNEL_GS_BASE);
+    gen_pair("GS_BASE", reg.Msr.GS_BASE);
+    gen_pair("FS_BASE", reg.Msr.FS_BASE);
 
-    gen_pair("KMODE_CODE_OFST", reg.KMODE_CODE_OFST);
-    gen_pair("KMODE_DATA_OFST", reg.KMODE_DATA_OFST);
+    gen_pair("KMODE_CODE_OFST", @offsetOf(reg.Gdtr.Layout, "kmode_code"));
+    gen_pair("KMODE_DATA_OFST", @offsetOf(reg.Gdtr.Layout, "kmode_data"));
+    gen_pair("UMODE_CODE_OFST", @offsetOf(reg.Gdtr.Layout, "umode_code"));
+    gen_pair("UMODE_DATA_OFST", @offsetOf(reg.Gdtr.Layout, "umode_data"));
 
-    gen_pair("CS_0", reg.CS_PL0);
-    gen_pair("SS_0", reg.SS_PL0);
-    gen_pair("CS_3", reg.CS_PL3);
-    gen_pair("SS_3", reg.SS_PL3);
+    // CS and SS segment default descriptors
+    gen_pair("CS_0", @offsetOf(reg.Gdtr.Layout, "kmode_code") | 0);
+    gen_pair("SS_0", @offsetOf(reg.Gdtr.Layout, "kmode_data") | 0);
+    gen_pair("CS_3", @offsetOf(reg.Gdtr.Layout, "umode_code") | 3);
+    gen_pair("SS_3", @offsetOf(reg.Gdtr.Layout, "umode_code") | 3);
 
     gen_pair("INT_SFRAME_CS", @offsetOf(reg.IrqFrame, "cs"));
     gen_pair("INT_SFRAME_SS", @offsetOf(reg.IrqFrame, "ss"));

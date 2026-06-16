@@ -1,6 +1,6 @@
 const builtin = @import("builtin");
 const kernel = @import("kernel");
-const proc = kernel.proc;
+const proc = kernel.pm.process;
 const log = kernel.util.log;
 
 const LockData = struct {
@@ -13,9 +13,9 @@ const lock_data = switch (builtin.mode) {
     else => void,
 };
 
-pub fn lock_held(lock : *anyopaque) void {
+pub fn lockHeld(lock : *anyopaque) void {
     if (builtin.mode == .Debug) {
-        const data : *LockData  = lock_data.get_local();
+        const data : *LockData  = lock_data.getLocal();
         for (0..data.cur_lock) |i| {
             if (data.held_locks[i] == lock)
                 return;
@@ -24,18 +24,18 @@ pub fn lock_held(lock : *anyopaque) void {
     }
 }
 
-pub fn lock_add(lock : *anyopaque) void {
+pub fn lockAdd(lock : *anyopaque) void {
     if (builtin.mode == .Debug) {
-        const data : *LockData  = lock_data.get_local();
+        const data : *LockData  = lock_data.getLocal();
         data.held_locks[data.cur_lock] = lock;
         data.cur_lock += 1;
     }
 }
 
-pub fn lock_remove(lock : *anyopaque) void {
+pub fn lockRemove(lock : *anyopaque) void {
     _ = lock;
     if (builtin.mode == .Debug) {
-        const data : *LockData  = lock_data.get_local();
+        const data : *LockData  = lock_data.getLocal();
         data.cur_lock -= 1;
     }
 }

@@ -10,12 +10,12 @@ const signature_INTEL_ebx : u32 = 0x756e6547;
 const signature_INTEL_edx : u32 = 0x49656e69;
 const signature_INTEL_ecx : u32 = 0x6c65746e;
 
-pub const cpu_vendor = enum {
+pub const CpuVendor = enum {
     INTEL,
     AMD
 };
 
-pub var VENDOR : cpu_vendor = undefined;
+pub var VENDOR : CpuVendor = undefined;
 
 pub var leaf_0x0 : cpuid_db.leaf_0x0_0 = undefined;
 pub var leaf_0x1 : cpuid_db.leaf_0x1_0 = undefined;
@@ -23,17 +23,17 @@ pub var leaf_0x81 : cpuid_db.leaf_0x80000001_0 = undefined;
 pub var leaf_0x87 : cpuid_db.leaf_0x80000007_0 = undefined;
 pub var leaf_0x88 : cpuid_db.leaf_0x80000008_0 = undefined;
 
-pub fn set_cpu_vendor() void {
+pub fn setCpuVendor() void {
     if (leaf_0x0.ebx.cpu_vendorid_0 == signature_INTEL_ebx and
         leaf_0x0.edx.cpu_vendorid_1 == signature_INTEL_edx and
         leaf_0x0.ecx.cpu_vendorid_2 == signature_INTEL_ecx) {
-        VENDOR = cpu_vendor.INTEL;
+        VENDOR = CpuVendor.INTEL;
     }
     else if (
     leaf_0x0.ebx.cpu_vendorid_0 == signature_AMD_ebx and
         leaf_0x0.edx.cpu_vendorid_1 == signature_AMD_edx and
         leaf_0x0.ecx.cpu_vendorid_2 == signature_AMD_ecx) {
-        VENDOR = cpu_vendor.AMD;
+        VENDOR = CpuVendor.AMD;
     }
     else {
         log.panic("arch: CPU Manufacturer isn't AMD or Intel!\n", .{});
@@ -68,12 +68,12 @@ pub fn cpuid(comptime T: type, leaf : u32, subleaf : u32) T {
     };
 }
 
-pub fn init_cpuid() void {
+pub fn initCpuid() void {
     leaf_0x0 = cpuid(cpuid_db.leaf_0x0_0, 0x0, 0);
     leaf_0x1 = cpuid(cpuid_db.leaf_0x1_0, 0x1, 0);
     leaf_0x81 = cpuid(cpuid_db.leaf_0x80000001_0, 0x80000001, 0);
     leaf_0x87 = cpuid(cpuid_db.leaf_0x80000007_0, 0x80000007, 0);
     leaf_0x88 = cpuid(cpuid_db.leaf_0x80000008_0, 0x80000008, 0);
 
-    set_cpu_vendor();
+    setCpuVendor();
 }

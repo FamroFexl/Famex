@@ -1,41 +1,41 @@
 const std = @import("std");
-const Op = std.builtin.AtomicRmwOp;
-const Order = std.builtin.AtomicOrder;
 
 const locks = @import("kernel").util.locks;
 
 const cpu = @import("arch").cpu;
 
-val : bool,
+val : std.atomic.Value(bool),
 
 pub fn init(spinlock : *@This()) void {
-    @atomicStore(bool, &spinlock.val, false, Order.release);
+    spinlock.val.store(false, .release);
 }
 
-pub fn try_lock(spinlock : *@This()) bool {
-    const locked = !@atomicRmw(bool, &spinlock.val, Op.Xchg, true, Order.acquire);
+pub fn tryLock(spinlock : *@This()) bool {
+    const locked = !spinlock.val.rmw(.Xchg, true, .acquire);
     if (locked) {
-        locks.lock_add(&spinlock);
+        locks.lockAdd(@ptrCast(@constCast(&spinlock)));
     }
+
+    return locked;
 }
 
 pub fn lock(spinlock : *@This()) void {
     // irq_save();
-    if (try_lock(spinlock)) {
+    if (tryLock(spinlock)) {
         return;
     }
 
-    while (!@atomicRmw(bool, &spinlock.val, Op.Xchg, true, Order.acquire)) {
-        cpu.spin_wait_loop();
+    while (!spinlock.val.rmw(.Xchg, true, .acquire)) {
+        cpu.spinWaitLoop();
     }
 
-    locks.lock_add(&spinlock);
+    locks.lockAdd(@ptrCast(@constCast(&spinlock)));
 }
 
 pub fn unlock(spinlock : *@This()) void {
-    @atomicStore(bool, &spinlock.val, false, Order.release);
+    spinlock.val.store(false, .release);
 
-    locks.lock_remove(&spinlock);
+    locks.lockRemove(@ptrCast(@constCast(&spinlock)));
 
     // irq_restore();
 }

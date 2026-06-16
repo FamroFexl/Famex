@@ -12,16 +12,16 @@
 */
 
 // C function for handling system calls (generic)
-.extern syscall_handler
+.extern syscallHandler
 
 // C function for handling interrupts (arch specific)
-.extern interrupt_vector_handler
+.extern interruptVectorHandler
 
 // Used to determine if a thread is in kernel mode
-.extern in_kmode
+.extern inKmode
 
-.extern save_regs
-.extern load_regs
+.extern saveRegs
+.extern loadRegs
 
 .macro FUNC name
 .globl \name
@@ -44,7 +44,7 @@
  *
  * On exit, only irq_frame can remain
  */
-FUNC irq_entry
+FUNC irqEntry
     // Stack: irq_frame, irq_num
 
     // Alloc stack space and align
@@ -71,7 +71,7 @@ FUNC irq_entry
     lea rdi, [rsp + 8]
 
     // Consumes rdi from stack
-    call save_regs
+    call saveRegs
 
     // Stack: irq_frame, irq_num, cpu_state
 
@@ -111,7 +111,7 @@ FUNC irq_entry
     // Stack: irq_frame, irq_num, cpu_state, last_rsp
 
     // Called with rdi, rsi, rdx args
-    call interrupt_vector_handler
+    call interruptVectorHandler
 
     // Restore last_rsp
     pop rbx
@@ -141,7 +141,7 @@ FUNC irq_entry
 
     // Stack: irq_frame, irq_num, cpu_state, old_rsp
 
-    call in_kmode
+    call inKmode
 
     // Restore stack
     pop rsi
@@ -158,7 +158,7 @@ FUNC irq_entry
     // Stack: irq_frame, irq_num, cpu_state, in_kmode
 
     // After this call, we can only modify rflags, rip, and rsp
-    call load_regs
+    call loadRegs
 
     // Save new rax
     push rax
@@ -192,4 +192,4 @@ FUNC irq_entry
     // Return from interrupt
     iretq
 
-FUNC_END irq_entry
+FUNC_END irqEntry

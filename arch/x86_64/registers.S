@@ -5,7 +5,7 @@
 
 .section .entry.text, "ax"
 
-.extern in_kmode
+.extern inKmode
 
 .macro FUNC name
 .globl \name
@@ -20,86 +20,86 @@
 // return RAX
 // arguments RDI, RSI, RDX, RCX, R8, R9
 
-FUNC get_cr0
+FUNC getCr0
     mov rax, cr0
     ret
-FUNC_END get_cr0
+FUNC_END getCr0
 
-FUNC set_cr0
+FUNC setCr0
     mov cr0, rdi
     ret
-FUNC_END set_cr0
+FUNC_END setCr0
 
-FUNC get_cr2
+FUNC getCr2
     mov rax, cr2
     ret
-FUNC_END get_cr2
+FUNC_END getCr2
 
-FUNC get_cr3
+FUNC getCr3
     mov rax, cr3
     ret
-FUNC_END get_cr3
+FUNC_END getCr3
 
-FUNC set_cr3
+FUNC setCr3
     mov cr3, rdi
     ret
-FUNC_END set_cr3
+FUNC_END setCr3
 
-FUNC get_cr4
+FUNC getCr4
     mov rax, cr4
     ret
-FUNC_END get_cr4
+FUNC_END getCr4
 
-FUNC set_cr4
-    mov cr3, rdi
+FUNC setCr4
+    mov cr4, rdi
     ret
-FUNC_END set_cr4
+FUNC_END setCr4
 
-FUNC get_cr8
+FUNC getCr8
     mov rax, cr8
     ret
-FUNC_END get_cr8
+FUNC_END getCr8
 
-FUNC set_cr8
+FUNC setCr8
     mov cr8, rdi
     ret
-FUNC_END set_cr8
+FUNC_END setCr8
 
-FUNC get_rflags
+FUNC getRflags
     pushfq
     pop rax
     ret
-FUNC_END get_rflags
+FUNC_END getRflags
 
-FUNC set_rflags
+FUNC setRflags
     push rdi
     popfq
     ret
-FUNC_END set_rflags
+FUNC_END setRflags
 
-FUNC get_msr
+FUNC getMsr
     mov ecx, edi
     rdmsr
     shl rdx, 32
     or rax, rdx
     ret
-FUNC_END get_msr
+FUNC_END getMsr
 
-FUNC set_msr
+FUNC setMsr
     mov ecx, edi
     mov rdx, rsi
     shr rdx, 32
     mov rax, rsi
     wrmsr
     ret
-FUNC_END set_msr
+FUNC_END setMsr
 
-FUNC get_gdt
+FUNC getGdtr
     sgdt [rax]
     ret
-FUNC_END get_gdt
+FUNC_END getGdtr
 
-FUNC set_gdt
+FUNC setGdtr
     lgdt [rdi]
     mov ax, KMODE_DATA_OFST
     mov ds, ax
@@ -114,59 +114,59 @@ FUNC set_gdt
     retfq
     1:
     ret
-FUNC_END set_gdt
+FUNC_END setGdtr
 
-FUNC get_idt
+FUNC getIdtr
     sidt [rax]
     ret
-FUNC_END get_idt
+FUNC_END getIdtr
 
-FUNC set_idt
+FUNC setIdtr
     lidt [rdi]
     ret
-FUNC_END set_idt
+FUNC_END setIdtr
 
-FUNC get_tss
+FUNC getTss
     str ax
     ret
-FUNC_END get_tss
+FUNC_END getTss
 
-FUNC set_tss
+FUNC setTss
     ltr di
     ret
-FUNC_END set_tss
+FUNC_END setTss
 
-FUNC get_tsc
+FUNC getTsc
     rdtsc
     shl rdx, 32
     or rax, rdx
     ret
-FUNC_END get_tsc
+FUNC_END getTsc
 
-FUNC tlb_page_flush
+FUNC tlbPageFlush
     invlpg [rdi]
     ret
-FUNC_END tlb_page_flush
+FUNC_END tlbPageFlush
 
-FUNC spin_wait_loop
+FUNC spinWaitLoop
     pause
     ret
-FUNC_END spin_wait_loop
+FUNC_END spinWaitLoop
 
-FUNC idle_entry
+FUNC idleEntry
     sti
     hlt
-FUNC_END idle_entry
+FUNC_END idleEntry
 
-FUNC irq_enable
+FUNC irqEnable
     sti
     ret
-FUNC_END irq_enable
+FUNC_END irqEnable
 
-FUNC irq_disable
+FUNC irqDisable
     cli
     ret
-FUNC_END irq_disable
+FUNC_END irqDisable
 
 /*
  * Because this is called, the RDI pushed to the stack is buried beneath the ret value, so we must
@@ -178,7 +178,7 @@ FUNC_END irq_disable
  *
  * Output: All registers same out as in. u64 stack[0] is consumed.
 */
-FUNC save_regs
+FUNC saveRegs
     // Save rax so we can use it as a scratch register
     mov [rdi + RAX_OFST], rax
 
@@ -225,7 +225,7 @@ FUNC save_regs
     // We don't restore RDI since it didn't change
 
     ret
-FUNC_END save_regs
+FUNC_END saveRegs
 
 /*
  * RDI must point to a cpu state
@@ -234,7 +234,7 @@ FUNC_END save_regs
  *
  * Output: All registers as defined in cpu state
 */
-FUNC load_regs
+FUNC loadRegs
     // Set User FS Base
     mov ecx, FS_BASE
     mov eax, [rdi + FS_BASE_OFST]
@@ -268,12 +268,12 @@ FUNC load_regs
     mov rdi, [rdi + RDI_OFST]
 
     ret
-FUNC_END load_regs
+FUNC_END loadRegs
 
-FUNC save_state
+FUNC saveState
     // Dummy RDI to satisfy save_regs requirements
     push rdi
-    call save_regs
+    call saveRegs
 
     // Save RFLAGS
     pushfq
@@ -288,9 +288,9 @@ FUNC save_state
     1: pop [rdi + RIP_OFST]
 
     ret
-FUNC_END save_state
+FUNC_END saveState
 
-FUNC load_state
+FUNC loadState
     // Setup interrupt frame for return
 
     // Save stack
@@ -302,7 +302,7 @@ FUNC load_state
     // Stack: cpu_state, old_rsp
 
     // RDI contains cpu_state, as required by in_kmode
-    call in_kmode
+    call inKmode
 
     // Restore stack
     pop rsi
@@ -350,7 +350,7 @@ FUNC load_state
 
     // Stack: data_seg, rsp, rflags, code_seg, rip, in_kmode
 
-    call load_regs
+    call loadRegs
 
     // Save new rax
     push rax
@@ -374,4 +374,4 @@ FUNC load_state
     // Stack: data_seg, rsp, rflags, code_seg, rip
 
     iretq
-FUNC_END load_state
+FUNC_END loadState

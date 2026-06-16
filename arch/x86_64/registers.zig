@@ -1,3 +1,9 @@
+const builtin = @import("builtin");
+const is_kernel = builtin.target.os.tag == .freestanding;
+
+const MAX_NUM_CPUS = if (is_kernel) @import("kernel").config.MAX_NUM_CPUS else 0;
+const std = @import("std");
+
 pub const CpuState = struct {
     rax : u64,  // Accumulator
     rbx : u64,  // Base
@@ -22,44 +28,46 @@ pub const CpuState = struct {
     fs_base : u64,  // User FS.Base
     gs_base : u64,  // User GS.Base
 
+    extern fn saveState(state : *CpuState) callconv(.c) void;
     /// Save general registers from the CPU
-    pub extern fn save(state : *CpuState) callconv(.c) void;
+    pub const save = saveState;
 
+    extern fn loadState(state : *CpuState) callconv(.c) void;
     /// Load general registers into the CPU
-    pub extern fn load(state : *CpuState) callconv(.c) void;
+    pub const load = loadState;
 
     /// Get a state's program counter
-    pub fn get_pc(state : *@This()) u64 {
+    pub fn getPc(state : *@This()) u64 {
         return state.rip;
     }
 
     /// Set a state's program counter
-    pub fn set_pc(state : *@This(), pc : u64) void {
+    pub fn setPc(state : *@This(), pc : u64) void {
         state.rip = pc;
     }
 
     /// Get a state's stack
-    pub fn get_stack(state : *@This()) u64 {
+    pub fn getStack(state : *@This()) u64 {
         return state.rsp;
     }
 
     /// Set a state's stack
-    pub fn set_stack(state : *@This(), stack : u64) void {
+    pub fn setStack(state : *@This(), stack : u64) void {
         state.rsp = stack;
     }
 
     /// Get a state's flags
-    pub fn get_flags(state : *@This()) u64 {
+    pub fn getFlags(state : *@This()) u64 {
         return state.rflags;
     }
 
     /// Set a state's flags
-    pub fn set_flags(state : *@This(), flags : u64) void {
+    pub fn setFlags(state : *@This(), flags : u64) void {
         state.rflags = flags;
     }
 
     /// Get a register pointer from an argument number
-    pub fn get_arg(state : *@This(), arg : u8) *u64 {
+    pub fn getArg(state : *@This(), arg : u8) *u64 {
         return switch (arg) {
             0 => &state.rdi,
             1 => &state.rsi,
@@ -72,15 +80,15 @@ pub const CpuState = struct {
     }
 
     /// Get the return register pointer
-    pub fn get_ret(state : *@This()) *u64 {
+    pub fn getRet(state : *@This()) *u64 {
         return &state.rax;
     }
 
     /// Get a register pointer from an argument number (for syscall register format)
-    pub fn get_arg_syscall(state : *@This(), arg : u8) *u64 {
+    pub fn getArgSys(state : *@This(), arg : u8) *u64 {
         return switch (arg) {
             2 => &state.r10,
-            else => get_arg(state, arg),
+            else => getArg(state, arg),
         };
     }
 };
@@ -100,11 +108,13 @@ pub const Cr0 = packed struct(u64) {
     nw : bool,      //Not Write Through
     cd : bool,      //Cache Disable
     pg : bool,      //Paging
+
+    extern fn getCr0() callconv(.c) Cr0;
+    pub const get = getCr0;
+
+    extern fn setCr0(cr0 : Cr0) callconv(.c) void;
+    pub const set = setCr0;
 };
-
-pub extern fn get_cr0() callconv(.c) Cr0;
-
-pub extern fn set_cr0(cr0 : Cr0) callconv(.c) void;
 
 pub const Cr3 = packed struct(u64) {
     bits : packed union(u12) {
@@ -120,11 +130,14 @@ pub const Cr3 = packed struct(u64) {
     lam_u57 : bool, // User LAM57 enable
     lam_u48 : bool, // User LAM48 enable
     __pad3 : u1,
+
+
+    extern fn getCr3() callconv(.c) Cr3;
+    pub const get = getCr3;
+
+    extern fn setCr3(cr3 : Cr3) callconv(.c) void;
+    pub const set = setCr3;
 };
-
-pub extern fn get_cr3() callconv(.c) Cr3;
-
-pub extern fn set_cr3(cr3 : Cr3) callconv(.c) void;
 
 pub const Cr4 = packed struct(u64) {
     vme : bool,         //Virtual-8086 Mode Extensions
@@ -155,20 +168,24 @@ pub const Cr4 = packed struct(u64) {
     uintr : bool,       //User-Interrupts
     __pad2 : u2,        // Reserved
     lam_sup : bool,     //Supervisor Linear-Address Masking
+
+    extern fn getCr4() callconv(.c) Cr4;
+    pub const get = getCr4;
+
+    extern fn setCr4(cr4 : Cr4) callconv(.c) void;
+    pub const set = setCr4;
 };
-
-pub extern fn get_cr4() callconv(.c) Cr4;
-
-pub extern fn set_cr4(cr4 : Cr4) callconv(.c) void;
 
 pub const Cr8 = packed struct(u64) {
     tpl : u4,       // Task Priority Level
     __pad : u60,    // Reserved
+
+    extern fn getCr8() callconv(.c) Cr8;
+    pub const get = getCr8;
+
+    extern fn setCr8(cr8 : Cr8) callconv(.c) void;
+    pub const set = setCr8;
 };
-
-pub extern fn get_cr8() callconv(.c) Cr8;
-
-pub extern fn set_cr8(cr8 : Cr8) callconv(.c) void;
 
 pub const Rflags = packed struct(u64) {
     carry : bool,           // Status Carry
@@ -192,85 +209,165 @@ pub const Rflags = packed struct(u64) {
     virt_irq : bool,        //System Virtual Interrupt
     virt_irq_pend :bool,    //System Virtual Interrupt Pending
     id : bool,              //System ID
+
+    extern fn getRflags() callconv(.c) Rflags;
+    pub const get = getRflags;
+
+    extern fn setRflags(rflags : Rflags) callconv(.c) void;
+    pub const set = setRflags;
 };
 
-pub extern fn get_rflags() callconv(.c) Rflags;
-
-pub extern fn set_rflags(rflags : Rflags) callconv(.c) void;
+// System segment types
+pub const SysSegType = enum(u4) {
+    LDT = 2,                // Not used
+    TSS_AVAILABLE = 9,
+    TSS_BUSY = 11,          // Not used
+    CALL_GATE = 12,         // Not used
+    INTERRUPT_GATE = 14,    // For un-nestable interrupts
+    TRAP_GATE = 15          // Not used
+};
 
 pub const SegDesc = packed struct(u64) {
-    seg_limit1 : u16,   //Segment limit
-    address1 : u24,
-    seg_type : u4,
-    desc_type : u1,     //0 is system, 1 is code or data
-    priv_level : u2,    //Descriptor Privilege Level
-    present : bool,     //Segment Present flag
-    limit2 : u4,        //Segment limit
-    available : bool,   //Unused flag for other use
-    code_seg : bool,    //64-bit code segment (IA-32e)
-    size : bool,        //Operation size 0 is 16-bit segment, 1 is 32-bit segment
-    granularity : bool,
-    address2 : u8,
+    limit1          : u16 = std.math.maxInt(u16),
+    address1        : u24 = 0,
+    seg_type        : CDSegType,
+    desc_type       : u1 = 1,       //0 is system, 1 is code or data
+    priv_level      : u2,           //Descriptor Privilege Level
+    present         : bool = true,  //Segment Present flag
+    limit2          : u4 = std.math.maxInt(u4),
+    __pad1          : u1 = 0,       //Unused flag for other use
+    code_seg        : bool,         //64-bit code segment (IA-32e)
+    size            : bool,         //Operation size 0 is 16-bit segment, 1 is 32-bit segment
+    granularity     : bool = true,
+    address2        : u8 = 0,
+
+    // Code or Data segment types
+    pub const CDSegType = enum(u4) {
+        SEG_DATA_RO = 0,        // Read-Only
+        SEG_DATA_ROA = 1,       // Read-Only, accessed
+        SEG_DATA_RW = 2,        // Read/Write
+        SEG_DATA_RWA = 3,       // Read/Write, accessed
+        SEG_DATA_ROED = 4,      // Read-Only, expand-down
+        SEG_DATA_ROEDA = 5,     // Read-Only, expand-down, accessed
+        SEG_DATA_RWED = 6,      // Read/Write, expand-down
+        SEG_DATA_RWEDA = 7,     // Read/Write, expand-down, accessed
+
+        SEG_CODE_EO = 8,        // Execute-Only
+        SEG_CODE_EOA = 9,       // Execute-Only, accessed
+        SEG_CODE_ER = 10,       // Execute/Read
+        SEG_CODE_ERA = 11,      // Execute/Read, accessed
+        SEG_CODE_EOC = 12,      // Execute-Only, conforming
+        SEG_CODE_EOCA = 13,     // Execute-Only, conforming, accessed
+        SEG_CODE_ERC = 14,      // Execute/Read, conforming
+        SEG_CODE_ERCA = 15      // Execute/Read, conforming, accessed
+    };
+};
+
+pub const TssDesc = packed struct(u128) {
+    seg_limit1      : u16 = @sizeOf(Tss) - 1,
+    address1        : u24,
+    seg_type        : SysSegType = .TSS_AVAILABLE,
+    __zero1         : u1 = 0,
+    desc_priv_lvl   : u2 = 0,   // Descriptor Privilege Level
+    seg_present     : bool = true,     // Segment present flag
+    seg_limit2      : u4 = 0,
+    __pad1          : bool,     // Unused flag for other use
+    __zero2         : u2 = 0,
+    granularity     : bool = true,
+    address2        : u40,
+    __rsvd1         : u8 = 0,
+    __zero3         : u5 = 0,
+    __rsvd2         : u19 = 0,
 };
 
 pub const Gdtr = packed struct(u80) {
-    limit : u16,
+    limit : u16 = @sizeOf(Layout) - 1,
     base : u64,
+
+    /// We just need to init a null segment, 4 code/data segments, and a tss segment for each cpu core
+    ///
+    /// The ordering is important and is expected by the syscall/sysret instructions. Null descriptor
+    /// must be first, Kmode data must be after Kmode code and Umode data must be after Umode code. This
+    /// ordering is required by x86. Other segments and their positions are kernel-defined.
+    pub const Layout = struct {
+        null_desc  : SegDesc = @bitCast(@as(u64,0)),  // Null descriptor
+        kmode_code : SegDesc,      // Kernel Mode Code Segment
+        kmode_data : SegDesc,      // Kernel Mode Data Segment
+        umode_code : SegDesc,      // User Mode Code Segment
+        umode_data : SegDesc,      // User Mode Data Segment
+        tss : [MAX_NUM_CPUS]TssDesc, // Task-State Segments, one for each logical core (irq stacks)
+    };
+
+    extern fn getGdtr(gdtr : *Gdtr) callconv(.c) void;
+    pub const get = getGdtr;
+
+    extern fn setGdtr(gdtr : *Gdtr) callconv(.c) void;
+    pub const set = setGdtr;
 };
 
-/// We just need to init a null segment, 4 code/data segments, and a tss segment for each cpu core
-///
-/// The ordering is important and is expected by the syscall/sysret instructions. Null descriptor
-/// must be first, Kmode data must be after Kmode code and Umode data must be after Umode code. This
-/// ordering is required by x86. Other segments and their positions are kernel-defined.
-pub const GdtLayout = packed struct {
-    null_desc : SegDesc,          // Null descriptor
-    kmode_code : SegDesc,         // Kernel Mode Code Segment
-    kmode_data : SegDesc,         // Kernel Mode Data Segment
-    umode_code : SegDesc,         // User Mode Code Segment
-    umode_data : SegDesc,         // User Mode Data Segment
-    //union tss_desc tss[];   // Task-State Segments, one for each logical core (irq stacks)
+pub const Idtr = packed struct(u80) {
+    limit : u16 = @sizeOf(Layout) - 1,
+    base : u64,
+
+    pub const Layout = struct {
+        id_gate : [256]IdtGateDesc,
+    };
+
+    pub const IdtGateDesc = packed struct(u128) {
+        offset1         : u16,
+        seg_select      : u16 = @offsetOf(Gdtr.Layout, "kmode_code"),
+        ist             : u3,       // Interrupt Stack Table (used only if seg_type is INTERRUPT_GATE or TRAP_GATE)
+        __zero1         : u5 = 0,
+        gate_type       : SysSegType = .INTERRUPT_GATE,
+        __zero2         : u1 = 0,
+        priv_lvl        : u2 = 0,
+        present         : bool = true,
+        offset2         : u48,
+        __rsvd1         : u32 = 0,
+    };
+
+    extern fn getIdt(idtr : *Idtr) callconv(.c)void;
+    pub const get = getIdt;
+
+    extern fn setIdt(idtr : *Idtr) callconv(.c) void;
+    pub const set = setIdt;
 };
 
-pub const KMODE_CODE_OFST = @offsetOf(GdtLayout, "kmode_code");
-pub const KMODE_DATA_OFST = @offsetOf(GdtLayout, "kmode_data");
-pub const UMODE_CODE_OFST = @offsetOf(GdtLayout, "umode_code");
-pub const UMODE_DATA_OFST = @offsetOf(GdtLayout, "umode_data");
+pub const Tss = struct {
+    __rsvd1     : u32 = 0,
+    rsp         : [3]u64,   // Stack pointers for privilege levels 0-2
+    __rsvd2     : u64 = 0,
+    ist         : [7]u64,   // Interrupt Stack Table (IST) pointers (ist[0] is ist1)
+    __rsvd3     : u16 = 0,
+    __rsvd4     : u64 = 0,
+    iom_base    : u16 = std.math.maxInt(u16),   // 16-bit offset to the I/O permission bit map from the TSS base (disabled)
 
-// CS and SS segment default descriptors
-pub const CS_PL0 = KMODE_CODE_OFST | 0;
-pub const SS_PL0 = KMODE_DATA_OFST | 0;
-pub const CS_PL3 = UMODE_CODE_OFST | 0;
-pub const SS_PL3 = UMODE_DATA_OFST | 0;
+    comptime {
+        if (@sizeOf(Tss) != 104)
+            @compileError("TSS struct is the wrong size!");
+    }
 
-pub const Idtr = Gdtr;
+    extern fn getTss() callconv(.c) u16;
+    pub const get = getTss;
 
-pub extern fn get_gdt(gdtr : *Gdtr) callconv(.c) void;
+    extern fn setTss(tss : u16) callconv(.c) void;
+    pub const set = setTss;
+};
 
-pub extern fn set_gdt(gdtr : *Gdtr) callconv(.c) void;
-
-pub const IrqFrame = packed struct {
+pub const IrqFrame = packed struct(u384) {
     err : u64,      // Error code
     rip : u64,      // Program counter
     cs : u64,       // Code segment
     rflags : u64,   // CPU flags
     rsp : u64,      // Stack pointer
-    ss : u64        // Stack segment
+    ss : u64,       // Stack segment
 };
 
-pub extern fn get_idt(idtr : *Idtr) callconv(.c)void;
+pub extern fn getTsc() callconv(.c) u64;
 
-pub extern fn set_idt(idtr : *Idtr) callconv(.c) void;
+pub extern fn tlbPageFlush(page : *anyopaque) callconv(.c) void;
 
-pub extern fn get_tss() callconv(.c) u16;
-
-pub extern fn set_tss(tss : u16) callconv(.c) void;
-
-pub extern fn get_tsc() callconv(.c) u64;
-
-pub extern fn tlb_page_flush(page : *anyopaque) callconv(.c) void;
-
-pub const Msrs = enum(u32) {
+pub const Msr = enum(u32) {
     MONITOR_FILTER_SIZE = 6,    // Provides info useful for sleeping CPU cores
     APIC_BASE = 27,
     FEATURE_CONTROL = 58,       // Determines virtualization capabilities (VT-x) (practically read only)
@@ -293,11 +390,13 @@ pub const Msrs = enum(u32) {
     FS_BASE = 0xC0000100,
     GS_BASE = 0xC0000101,
     KERNEL_GS_BASE = 0xC0000102,
+
+    extern fn getMsr(msr : Msr) callconv(.c) u64;
+    pub const get = getMsr;
+
+    extern fn setMsr(msr : Msr, val : u64) callconv(.c) void;
+    pub const set = setMsr;
 };
-
-pub extern fn get_msr(msr : Msrs) callconv(.c) u64;
-
-pub extern fn set_msr(msr : Msrs, val : u64) callconv(.c) void;
 
 pub const Efer = packed struct(u64) {
     sce : bool,     //SYSCALL/SYSRET instructions enable
@@ -306,19 +405,36 @@ pub const Efer = packed struct(u64) {
     __pad2 : u1,    // Reserved
     lma : bool,     //IA-32e mode operation active
     nxe : bool,     //Execute Disable Bit enable
+
+    pub fn get() Efer {
+        return @bitCast(Msr.get(.EFER));
+    }
+
+    pub fn set(efer : Efer) void {
+        Msr.set(.EFER, @bitCast(efer));
+    }
 };
 
-// Selected via paging bits from high to low: PAT, PCD, PWT
-pub const PatTypes = enum(u3) {
-    UNCACHEABLE = 0,        // (UC) Used for MMIO, etc
-    WRITE_COMBINING = 1,    // (WC) Speculative Reads
-    WRITE_THROUGH = 4,      // (WT) Cacheable and Speculative Reads
-    WRITE_PROTECTED = 5,    // (WP) Cacheable (reads only) and Speculative Reads
-    WRITE_BACK = 6,         // (WB) Cacheable and Writeback Cacheable and Speculative Reads
-    UNCACHED = 7,           // (UC-) Can be overridden by MTRRs using WC, otherwise identical to (UC)
-};
+pub const Pat = packed struct(u64) {
+    pa0 : PatType,
+    pa1 : PatType,
+    pa2 : PatType,
+    pa3 : PatType,
+    pa4 : PatType,
+    pa5 : PatType,
+    pa6 : PatType,
+    pa7 : PatType,
 
-pub const Pat = [8]u8;
+    // Selected via paging bits from high to low: PAT, PCD, PWT
+    pub const PatType = enum(u8) {
+        UNCACHEABLE = 0,        // (UC) Used for MMIO, etc
+        WRITE_COMBINING = 1,    // (WC) Speculative Reads
+        WRITE_THROUGH = 4,      // (WT) Cacheable and Speculative Reads
+        WRITE_PROTECTED = 5,    // (WP) Cacheable (reads only) and Speculative Reads
+        WRITE_BACK = 6,         // (WB) Cacheable and Writeback Cacheable and Speculative Reads
+        UNCACHED = 7,           // (UC-) Can be overridden by MTRRs using WC, otherwise identical to (UC)
+    };
+};
 
 pub const ApicBase = packed struct(u64) {
     __pad : u8,         // Reserved
@@ -409,4 +525,5 @@ pub const ArchCap = packed struct(u64) {
     ign_umonitor_sup : bool,
     mon_umon_mitg_sup : bool,
 };
+
 

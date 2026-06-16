@@ -2,16 +2,16 @@ const std = @import("std");
 const Order = std.builtin.AtomicOrder;
 const Op = std.builtin.AtomicRmwOp;
 
-next : ?*@This(),
+next : std.atomic.Value(?*@This()),
 
 pub const Node = @This();
 
 pub fn init(stack : *@This()) void {
-    stack.next = null;
+    stack.next = .init(null);
 }
 
 pub fn empty(stack : *@This()) bool {
-    return @atomicLoad(?*Node, &stack.next, Order.seq_cst) == null;
+    return stack.next.load(.seq_cst) == null;
 }
 
 pub fn push(stack : *@This(), node : *Node) void {
@@ -19,10 +19,10 @@ pub fn push(stack : *@This(), node : *Node) void {
     _ = node;
 }
 
-pub fn pop(stack : *@This()) *Node {
+pub fn pop(stack : *@This()) ?*Node {
     _ = stack;
 }
 
-pub fn drain(stack : *@This()) *Node {
-    return @atomicRmw(?*Node, &stack.next, std.builtin.AtomicRmwOp.Xchg, null, std.builtin.AtomicOrder.acquire);
+pub fn drain(stack : *@This()) ?*Node {
+    return stack.next.rmw(.Xchg, null, .acquire);
 }

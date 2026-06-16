@@ -27,7 +27,7 @@ const panic = log.panic;
 var usable_array : [config.MAX_MEMORY_REGIONS]CachedMmapEntry = undefined;
 pub var USABLE : []CachedMmapEntry = undefined;
 
-fn overlap_priority(memtype : MmapType) u8 {
+fn overlapPriority(memtype : MmapType) u8 {
     return switch(memtype) {
         MmapType.USABLE => 0,
         MmapType.BOOTLOADER_RECLAIMABLE => 1,
@@ -41,7 +41,7 @@ fn overlap_priority(memtype : MmapType) u8 {
     };
 }
 
-fn memtype_to_string(memtype : MmapType) []const u8 {
+fn memtypeToString(memtype : MmapType) []const u8 {
     return switch (memtype) {
         MmapType.USABLE => "Usable",
         MmapType.BOOTLOADER_RECLAIMABLE => "Bootloader Reclaimable",
@@ -55,7 +55,7 @@ fn memtype_to_string(memtype : MmapType) []const u8 {
     };
 }
 
-fn page_level_to_size(level : anytype) usize {
+fn pageLevelToSize(level : anytype) usize {
     return switch (level) {
         0 => types.SIZE_4KB,
         1 => types.SIZE_2MB,
@@ -71,18 +71,18 @@ pub const CachedMmapEntry = struct {
     block_end : u64     // Cache of the end block size
 };
 
-fn sanitize_mmap() u64 {
+fn sanitizeMmap() u64 {
     print("  Limine Memory Map:\n", .{});
     print("  {s:<18} {s:<18} {s:<8} Type\n  ", .{"Start", "End", "Size"});
-    log.print_char('-', 60);
+    log.printChar('-', 60);
     print("\n", .{});
 
     for(0..kernel.mmap_request.response.*.entry_count) |i| {
         const entry = &kernel.mmap_request.response.*.entries[i].*;
 
         print("  0x{X:<18} 0x{X:<18} ", .{entry.base, entry.base + entry.length});
-        log.print_size(entry.length, 10);
-        print(" {s:<8}\n", .{memtype_to_string(@enumFromInt(entry.type))});
+        log.printSize(entry.length, 10);
+        print(" {s:<8}\n", .{memtypeToString(@enumFromInt(entry.type))});
     }
 
     var num_usable : u64 = 0;
@@ -91,8 +91,8 @@ fn sanitize_mmap() u64 {
     for(0..kernel.mmap_request.response.*.entry_count) |i| {
         const entry = &kernel.mmap_request.response.*.entries[i].*;
 
-        entry.base = bin.align_down(entry.base, types.SIZE_4KB);
-        entry.length = bin.align_up(entry.length, types.SIZE_4KB);
+        entry.base = bin.alignDown(entry.base, types.SIZE_4KB);
+        entry.length = bin.alignUp(entry.length, types.SIZE_4KB);
 
         const memtype : MmapType = @enumFromInt(entry.type);
         if(memtype == MmapType.USABLE) {
@@ -117,7 +117,7 @@ fn sanitize_mmap() u64 {
 
         if (entry.base + entry.length > next_entry.base) {
             // First has higher priority, move next up
-            if (overlap_priority(@enumFromInt(entry.type)) > overlap_priority(@enumFromInt(next_entry.type))) {
+            if (overlapPriority(@enumFromInt(entry.type)) > overlapPriority(@enumFromInt(next_entry.type))) {
                 const new_base : u64 = entry.base + entry.length;
                 next_entry.length -= new_base - next_entry.base;
                 next_entry.base = new_base;
@@ -130,7 +130,7 @@ fn sanitize_mmap() u64 {
 
     print("\n  Sanitized Memory Map:\n", .{});
     print("  {s:<18} {s:<18} {s:<8} Type\n  ", .{"Start", "End", "Size"});
-    log.print_char('-', 60);
+    log.printChar('-', 60);
     print("\n", .{});
 
     for (0..kernel.mmap_request.response.*.entry_count) |i| {
@@ -139,14 +139,14 @@ fn sanitize_mmap() u64 {
             continue;
 
         print("  0x{X:<18} 0x{X:<18} ", .{entry.base, entry.base + entry.length});
-        log.print_size(entry.length, 10);
-        print(" {s:<8}\n", .{memtype_to_string(@enumFromInt(entry.type))});
+        log.printSize(entry.length, 10);
+        print(" {s:<8}\n", .{memtypeToString(@enumFromInt(entry.type))});
     }
 
     return num_usable;
 }
 
-fn populate_usable() void {
+fn populateUsable() void {
     var usable_index : u64 = 0;
 
     for(0..kernel.mmap_request.response.*.entry_count) |i| {
@@ -164,7 +164,7 @@ fn populate_usable() void {
     }
 }
 
-pub fn alloc_boot_page() memory.Paddr {
+pub fn allocBootPage() memory.Paddr {
     var selected : ?*CachedMmapEntry = null;
     var end : bool = false;
     var min_order : u64 = std.math.maxInt(u64);
@@ -177,7 +177,7 @@ pub fn alloc_boot_page() memory.Paddr {
 
         alignment = entry.block_start;
         if(alignment == 0) {
-            alignment = bin.max_align_between(entry.region_start, entry.region_end);
+            alignment = bin.maxAlignBetween(entry.region_start, entry.region_end);
         }
 
         if (min_order > alignment) {
@@ -188,7 +188,7 @@ pub fn alloc_boot_page() memory.Paddr {
 
         alignment = entry.block_end;
         if(alignment == 0) {
-            alignment = bin.max_align_between(entry.region_end, entry.region_start);
+            alignment = bin.maxAlignBetween(entry.region_end, entry.region_start);
         }
 
         if (min_order > alignment) {
@@ -214,11 +214,11 @@ pub fn alloc_boot_page() memory.Paddr {
     return .{.val = selected.?.region_start - types.SIZE_4KB};
 }
 
-fn map_page_mdata(root_pt : *paging.Ptable) void {
+fn mapPageMdata(root_pt : *paging.Ptable) void {
     print("  Mapping Page Metadata:\n", .{});
 
     var pframe : paging.Pte = paging.PFE_DEFAULTS[0];
-    pframe.set_global(0, true);
+    pframe.setGlobal(0, true);
 
     var mem_size : u64 = 0;
     var metadata_size : u64 = 0;
@@ -229,35 +229,35 @@ fn map_page_mdata(root_pt : *paging.Ptable) void {
 
         if (memtype != MmapType.USABLE) continue;
 
-        const page_start : u64 = memory.PAGE_METADATA.val + bin.align_down((entry.base / types.SIZE_4KB) * @sizeOf(paging.PageInfo), types.SIZE_4KB);
-        const page_end : u64 = memory.PAGE_METADATA.val + bin.align_up(((entry.base + entry.length) / types.SIZE_4KB) * @sizeOf(paging.PageInfo), types.SIZE_4KB);
+        const page_start : u64 = memory.PAGE_METADATA.val + bin.alignDown((entry.base / types.SIZE_4KB) * @sizeOf(paging.PageInfo), types.SIZE_4KB);
+        const page_end : u64 = memory.PAGE_METADATA.val + bin.alignUp(((entry.base + entry.length) / types.SIZE_4KB) * @sizeOf(paging.PageInfo), types.SIZE_4KB);
 
-        mem_size += bin.align_up(entry.length, types.SIZE_4KB);
+        mem_size += bin.alignUp(entry.length, types.SIZE_4KB);
         metadata_size += page_end - page_start;
 
         var page : u64 = page_start;
         while (page < page_end) : (page += types.SIZE_4KB) {
-            pframe.set_entry(0, alloc_boot_page());
-            paging.map_boot_page(memory.Vaddr.as_virt(page), pframe, 0, root_pt);
+            pframe.setEntry(0, allocBootPage());
+            paging.mapBootPage(memory.Vaddr.as_virt(page), pframe, 0, root_pt);
         }
     }
 
     print("    Available memory ", .{});
-    log.print_size(mem_size, 0);
+    log.printSize(mem_size, 0);
     print("\n    Page metadata overhead ", .{});
-    log.print_size(metadata_size, 0);
+    log.printSize(metadata_size, 0);
     print("\n", .{});
 }
 
 /// Higher Half Direct Map of all memory, excluding reserved and bad regions
-fn map_new_hhdm(root_pt : *paging.Ptable) void {
+fn mapNewHhdm(root_pt : *paging.Ptable) void {
     print("  Mapping HHDM\n", .{});
 
     var pframes : [paging.PFE_MAX_DEPTH]paging.Pte = undefined;
     @memcpy(pframes[0..cpu.FEATURES.MAX_PAGE_SIZE + 1], paging.PFE_DEFAULTS[0..cpu.FEATURES.MAX_PAGE_SIZE + 1]);
 
     for (&pframes, 0..) |*pte, i| {
-        pte.set_global(i, true);
+        pte.setGlobal(i, true);
     }
 
     outer: for(0..kernel.mmap_request.response.*.entry_count) |i| {
@@ -278,29 +278,29 @@ fn map_new_hhdm(root_pt : *paging.Ptable) void {
         };
 
         for (&pframes, 0..) |*pte, j|
-            pte.set_cache(j, cache);
+            pte.setCache(j, cache);
 
         const end : memory.Paddr = .{.val = entry.base + entry.length};
         var cur_addr : memory.Paddr = .{.val = entry.base};
 
         while (cur_addr.val < end.val) {
             var cur_level = cpu.FEATURES.MAX_PAGE_SIZE;
-            var page_size = page_level_to_size(cur_level);
+            var page_size = pageLevelToSize(cur_level);
 
-            while (bin.align_down(cur_addr.val, page_size) != cur_addr.val or cur_addr.val + page_size > end.val) {
+            while (bin.alignDown(cur_addr.val, page_size) != cur_addr.val or cur_addr.val + page_size > end.val) {
                 cur_level -= 1;
-                page_size = page_level_to_size(cur_level);
+                page_size = pageLevelToSize(cur_level);
             }
 
-            pframes[cur_level].set_entry(cur_level, cur_addr);
-            paging.map_boot_page(.{.val = memory.KERNEL_MEMORY.val + cur_addr.val}, pframes[cur_level], cur_level, root_pt);
+            pframes[cur_level].setEntry(cur_level, cur_addr);
+            paging.mapBootPage(.{.val = memory.KERNEL_MEMORY.val + cur_addr.val}, pframes[cur_level], cur_level, root_pt);
 
             cur_addr.val += page_size;
         }
     }
 }
 
-fn map_kernel_image(root_pt : *paging.Ptable) void {
+fn mapKernelImage(root_pt : *paging.Ptable) void {
     print("  Mapping Kernel Image\n", .{});
 
     log.apanic(kernel.executable_address_request.response.*.virtual_base != memory.KERNEL_IMAGE.val,
@@ -313,10 +313,10 @@ fn map_kernel_image(root_pt : *paging.Ptable) void {
         if(phdr.type != elf.ElfPrgHdr.PT.LOAD) continue;
 
         var pfe : paging.Pte = paging.PFE_DEFAULTS[0];
-        pfe.set_global(0, true);
-        pfe.set_exec(0, true); //phdr.flags.execute);
-        pfe.set_write(0, true); //phdr.flags.write);
-        pfe.set_read(0, true); //phdr.flags.read);
+        pfe.setGlobal(0, true);
+        pfe.setExec(0, true); //phdr.flags.execute);
+        pfe.setWrite(0, true); //phdr.flags.write);
+        pfe.setRead(0, true); //phdr.flags.read);
 
         const start : memory.Vaddr = .{.val = phdr.vaddr};
         const size : usize = phdr.mem_sz;
@@ -325,38 +325,35 @@ fn map_kernel_image(root_pt : *paging.Ptable) void {
 
         var addr : u64 = 0;
         while(addr < size) : (addr += types.SIZE_4KB) {
-            pfe.set_entry(0, .{.val = pstart + addr});
-            paging.map_boot_page(.{.val = start.val + addr}, pfe, 0, root_pt);
+            pfe.setEntry(0, .{.val = pstart + addr});
+            paging.mapBootPage(.{.val = start.val + addr}, pfe, 0, root_pt);
         }
     }
 }
 
-fn map_modules(root_pt : *paging.Ptable) void {
+fn mapModules(root_pt : *paging.Ptable) void {
     print("  Mapping Kernel Modules\n", .{});
 
     if (kernel.module_request.response == null) return;
 
     var pfe : paging.Pte = paging.PFE_DEFAULTS[0];
-    pfe.set_global(0, true);
-    pfe.set_write(0, true);
-    pfe.set_exec(0, true);
-    pfe.set_read(0, true);
+    pfe.setGlobal(0, true);
 
     for(0..kernel.mmap_request.response.*.entry_count) |i| {
         const module = &kernel.module_request.response.?.modules[i].*;
 
-        const vaddr : memory.Vaddr = memory.Vaddr.as_virt(bin.align_down(@intFromPtr(module.address), types.SIZE_4KB));
+        const vaddr : memory.Vaddr = memory.Vaddr.as_virt(bin.alignDown(@intFromPtr(module.address), types.SIZE_4KB));
         const paddr : memory.Paddr = vaddr.to_phys();
 
         var j : u64 = 0;
-        while (j < bin.align_up(module.size, types.SIZE_4KB)) : (j += types.SIZE_4KB) {
-            pfe.set_entry(0, .{.val = paddr.val + j});
-            paging.map_boot_page(.{.val = vaddr.val + j}, pfe, 0, root_pt);
+        while (j < bin.alignUp(module.size, types.SIZE_4KB)) : (j += types.SIZE_4KB) {
+            pfe.setEntry(0, .{.val = paddr.val + j});
+            paging.mapBootPage(.{.val = vaddr.val + j}, pfe, 0, root_pt);
         }
     }
 }
 
-fn map_page_cache(root_pt : *paging.Ptable) void {
+fn mapPageCache(root_pt : *paging.Ptable) void {
     print("  Mapping per-cpu Page Cache\n", .{});
 
     //const elf_hdr : *elf.ElfHdr = @ptrCast(@alignCast(kernel.executable_file_request.response.*.executable_file.address));
@@ -364,32 +361,32 @@ fn map_page_cache(root_pt : *paging.Ptable) void {
     _ = root_pt;
 }
 
-fn switch_to_new_ptables() void {
+fn switchToNewPtables() void {
     // Setup paging information
-    paging.setup_paging();
+    paging.setup();
 
     // The new kernel root page table
-    kernel_root_pt = @ptrFromInt(alloc_boot_page().to_virt().val);
+    kernel_root_pt = @ptrFromInt(allocBootPage().to_virt().val);
     memory.memset(kernel_root_pt, types.SIZE_4KB, 0);
 
     // Setup page metadata
-    map_page_mdata(kernel_root_pt);
+    mapPageMdata(kernel_root_pt);
 
     // Setup the Higher-Half Direct Map for applicable regions
-    map_new_hhdm(kernel_root_pt);
+    mapNewHhdm(kernel_root_pt);
 
     // Setup mappings for kernel sections
-    map_kernel_image(kernel_root_pt);
+    mapKernelImage(kernel_root_pt);
 
     // Setup mappings for modules
-    map_modules(kernel_root_pt);
+    mapModules(kernel_root_pt);
 
     // Setup page caches in the per-cpu storage region
-    map_page_cache(kernel_root_pt);
+    mapPageCache(kernel_root_pt);
 
     // Switch to the new page tables
     print("  Switching to new Page Tables\n", .{});
-    _ = paging.switch_page_tables(kernel_root_pt);
+    _ = paging.switchPageTables(kernel_root_pt);
 }
 
 pub fn setup() void {
@@ -400,22 +397,22 @@ pub fn setup() void {
         panic("mm: Limine specified a different PAGE_OFFSET than expected! {} vs {}\n", .{memory.PAGE_OFFSET, memory.KERNEL_MEMORY});
     }
 
-    const num_usable : u64 = sanitize_mmap();
+    const num_usable : u64 = sanitizeMmap();
 
     log.apanic(num_usable > config.MAX_MEMORY_REGIONS, "mm: More memory regions than we can handle!\n", .{});
     USABLE = usable_array[0..num_usable];
 
     print("\nmm: Setting up boot page allocator data\n", .{});
-    populate_usable();
+    populateUsable();
 
     print("\nmm: Setting up new page tables:\n", .{});
-    switch_to_new_ptables();
+    switchToNewPtables();
 
     // Temporary way to set the cpu data of the bootstrap processor
     for (0..kernel.smp_request.response.x86.cpu_count) |i| {
         const smp_info : limine.LimineMpInfoX86 = kernel.smp_request.response.x86.cpus.x86[i].*;
         if (smp_info.lapic_id == kernel.smp_request.response.x86.bsp_lapic_id) {
-            arch.cpu.set_per_cpu(@ptrFromInt(memory.PER_CPU_DATA.val + memory.PER_CPU_DATA_SIZE * i));
+            arch.cpu.setPerCpu(@ptrFromInt(memory.PER_CPU_DATA.val + memory.PER_CPU_DATA_SIZE * i));
         }
     }
 

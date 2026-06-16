@@ -3,7 +3,7 @@ const mm = kernel.mm;
 const vmm = mm.vmm;
 const mem = mm.memory;
 const log = kernel.util.log;
-const arch_cpu = @import("arch").cpu;
+const cpu = @import("arch").cpu;
 
 pub const Process = struct {
     addr_space : vmm.VmSpace,
@@ -13,12 +13,12 @@ pub const kernel_process : Process = undefined;
 
 var PER_CPU_LINKER_OFFSET : mem.Vaddr = undefined;
 
-fn get_local_percpu(comptime T: type, addr : u64) *T {
-    return @ptrFromInt(@intFromPtr(arch_cpu.get_per_cpu()) + addr - PER_CPU_LINKER_OFFSET.val);
+fn getLocalPercpu(comptime T: type, addr : u64) *T {
+    return @ptrFromInt(@intFromPtr(cpu.getPerCpu()) + addr - PER_CPU_LINKER_OFFSET.val);
 }
 
-fn get_global_percpu(comptime T: type, cpu : u8, addr : u64) *T {
-    return @ptrFromInt(mem.PER_CPU_DATA.val + mem.PER_CPU_DATA_SIZE * cpu + addr - PER_CPU_LINKER_OFFSET.val);
+fn getGlobalPercpu(comptime T: type, cpu_num : u8, addr : u64) *T {
+    return @ptrFromInt(mem.PER_CPU_DATA.val + mem.PER_CPU_DATA_SIZE * cpu_num + addr - PER_CPU_LINKER_OFFSET.val);
 }
 
 /// Static per-cpu allocation that is resolved at comptime
@@ -27,12 +27,12 @@ pub fn PerCpuStat(comptime T: type) type {
     return struct {
         const data: T linksection(".percpu") = undefined;
 
-        pub fn get_local() *T {
-            return get_local_percpu(T, @intFromPtr(&data));
+        pub fn getLocal() *T {
+            return getLocalPercpu(T, @intFromPtr(&data));
         }
 
-        pub fn get_global(cpu : anytype) *T {
-            return get_global_percpu(T, @intCast(cpu), @intFromPtr(&data));
+        pub fn getGlobal(cpu_num : anytype) *T {
+            return getGlobalPercpu(T, @intCast(cpu_num), @intFromPtr(&data));
         }
     };
 }
@@ -50,16 +50,16 @@ pub fn PerCpuDyn(comptime T: type) type {
             log.apanic(self.data == null, "pm: A percpu variable attempted to free when it was already free!\n", .{});
         }
 
-        pub fn get_local(self : *@This()) *T {
-            return get_local_percpu(T, self.data);
+        pub fn getLocal(self : *@This()) *T {
+            return getLocalPercpu(T, @intFromPtr(self.data.?));
         }
 
-        pub fn get_global(self : *@This(), cpu : u8) *T {
-            return get_global_percpu(T, cpu, self.data);
+        pub fn getGlobal(self : *@This(), cpu_num : u8) *T {
+            return getGlobalPercpu(T, cpu_num, @intFromPtr(self.data.?));
         }
     };
 }
 
-pub export fn in_kmode(state : *arch_cpu.CpuState) callconv(.c) bool {
-    return state.get_stack() >= mem.KERNEL_MEMORY.val;
+pub export fn inKmode(state : *cpu.CpuState) callconv(.c) bool {
+    return state.getStack() >= mem.KERNEL_MEMORY.val;
 }

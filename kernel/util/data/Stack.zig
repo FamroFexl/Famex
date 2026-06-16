@@ -17,23 +17,19 @@ pub fn push(stack : *@This(), node : *Node) void {
     stack.next = node;
 }
 
-pub fn pop(stack : *@This()) *Node {
+pub fn pop(stack : *@This()) ?*Node {
     const node = stack.next;
     if(node == null) return null;
 
-    stack.next = node.next;
+    stack.next = node.?.next;
     return node;
 }
 
-pub fn drain(stack : *@This()) *Node {
+pub fn drain(stack : *@This()) ?*Node {
     const node = stack.next;
     stack.next = null;
 
     return node;
-}
-
-pub fn drain_atom(stack : *@This()) *Node {
-    return @atomicRmw(?*Node, &stack.next, std.builtin.AtomicRmwOp.Xchg, null, std.builtin.AtomicOrder.acquire);
 }
 
 pub fn peek(stack : *@This()) *Node {
