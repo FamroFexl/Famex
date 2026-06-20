@@ -1,3 +1,10 @@
+const std = @import("std");
+
+/// Bits to bytes
+pub fn toBytes(bits : anytype) u64 {
+    return (bits + 7) / 8;
+}
+
 pub fn setBit(bit : anytype) u64 {
     return @as(u64, 1) << @intCast(bit);
 }
@@ -80,6 +87,15 @@ pub fn setIfSmaller(comptime T: type, current: *T, new_value: T) void {
     if (new_value < current.*) {
         current.* = new_value;
     }
+}
+
+pub fn isZero(val : anytype) bool {
+    return std.mem.allEqual(u8, std.mem.asBytes(&val), 0);
+    //return std.mem.eql(u8, std.mem.asBytes(&val), std.mem.zeroes(@TypeOf(val)));
+}
+
+pub fn ptrCast(comptime T : type, val : *anyopaque) T {
+    return @ptrCast(@alignCast(val));
 }
 
 pub fn SizedType(comptime size: usize, comptime alignment: u29) type {

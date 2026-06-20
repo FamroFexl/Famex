@@ -86,7 +86,7 @@ pub fn pmallocBytes(size : usize) *anyopaque {
         return buddy.allocPage(@intCast(buddy.sizeToOrder(size))).to_virt().ptr();
     }
 
-    return slub.SlubPool.alloc(slub.object_pools[size >> 3].load(.acquire));
+    return slub.SlubPool.alloc(slub.object_pools[size >> 3].load(.acquire).?);
 }
 
 pub fn pmalloc(comptime T: type) *T {

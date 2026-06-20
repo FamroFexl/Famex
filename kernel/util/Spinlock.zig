@@ -13,7 +13,7 @@ pub fn init(spinlock : *@This()) void {
 pub fn tryLock(spinlock : *@This()) bool {
     const locked = !spinlock.val.rmw(.Xchg, true, .acquire);
     if (locked) {
-        locks.lockAdd(@ptrCast(@constCast(&spinlock)));
+        locks.lockAdd(@ptrCast(@constCast(spinlock)));
     }
 
     return locked;
@@ -29,13 +29,13 @@ pub fn lock(spinlock : *@This()) void {
         cpu.spinWaitLoop();
     }
 
-    locks.lockAdd(@ptrCast(@constCast(&spinlock)));
+    locks.lockAdd(@ptrCast(@constCast(spinlock)));
 }
 
 pub fn unlock(spinlock : *@This()) void {
     spinlock.val.store(false, .release);
 
-    locks.lockRemove(@ptrCast(@constCast(&spinlock)));
+    locks.lockRemove(@ptrCast(@constCast(spinlock)));
 
     // irq_restore();
 }

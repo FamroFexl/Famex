@@ -1,3 +1,5 @@
+const builtin = @import("builtin");
+
 const kernel = @import("kernel");
 const types = kernel.util.types;
 const bin = kernel.util.binary;
@@ -5,6 +7,7 @@ const bin = kernel.util.binary;
 const memory = @import("memory.zig");
 const vmm = @import("vmm.zig");
 const pmm = @import("pmm.zig");
+const buddy = @import("buddy_alloc.zig");
 
 const arch = @import("arch");
 pub const Pte = arch.paging.Pte;
@@ -18,18 +21,18 @@ pub const PFE_MAX_DEPTH = 3;
 pub var PTE_DEFAULTS : [PTE_MAX_DEPTH]Pte = undefined;
 pub var PFE_DEFAULTS : [PFE_MAX_DEPTH]Pte = undefined;
 
-pub const PteCache = enum(u4) {
-    WRITE_BACK,
-    WRITE_COMBINING,
-    UNCACHED,
-};
-
 pub const PTE_SIZE_BITS = 12;
 pub const PTE_ENTRIES = 512;
 pub const PTE_ENTRY_BITS = 9;
 
 pub const Ptable = struct {
     pte : [PTE_ENTRIES]Pte,
+};
+
+pub const PteCache = enum(u4) {
+    WRITE_BACK,
+    WRITE_COMBINING,
+    UNCACHED,
 };
 
 /// Packed page info, as small as possible.
@@ -96,6 +99,245 @@ fn getPteType(pte : *Pte, level : anytype) PteType {
 
     return PteType.PFE;
 }
+
+const PageOrder = enum(u8) {
+    ORDER_4KB = 0,
+    ORDER_2MB = 9,
+    ORDER_1GB = 18,
+};
+
+const PageLevel = enum(u2) {
+    LEVEL_4KB = 0,
+    LEVEL_2MB = 1,
+    LEVEL_1GB = 2,
+};
+
+const PageLevelToSize = [_]usize{
+    types.SIZE_4KB,
+    types.SIZE_2MB,
+    types.SIZE_1GB,
+    types.SIZE_512GB,
+    types.SIZE_256TB,
+    types.SIZE_128PB,
+};
+
+fn pte_init(state : *PfeState, level : anytype, alloc : bool) ?*Pte {
+    const entry = getPtableEntry(state.cur, level);
+
+    if (level == state.level)
+        return &state.walk[level].pte[entry];
+
+    var pte : ?*Pte = undefined;
+    for(entry..PTE_ENTRIES) |i| {
+        pte = &state.walk[level].pte[i];
+
+        switch (getPteType(pte.?, level)) {
+            .EMPTY => {
+                if (!alloc)
+                    continue;
+
+                const page = buddy.zallocPage4k();
+
+                pte.?.* = PTE_DEFAULTS[level];
+                pte.?.setEntry(level, page);
+
+                state.walk[level - 1] = bin.ptrCast(*Ptable, page.to_virt().ptr());
+
+                pte = pte_init(state, level - 1, alloc);
+            },
+            .TABLE => {
+                state.walk[level - 1] = bin.ptrCast(*Ptable, pte.?.getEntry(level).to_virt().ptr());
+                pte = pte_init(state, level - 1, alloc);
+            },
+            .PFE => continue,
+        }
+
+        if (pte != null)
+            break;
+
+        const size = PageLevelToSize[level];
+        state.cur = .{.val = bin.alignDown(state.cur.val, size) + size};
+
+        if (state.cur.val >= state.end.val)
+            return null;
+    }
+
+    return pte;
+}
+
+fn pte_next(state : *PfeState, level : anytype, alloc : bool) ?*Pte {
+    if (!state.init) {
+        state.init = true;
+        state.pfe = pte_init(state, cpu.FEATURES.PAGE_TABLE_LEVELS - 1, alloc);
+        return state.pfe;
+    }
+
+    const entry = getPtableEntry(state.cur, level);
+    var pte : *Pte = undefined;
+
+    while (true) {
+        // We are beyond range, we need to go up a level
+        if (entry == PTE_ENTRIES - 1) {
+            pte = pte_next(state, level + 1, alloc) orelse return null;
+
+            const size = PageLevelToSize[level];
+            state.cur.val = bin.alignDown(state.cur.val, size);
+        }
+        // We are in range
+        else {
+            const size = PageLevelToSize[level];
+            state.cur.val += size;
+
+            if (state.cur.val >= state.end.val)
+                return null;
+
+            pte = &state.walk[level].pte[entry];
+        }
+
+        if (level == state.level)
+            return pte;
+
+        var page : memory.Paddr = undefined;
+        switch (getPteType(pte, level)) {
+            .EMPTY => {
+                if (!alloc)
+                    continue;
+
+                page = buddy.zallocPage4k();
+
+                pte.* = PTE_DEFAULTS[level];
+                pte.setEntry(level, page);
+            },
+            .TABLE => page = pte.getEntry(level),
+            .PFE => continue,
+        }
+
+        const table = bin.ptrCast(*Ptable, page.to_virt().ptr());
+        state.walk[level - 1] = table;
+
+        return &table.pte[entry];
+    }
+}
+
+fn pte_unmap_next(state : *PfeState, prior_unmapped : bool) ?Pte {
+    if (!state.init)
+        state.get_next();
+
+    const pte = state.pfe orelse return null;
+    const pfe = pte.*;
+    pte.setEmpty(state.level);
+
+    var cur_state = state.*;
+
+    state.get_next();
+
+    // See if any optimizations can be applied before a manual scan.
+    var level : u8 = undefined;
+    if (prior_unmapped) {
+        // Get the highest page table level that changed between addresses
+        const diff = cur_state.cur.val ^ state.cur.val;
+        if (diff != 0) {
+            level = (63 - PTE_SIZE_BITS - @clz(diff)) / PTE_ENTRY_BITS;
+        }
+        else {
+            level = state.level;
+        }
+
+        // Free all levels that we know are empty and don't need to scan
+        for((state.level + 1)..(level + 1)) |i| {
+            const entry = getPtableEntry(cur_state.cur, i);
+            const next_pte = &cur_state.walk[i].pte[entry];
+            const table = next_pte.getEntry(level);
+            buddy.freePage4K(table);
+        }
+    }
+    else {
+        level = state.level;
+    }
+
+    // Manually scan over remaining levels
+    outer: for ((level + 1)..cpu.FEATURES.PAGE_TABLE_LEVELS) |i| {
+        const entry = getPtableEntry(cur_state.cur, i);
+        const next_pte = &cur_state.walk[i].pte[entry];
+        const table_entry = next_pte.getEntry(level);
+        const table : *Ptable = @ptrCast(table_entry.to_virt().ptr());
+
+        for (0..PTE_ENTRIES) |j| {
+            // Does the entry exist?
+            if (!table.pte[j].getEmpty(i - 1))
+                break :outer;
+        }
+
+        buddy.freePage4k(table_entry);
+        next_pte.* = 0;
+    }
+
+    return pfe;
+}
+
+const PfeIterator = enum {
+    MAP,
+    UNMAP,
+    GET,
+};
+
+pub const PfeState = struct {
+    pfe : ?*Pte,                     // The current PFE
+    cur : memory.Vaddr,             // The address of the current PFE.
+    walk : [PTE_MAX_DEPTH]*Ptable,  // Page tables in the walk to the current PFE.
+    start : memory.Vaddr,           // Beginning of PFE iteration.
+    end : memory.Vaddr,             // End limits of PFE iteration.
+    level : u8,                     // The level all mapped, unmapped, and retrieved PFEs will be.
+    init : bool,                    // State has been initialized with first PFE and ptable walk.
+    iterator : PfeIterator,
+    space : *vmm.VmSpace,
+
+    pub fn create(iterator : PfeIterator, space : *vmm.VmSpace, start : memory.Vaddr, end : memory.Vaddr, level : PageLevel) PfeState {
+        const size = PageLevelToSize[@intFromEnum(level)];
+        const new_start : memory.Vaddr = .{.val = bin.alignUp(start.val, size)};
+        return .{
+            .pfe = null,
+            .start = new_start,
+            .end = .{.val = bin.alignDown(end.val, size)},
+            .cur = new_start,
+            .level = @intFromEnum(level),
+            .walk = blk: {
+                var walk : [PTE_MAX_DEPTH]*Ptable = undefined;
+                walk[cpu.FEATURES.PAGE_TABLE_LEVELS - 1] = space.root_pt;
+                break :blk walk;
+            },
+            .init = false,
+            .iterator = iterator,
+            .space = space,
+        };
+    }
+
+    pub fn get_next(state : *@This()) ?*Pte {
+        if (builtin.mode == .Debug and state.iterator != .GET)
+            log.panic("Mixed PFE iterator types!", .{});
+
+        state.pfe = pte_next(state, state.level, false);
+        while (state.pfe and getPteType(state.level, state.pfe) != .PFE) {
+            state.pfe = pte_next(state, state.level, false);
+        }
+
+        return state.pfe;
+    }
+
+    pub fn map_next(state : *@This()) ?*Pte {
+        if (builtin.mode == .Debug and state.iterator != .MAP)
+            log.panic("Mixed PFE iterator types!", .{});
+
+        return pte_next(state, state.level, true);
+    }
+
+    pub fn unmap_next(state : *@This(), prior_unmapped : bool) ?Pte {
+        if (builtin.mode == .Debug and state.iterator != .UNMAP)
+            log.panic("Mixed PFE iterator types!", .{});
+
+        return pte_unmap_next(state, prior_unmapped);
+    }
+};
 
 pub fn printPtables(root_pt : *Ptable, level : anytype, min : anytype) void {
     outer: for (0..PTE_ENTRIES) |i| {

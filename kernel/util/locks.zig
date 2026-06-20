@@ -3,6 +3,8 @@ const kernel = @import("kernel");
 const proc = kernel.pm.process;
 const log = kernel.util.log;
 
+const cpu = @import("arch").cpu;
+
 const LockData = struct {
     held_locks : [64]*anyopaque,
     cur_lock : u64,
@@ -37,5 +39,12 @@ pub fn lockRemove(lock : *anyopaque) void {
     if (builtin.mode == .Debug) {
         const data : *LockData  = lock_data.getLocal();
         data.cur_lock -= 1;
+    }
+}
+
+pub fn setup() void {
+    for (0..cpu.FEATURES.NUM_CPU_CORES) |i| {
+        const data = lock_data.getGlobal(i);
+        data.cur_lock = 0;
     }
 }

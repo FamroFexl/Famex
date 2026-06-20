@@ -97,21 +97,27 @@ fn ensureFeatures() void {
     api.cpu.FEATURES.READ_BIT = false;
 }
 
+extern fn fpStateReset() callconv(.c) void;
+
 fn setupFp() void {
     print("\narch: Setting up Floating Point (X87, SSE", .{});
+
+    var cr4 = reg.Cr4.get();
+    cr4.osfxcr = true;
+    cr4.osxmmexcpt = true;
+
     // No XSave, just FXSave
     if (cpu.leaf_0x1.ecx.xsave == 0) {
         print(") Size 512\n", .{});
+        reg.Cr4.set(cr4);
         cpu.FP_SAVE_POOL.init(512, 64, null);
         return;
     }
-    cpu.XSAVE_ON = true;
 
-    if (cpu.leaf_0x1.ecx.osxsave == 0) {
-        var cr4 = reg.Cr4.get();
-        cr4.osxsave = true;
-        reg.Cr4.set(cr4);
-    }
+    cr4.osxsave = true;
+    reg.Cr4.set(cr4);
+
+    cpu.XSAVE_ON = true;
 
     var leaf = cpu.cpuid(cpuid.leaf_0xd_0, 0xd, 0);
     var xcr0 = reg.Xcr0.get();
@@ -119,7 +125,7 @@ fn setupFp() void {
     // Disable all the features we don't want and just enable X87, SSE, and AVX
     xcr0.x87 = true;    // This must be the case for any cpu we support
     if (leaf.eax.xcr0_sse == 1)              xcr0.sse = true;
-    if (leaf.eax.xcr0_avx == 1)              {xcr0.avx = true; print(", AVX)", .{});}
+    if (leaf.eax.xcr0_avx == 1)              {xcr0.avx = true; print(", AVX", .{});}
     if (leaf.eax.xcr0_mpx_bndregs == 1)      xcr0.bndreg = false;
     if (leaf.eax.xcr0_mpx_bndcsr == 1)       xcr0.bndcsr = false;
     if (leaf.eax.xcr0_avx512_opmask == 1)    xcr0.opmask = false;
@@ -132,8 +138,12 @@ fn setupFp() void {
     reg.Xcr0.set(xcr0);
     leaf = cpu.cpuid(cpuid.leaf_0xd_0, 0xd, 0);
 
-    print(" Size {})\n", .{leaf.ebx.xsave_sz_xcr0_enabled});
+    print(") Size {}\n", .{leaf.ebx.xsave_sz_xcr0_enabled});
     cpu.FP_SAVE_POOL.init(leaf.ebx.xsave_sz_xcr0_enabled, 64, null);
+
+    cpu.FP_INIT.regs = cpu.FP_SAVE_POOL.alloc();
+    fpStateReset();
+    cpu.FP_INIT.save();
 }
 
 /// Only one GDT for all cores

@@ -22,7 +22,7 @@ var slub_pool_pool : SlubPool = undefined;
 
 pub var cacheline_pool : SlubPool = undefined;
 
-pub var object_pools : [*]std.atomic.Value(*SlubPool) = undefined;
+pub var object_pools : [*]std.atomic.Value(?*SlubPool) = undefined;
 
 const Slab = struct {
     link : List.Node,
@@ -129,7 +129,7 @@ pub const SlubPool = struct {
 
         pool.local_slab.alloc();
         for(0..cpu.FEATURES.NUM_CPU_CORES) |i| {
-            pool.local_slab.getGlobal(@intCast(i)).* = null;
+            pool.local_slab.getGlobal(i).* = null;
         }
     }
 
@@ -259,7 +259,7 @@ pub const SlubPool = struct {
     pub fn free(pool : *@This(), addr : *anyopaque) void {
         const new_addr : mem.Vaddr = .{.val = @intFromPtr(addr)};
         const info = addr.to_info();
-        const slab : *Slab = @ptrFromInt(bin.alignDown(new_addr, buddy.orderToSize(info.get_data().order)));
+        const slab : *Slab = @ptrFromInt(bin.alignDown(new_addr.val, buddy.orderToSize(info.get_data().order)));
 
         if (builtin.mode == .Debug) {
             log.apanic(slab.pool != pool, "A free was requested on the wrong SLUB pool!\n", .{});
@@ -277,8 +277,8 @@ pub const SlubPool = struct {
     }
 
     pub fn freeBulk(pool : *@This(), stack : Stack) void {
-        var node : *Stack.Node = stack.pop();
-        while (node) : (node = stack.pop()) {
+        while (true) {
+            const node = stack.pop orelse break;
             free(pool, node);
         }
     }
@@ -360,9 +360,9 @@ fn setupSlubPoolPool() void {
     // Setup the main list
     var i : i64 = size >> 3;
     while (i >= 0) : (i -= 1) {
-        const cur_pool = object_pools[i].load(.acquire);
-        if (cur_pool == null or cur_pool.object_size >> 3 != i) {
-            object_pools[i].store(slub_pool_pool, .release);
+        const cur_pool = object_pools[@intCast(i)].load(.acquire);
+        if (cur_pool == null or cur_pool.?.object_size >> 3 != i) {
+            object_pools[@intCast(i)].store(&slub_pool_pool, .release);
         }
         else {
             break;
@@ -375,7 +375,7 @@ fn slubPoolPmalloc(size : u64) void {
 
     const order = getSlubOrder(aligned_8, 8);
     const block_size = buddy.orderToSize(order) - @sizeOf(Slab);
-    const count = block_size / aligned_8;
+    var count = block_size / aligned_8;
 
     // Extra object can fit
     if (block_size % aligned_8 >= size) {
@@ -389,18 +389,18 @@ fn slubPoolPmalloc(size : u64) void {
 
     // Pool has already been created
     const pool = object_pools[shift_8].load(.unordered);
-    if (pool != null and pool.object_size == aligned_8)
+    if (pool != null and pool.?.object_size == aligned_8)
         return;
 
-    const new_pool : *SlubPool = slub_pool_pool.alloc();
+    const new_pool = bin.ptrCast(*SlubPool, slub_pool_pool.alloc());
     new_pool.__init(aligned_8, 8, order, count, null);
 
     // Initialize pool in object array
-    var i : i64 = size >> 3;
+    var i : i64 = @as(i64, @intCast(size)) >> 3;
     while (i >= 0) : (i -= 1) {
-        const cur_pool = object_pools[i].load(.acquire);
-        if (cur_pool == null or cur_pool.object_size >> 3 != i) {
-            object_pools[i].store(slub_pool_pool, .release);
+        const cur_pool = object_pools[@intCast(i)].load(.acquire);
+        if (cur_pool == null or cur_pool.?.object_size >> 3 != i) {
+            object_pools[@intCast(i)].store(&slub_pool_pool, .release);
         }
         else {
             break;
@@ -424,9 +424,9 @@ fn setupPow2Pools() void {
     slubPoolPmalloc(MAX_SLUB_SIZE);
 }
 
-fn setup() void {
+pub fn setup() void {
     print("\nmm: Setting up Slub Allocator:\n", .{});
-    MAX_SLUB_ORDER = bin.min(buddy.MAX_BUDDY_ORDER, 3);
+    MAX_SLUB_ORDER = @intCast(bin.min(buddy.MAX_BUDDY_ORDER, 3));
     MAX_SLUB_SIZE = (buddy.orderToSize(MAX_SLUB_ORDER) - @sizeOf(Slab)) / 2;
 
     print("  Setting up the PMalloc pool object array\n", .{});

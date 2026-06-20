@@ -106,6 +106,15 @@ FUNC xLoad
     ret
 FUNC_END xLoad
 
+FUNC fpStateReset
+    fninit
+    sub rsp, 8
+    mov qword ptr [rsp], 0x1F80
+    ldmxcsr [rsp]
+    add rsp, 8
+    ret
+FUNC_END fpStateReset
+
 FUNC getRflags
     pushfq
     pop rax

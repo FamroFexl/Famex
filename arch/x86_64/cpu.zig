@@ -1,8 +1,14 @@
 const cpuid_db = @import("lib").cpuid_db;
 const kernel = @import("kernel");
+
+const api = @import("arch_api");
 const log = kernel.util.log;
 
+/// Pool for FP save state allocations
 pub var FP_SAVE_POOL : kernel.mm.slub_alloc.SlubPool = undefined;
+/// Used to initialize FP states for new threads
+pub var FP_INIT : api.cpu.FpuState = undefined;
+/// Use XSave if true, FXSave if false
 pub var XSAVE_ON : bool = false;
 
 ///  AMD:     "AuthenticAMD"

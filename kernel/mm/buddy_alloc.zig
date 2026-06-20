@@ -26,7 +26,7 @@ const OrderBlock = struct {
 
 var orders_lock : util.Spinlock = .{.val = .init(false)};
 
-var orders : [NUM_ORDERS]OrderBlock = undefined;
+var orders : [NUM_ORDERS + 1]OrderBlock = undefined;
 
 const LocalPagePool = struct {
     current : u64,
@@ -39,7 +39,7 @@ pub fn orderToSize(order : anytype) usize {
     return @as(u64, types.SIZE_4KB) << @intCast(order);
 }
 
-pub fn sizeToOrder(size : usize) u64 {
+pub fn sizeToOrder(size : usize) u8 {
     return 64 - @clz(size - 1) - 12;
 }
 
@@ -62,9 +62,9 @@ fn setupRegions() void {
         const entry = pmm.USABLE[i];
 
         if(entry.region_end != entry.region_start) {
-            num_regions += 1;
             const next = &pmm.USABLE[num_regions];
             next.* = entry;
+            num_regions += 1;
         }
     }
 
@@ -81,10 +81,10 @@ fn setupRegionOrders() void {
 
     for (0..pmm.USABLE.len) |i| {
         const entry = pmm.USABLE[i];
-        var cur : mem.Paddr = .{.val = entry.block_start};
+        var cur : mem.Paddr = .{.val = entry.region_start};
 
-        while (cur.val < entry.block_end) {
-            const block_size : usize = bin.min(bin.maxAlignBetween(cur.val, entry.block_end), orderToSize(MAX_BUDDY_ORDER));
+        while (cur.val < entry.region_end) {
+            const block_size : usize = bin.min(bin.maxAlignBetween(cur.val, entry.region_end), orderToSize(MAX_BUDDY_ORDER));
 
             const order = sizeToOrder(block_size);
 
@@ -112,11 +112,7 @@ fn setupRegionOrders() void {
     }
 }
 
-pub const PageAllocError = error {
-    OrderEmpty,  // No pages could be found in the order or in the ones above it
-};
-
-pub fn __allocPage(order : u8) !mem.Paddr {
+pub fn __allocPage(order : u8) error{OrderEmpty}!mem.Paddr {    // No pages could be found in the order or in the ones above it
     util.locks.lockHeld(&orders_lock);
 
     log.apanic(order > MAX_BUDDY_ORDER, "Requested a buddy order larger than we have!\n", .{});
@@ -132,7 +128,7 @@ pub fn __allocPage(order : u8) !mem.Paddr {
 
     // No free blocks could be found
     if (order_index == std.math.maxInt(u8))
-        return PageAllocError.OrderEmpty;
+        return error.OrderEmpty;
 
     const block : mem.Vaddr = .{.val = @intFromPtr(orders[order_index].free.removeFront())};
     orders[order_index].num_free -= 1;
@@ -175,8 +171,8 @@ pub fn __freePage(addr : mem.Paddr) void {
         const buddy_data = buddy_info.getData();
         const region = pmm.USABLE[buddy_data.region];
 
-        if (buddy.val < region.block_start or
-            buddy.val + size > region.block_end or
+        if (buddy.val < region.region_start or
+            buddy.val + size > region.region_end or
             buddy_data.flags.free == false or
             buddy_data.order != i) {
             break;
@@ -243,7 +239,7 @@ pub fn freePage4k(addr : mem.Paddr) void {
 pub fn zallocPage4k() mem.Paddr {
     const page = allocPage4k();
 
-    mem.memset(@ptrFromInt(page.to_virt()), types.SIZE_4KB, 0);
+    mem.memset(@ptrFromInt(page.to_virt().val), types.SIZE_4KB, 0);
 
     return page;
 }

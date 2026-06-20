@@ -223,7 +223,7 @@ pub const Pte = packed struct(u64) {
 
     pub fn getEmpty(self : *@This(), level : anytype) bool {
         _ = level;
-        return @as(u64, @bitCast(self.*)) == 0;
+        return bin.isZero(self.*);
     }
 
     pub fn getAccessed(self : *@This(), level : anytype) bool {

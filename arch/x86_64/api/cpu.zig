@@ -23,12 +23,12 @@ pub const FpuState = struct {
 
     /// Allocate an appropriately-sized FPU register state
     pub fn alloc() *@This() {
-        return .{.regs = cpu.XSAVE_POOL.alloc()};
+        return .{.regs = cpu.FP_SAVE_POOL.alloc()};
     }
 
     /// Free a FPU state
     pub fn free(state : *@This()) void {
-        cpu.XSAVE_POOL.free(state.regs);
+        cpu.FP_SAVE_POOL.free(state.regs);
     }
 
     extern fn fxSave(state : *anyopaque) callconv(.c) void;

@@ -8,12 +8,12 @@ const lib = @import("lib");
 const elf = lib.elf;
 const limine = lib.limine;
 const process = kernel.pm.process;
-var kernel_root_pt = process.kernel_process.addr_space.root_pt;
 
 const memory = @import("memory.zig");
 const vmm = @import("vmm.zig");
 const paging = @import("paging.zig");
 const buddy_alloc = @import("buddy_alloc.zig");
+const slub_alloc = @import("slub_alloc.zig");
 const Addr = memory.Addr;
 
 const arch = @import("arch");
@@ -211,7 +211,7 @@ pub fn allocBootPage() memory.Paddr {
     return .{.val = selected.?.region_start - types.SIZE_4KB};
 }
 
-fn mapPageMdata(root_pt : *paging.Ptable) void {
+fn mapPageMdata(kernel_root_pt : *paging.Ptable) void {
     print("  Mapping Page Metadata:\n", .{});
 
     var pframe : paging.Pte = paging.PFE_DEFAULTS[0];
@@ -234,7 +234,7 @@ fn mapPageMdata(root_pt : *paging.Ptable) void {
         var page : u64 = page_start;
         while (page < page_end) : (page += types.SIZE_4KB) {
             pframe.setEntry(0, allocBootPage());
-            paging.mapBootPage(memory.Vaddr.as_virt(page), pframe, 0, root_pt);
+            paging.mapBootPage(memory.Vaddr.as_virt(page), pframe, 0, kernel_root_pt);
         }
     }
 
@@ -246,7 +246,7 @@ fn mapPageMdata(root_pt : *paging.Ptable) void {
 }
 
 /// Higher Half Direct Map of all memory, excluding reserved and bad regions
-fn mapNewHhdm(root_pt : *paging.Ptable) void {
+fn mapNewHhdm(kernel_root_pt : *paging.Ptable) void {
     print("  Mapping HHDM\n", .{});
 
     var pframes : [paging.PFE_MAX_DEPTH]paging.Pte = undefined;
@@ -287,14 +287,14 @@ fn mapNewHhdm(root_pt : *paging.Ptable) void {
             }
 
             pframes[cur_level].setEntry(cur_level, cur_addr);
-            paging.mapBootPage(.{.val = memory.KERNEL_MEMORY.val + cur_addr.val}, pframes[cur_level], cur_level, root_pt);
+            paging.mapBootPage(.{.val = memory.KERNEL_MEMORY.val + cur_addr.val}, pframes[cur_level], cur_level, kernel_root_pt);
 
             cur_addr.val += page_size;
         }
     }
 }
 
-fn mapKernelImage(root_pt : *paging.Ptable) void {
+fn mapKernelImage(kernel_root_pt : *paging.Ptable) void {
     print("  Mapping Kernel Image\n", .{});
 
     log.apanic(kernel.executable_address_request.response.*.virtual_base != memory.KERNEL_IMAGE.val,
@@ -320,12 +320,12 @@ fn mapKernelImage(root_pt : *paging.Ptable) void {
         var addr : u64 = 0;
         while(addr < size) : (addr += types.SIZE_4KB) {
             pfe.setEntry(0, .{.val = pstart + addr});
-            paging.mapBootPage(.{.val = start.val + addr}, pfe, 0, root_pt);
+            paging.mapBootPage(.{.val = start.val + addr}, pfe, 0, kernel_root_pt);
         }
     }
 }
 
-fn mapModules(root_pt : *paging.Ptable) void {
+fn mapModules(kernel_root_pt : *paging.Ptable) void {
     print("  Mapping Kernel Modules\n", .{});
 
     if (kernel.module_request.response == null) return;
@@ -342,20 +342,20 @@ fn mapModules(root_pt : *paging.Ptable) void {
         var j : u64 = 0;
         while (j < bin.alignUp(module.size, types.SIZE_4KB)) : (j += types.SIZE_4KB) {
             pfe.setEntry(0, .{.val = paddr.val + j});
-            paging.mapBootPage(.{.val = vaddr.val + j}, pfe, 0, root_pt);
+            paging.mapBootPage(.{.val = vaddr.val + j}, pfe, 0, kernel_root_pt);
         }
     }
 }
 
-fn mapPercpu(root_pt : *paging.Ptable) void {
+fn mapPercpu(kernel_root_pt : *paging.Ptable) void {
     print("  Mapping per-cpu static region\n", .{});
 
     const elf_hdr : *elf.ElfHdr = @ptrCast(@alignCast(kernel.executable_file_request.response.*.executable_file.address));
     const shdr = elf_hdr.getShdrByName(".percpu").?;
     const size = bin.alignUp(shdr.size, types.SIZE_4KB);
 
-    process.PER_CPU_LINKER_OFFSET = .{.val = shdr.addr};
-    process.PER_CPU_STARTING_OFFSET = size;
+    process.per_cpu.PER_CPU_LINKER_OFFSET = .{.val = shdr.addr};
+    process.per_cpu.PER_CPU_STARTING_OFFSET = .{.val = size};
 
     var pfe : paging.Pte = paging.PFE_DEFAULTS[0];
     pfe.setGlobal(0, true);
@@ -365,37 +365,51 @@ fn mapPercpu(root_pt : *paging.Ptable) void {
         var cur : u64 = 0;
         while (cur < size) : (cur += types.SIZE_4KB) {
             pfe.setEntry(0, allocBootPage());
-            paging.mapBootPage(.{.val = vaddr_start + cur}, pfe, 0, root_pt);
+            paging.mapBootPage(.{.val = vaddr_start + cur}, pfe, 0, kernel_root_pt);
         }
     }
+}
+
+fn mapPercpuDyn() void {
+    print("  Mapping per-cpu dynamic region\n", .{});
+
+    // This gives us 2MB per cpu of potential dynamic allocations
+    const num_bits = types.SIZE_2MB / process.per_cpu.PER_CPU_DYN_ALLOC_BYTES;
+    const size = bin.toBytes(num_bits);
+    const addr = memory.pmallocBytes(size);
+    memory.memset(addr, size, 0);
+    process.per_cpu.dyn_alloc_bmap.init(addr, num_bits);
+    process.per_cpu.dyn_alloc_bmap_lock.init();
 }
 
 fn switchToNewPtables() void {
     // Setup paging information
     paging.setup();
 
+    const kernel_root_pt = &process.kernel_process.addr_space.root_pt;
+
     // The new kernel root page table
-    kernel_root_pt = @ptrFromInt(allocBootPage().to_virt().val);
-    memory.memset(kernel_root_pt, types.SIZE_4KB, 0);
+    kernel_root_pt.* = @ptrFromInt(allocBootPage().to_virt().val);
+    memory.memset(kernel_root_pt.*, types.SIZE_4KB, 0);
 
     // Setup page metadata
-    mapPageMdata(kernel_root_pt);
+    mapPageMdata(kernel_root_pt.*);
 
     // Setup the Higher-Half Direct Map for applicable regions
-    mapNewHhdm(kernel_root_pt);
+    mapNewHhdm(kernel_root_pt.*);
 
     // Setup mappings for kernel sections
-    mapKernelImage(kernel_root_pt);
+    mapKernelImage(kernel_root_pt.*);
 
     // Setup mappings for modules
-    mapModules(kernel_root_pt);
+    mapModules(kernel_root_pt.*);
 
     // Setup page caches in the per-cpu storage region
-    mapPercpu(kernel_root_pt);
+    mapPercpu(kernel_root_pt.*);
 
     // Switch to the new page tables
     print("  Switching to new Page Tables\n", .{});
-    _ = paging.switchPageTables(kernel_root_pt);
+    _ = paging.switchPageTables(kernel_root_pt.*);
 }
 
 pub fn setup() void {
@@ -425,5 +439,11 @@ pub fn setup() void {
         }
     }
 
+    kernel.util.locks.setup();
+
     buddy_alloc.setup();
+
+    mapPercpuDyn();
+
+    slub_alloc.setup();
 }
