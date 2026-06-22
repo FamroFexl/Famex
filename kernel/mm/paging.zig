@@ -121,7 +121,7 @@ const PageLevelToSize = [_]usize{
     types.SIZE_128PB,
 };
 
-fn pte_init(state : *PfeState, level : anytype, alloc : bool) ?*Pte {
+fn pteInit(state : *PfeState, level : anytype, alloc : bool) ?*Pte {
     const entry = getPtableEntry(state.cur, level);
 
     if (level == state.level)
@@ -143,11 +143,11 @@ fn pte_init(state : *PfeState, level : anytype, alloc : bool) ?*Pte {
 
                 state.walk[level - 1] = bin.ptrCast(*Ptable, page.to_virt().ptr());
 
-                pte = pte_init(state, level - 1, alloc);
+                pte = pteInit(state, level - 1, alloc);
             },
             .TABLE => {
                 state.walk[level - 1] = bin.ptrCast(*Ptable, pte.?.getEntry(level).to_virt().ptr());
-                pte = pte_init(state, level - 1, alloc);
+                pte = pteInit(state, level - 1, alloc);
             },
             .PFE => continue,
         }
@@ -165,10 +165,10 @@ fn pte_init(state : *PfeState, level : anytype, alloc : bool) ?*Pte {
     return pte;
 }
 
-fn pte_next(state : *PfeState, level : anytype, alloc : bool) ?*Pte {
+fn pteNext(state : *PfeState, level : anytype, alloc : bool) ?*Pte {
     if (!state.init) {
         state.init = true;
-        state.pfe = pte_init(state, cpu.FEATURES.PAGE_TABLE_LEVELS - 1, alloc);
+        state.pfe = pteInit(state, cpu.FEATURES.PAGE_TABLE_LEVELS - 1, alloc);
         return state.pfe;
     }
 
@@ -178,7 +178,7 @@ fn pte_next(state : *PfeState, level : anytype, alloc : bool) ?*Pte {
     while (true) {
         // We are beyond range, we need to go up a level
         if (entry == PTE_ENTRIES - 1) {
-            pte = pte_next(state, level + 1, alloc) orelse return null;
+            pte = pteNext(state, level + 1, alloc) orelse return null;
 
             const size = PageLevelToSize[level];
             state.cur.val = bin.alignDown(state.cur.val, size);
@@ -219,9 +219,9 @@ fn pte_next(state : *PfeState, level : anytype, alloc : bool) ?*Pte {
     }
 }
 
-fn pte_unmap_next(state : *PfeState, prior_unmapped : bool) ?Pte {
+fn pteUnmapNext(state : *PfeState, prior_unmapped : bool) ?Pte {
     if (!state.init)
-        state.get_next();
+        state.getNext();
 
     const pte = state.pfe orelse return null;
     const pfe = pte.*;
@@ -229,7 +229,7 @@ fn pte_unmap_next(state : *PfeState, prior_unmapped : bool) ?Pte {
 
     var cur_state = state.*;
 
-    state.get_next();
+    state.getNext();
 
     // See if any optimizations can be applied before a manual scan.
     var level : u8 = undefined;
@@ -312,30 +312,30 @@ pub const PfeState = struct {
         };
     }
 
-    pub fn get_next(state : *@This()) ?*Pte {
+    pub fn getNext(state : *@This()) ?*Pte {
         if (builtin.mode == .Debug and state.iterator != .GET)
             log.panic("Mixed PFE iterator types!", .{});
 
-        state.pfe = pte_next(state, state.level, false);
+        state.pfe = pteNext(state, state.level, false);
         while (state.pfe and getPteType(state.level, state.pfe) != .PFE) {
-            state.pfe = pte_next(state, state.level, false);
+            state.pfe = pteNext(state, state.level, false);
         }
 
         return state.pfe;
     }
 
-    pub fn map_next(state : *@This()) ?*Pte {
+    pub fn mapNext(state : *@This()) ?*Pte {
         if (builtin.mode == .Debug and state.iterator != .MAP)
             log.panic("Mixed PFE iterator types!", .{});
 
-        return pte_next(state, state.level, true);
+        return pteNext(state, state.level, true);
     }
 
-    pub fn unmap_next(state : *@This(), prior_unmapped : bool) ?Pte {
+    pub fn unmapNext(state : *@This(), prior_unmapped : bool) ?Pte {
         if (builtin.mode == .Debug and state.iterator != .UNMAP)
             log.panic("Mixed PFE iterator types!", .{});
 
-        return pte_unmap_next(state, prior_unmapped);
+        return pteUnmapNext(state, prior_unmapped);
     }
 };
 

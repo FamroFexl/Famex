@@ -90,6 +90,8 @@ pub fn pmallocBytes(size : usize) *anyopaque {
 }
 
 pub fn pmalloc(comptime T: type) *T {
+    std.debug.assert(@alignOf(T) <= 8);
+
     return @ptrCast(@alignCast(pmallocBytes(@sizeOf(T))));
 }
 

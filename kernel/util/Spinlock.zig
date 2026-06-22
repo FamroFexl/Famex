@@ -1,6 +1,9 @@
 const std = @import("std");
 
-const locks = @import("kernel").util.locks;
+const kernel = @import("kernel");
+const locks = kernel.util.locks;
+const proc = kernel.pm.process;
+const bin = kernel.util.binary;
 
 const cpu = @import("arch").cpu;
 
@@ -11,17 +14,23 @@ pub fn init(spinlock : *@This()) void {
 }
 
 pub fn tryLock(spinlock : *@This()) bool {
+    proc.irqSave();
     const locked = !spinlock.val.rmw(.Xchg, true, .acquire);
     if (locked) {
-        locks.lockAdd(@ptrCast(@constCast(spinlock)));
+        locks.lockAdd(bin.ptrCast(*anyopaque, spinlock));
+    }
+    else {
+        proc.irqRestore();
     }
 
     return locked;
 }
 
 pub fn lock(spinlock : *@This()) void {
-    // irq_save();
-    if (tryLock(spinlock)) {
+    proc.irqSave();
+
+    if (!spinlock.val.rmw(.Xchg, true, .acquire)) {
+        locks.lockAdd(bin.ptrCast(*anyopaque, spinlock));
         return;
     }
 
@@ -29,13 +38,13 @@ pub fn lock(spinlock : *@This()) void {
         cpu.spinWaitLoop();
     }
 
-    locks.lockAdd(@ptrCast(@constCast(spinlock)));
+    locks.lockAdd(bin.ptrCast(*anyopaque, spinlock));
 }
 
 pub fn unlock(spinlock : *@This()) void {
     spinlock.val.store(false, .release);
 
-    locks.lockRemove(@ptrCast(@constCast(spinlock)));
+    locks.lockRemove(bin.ptrCast(*anyopaque, spinlock));
 
-    // irq_restore();
+    proc.irqRestore();
 }

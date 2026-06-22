@@ -162,7 +162,7 @@ pub const SlubPool = struct {
         // Set orders for all pages so frees on the pages can find the slab
         var i : u64 = types.SIZE_4KB;
         while (i < buddy.orderToSize(pool.order)) : (i += types.SIZE_4KB) {
-            const page : mem.Vaddr = .{.val = pages.val + i};
+            const page : mem.Paddr = .{.val = pages.val + i};
 
             const info = page.to_info();
             var info_data = info.getData();
@@ -198,7 +198,7 @@ pub const SlubPool = struct {
     }
 
     pub fn allocBulk(pool : *@This(), num : u64) Stack {
-        // irq_save();
+        proc.irqSave();
 
         var slab : *Slab = pool.local_slab.getLocal().* orelse blk: {
             const new_slab = allocSlab(pool);
@@ -246,7 +246,7 @@ pub const SlubPool = struct {
             count -= 1;
         }
 
-        // irq_restore();
+        proc.irqRestore();
 
         return stack;
     }
@@ -309,6 +309,8 @@ pub fn SlubPoolTyped(comptime T: type, obj_init : ?fn (*anyopaque) void) type {
 
 // Setup the array mapping sizes to pools
 fn setupObjectArray() void {
+    print("  Setting up the PMalloc pool object array\n", .{});
+
     const order = buddy.sizeToOrder(MAX_SLUB_SIZE);
     const vaddr : mem.Vaddr = buddy.allocPage(order).to_virt();
     mem.memset(@ptrFromInt(vaddr.val), buddy.orderToSize(order), 0);
@@ -351,11 +353,10 @@ fn getSlubOrder(size : anytype, alignment : anytype) u8 {
 
 // Setup the pool for allocating SlubPool objects
 fn setupSlubPoolPool() void {
-    const size = @sizeOf(SlubPool);
-    const order = getSlubOrder(size, 8);
-    const count = (buddy.orderToSize(order) - @sizeOf(Slab)) / size;
+    print("  Setting up the pool for allocating slub pools\n", .{});
 
-    slub_pool_pool.__init(size, 8, order, count, null);
+    const size = @sizeOf(SlubPool);
+    slub_pool_pool.init(size, 8, null);
 
     // Setup the main list
     var i : i64 = size >> 3;
@@ -411,6 +412,8 @@ fn slubPoolPmalloc(size : u64) void {
 /// Setup the first pools to ensure all allocations up to MAX_SLUB_SIZE can occur before other
 /// systems have the opportunity to setup their own pools.
 fn setupPow2Pools() void {
+    print("  Setting up first power-of-2 pools for PMalloc\n", .{});
+
     var i : u32 = 8;
     while (i < MAX_SLUB_SIZE) : (i *= 2) {
         slubPoolPmalloc(i);
@@ -429,13 +432,10 @@ pub fn setup() void {
     MAX_SLUB_ORDER = @intCast(bin.min(buddy.MAX_BUDDY_ORDER, 3));
     MAX_SLUB_SIZE = (buddy.orderToSize(MAX_SLUB_ORDER) - @sizeOf(Slab)) / 2;
 
-    print("  Setting up the PMalloc pool object array\n", .{});
     setupObjectArray();
 
-    print("  Setting up the pool for allocating slub pools\n", .{});
     setupSlubPoolPool();
 
-    print("  Setting up first power-of-2 pools for PMalloc\n", .{});
     setupPow2Pools();
 
     cacheline_pool.init(cpu.FEATURES.CACHELINE_SIZE, cpu.FEATURES.CACHELINE_SIZE, null);

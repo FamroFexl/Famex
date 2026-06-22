@@ -89,7 +89,7 @@ pub fn PerCpuDyn(comptime T: type) type {
                     var state = paging.PfeState.create(.MAP, &kernel_process.addr_space, .{.val = percpu + per_cpu.cur_offset.val}, .{.val = percpu + last}, .LEVEL_4KB);
 
                     while (true) {
-                        const pte = state.map_next() orelse break;
+                        const pte = state.mapNext() orelse break;
                         pte.* = pfe;
                         pte.setEntry(0, buddy.allocPage4k());
                     }
@@ -124,6 +124,35 @@ pub fn PerCpuDyn(comptime T: type) type {
             return getGlobalPercpu(T, cpu_num, @intFromPtr(self.data.?));
         }
     };
+}
+
+pub const CpuMask = u64;
+
+const cpuId = PerCpuStat(u8);
+
+pub fn getCpuId() u8 {
+    return cpuId.getLocal().*;
+}
+
+pub fn setupCpuId() void {
+
+}
+
+const irqSaveDepth = PerCpuStat(u64);
+
+pub fn irqSave() void {
+    cpu.irqDisable();
+
+    irqSaveDepth.getLocal().* += 1;
+}
+
+pub fn irqRestore() void {
+    const depth = irqSaveDepth.getLocal();
+    depth.* -= 1;
+
+    if (depth.* == 0) {
+        cpu.irqEnable();
+    }
 }
 
 pub export fn inKmode(state : *cpu.CpuState) callconv(.c) bool {

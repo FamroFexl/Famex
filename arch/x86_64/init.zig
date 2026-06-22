@@ -28,7 +28,7 @@ pub var smp_request = limine.LimineMpRequest {
     .response = undefined,
 };
 
-const PAT : reg.Pat = .{
+const PAT : reg.Pat.Layout = .{
     .pa0 = .UNCACHEABLE,
     .pa1 = .WRITE_COMBINING,
     .pa2 = .UNCACHEABLE,
@@ -46,14 +46,14 @@ var IDTR : reg.Idtr = undefined;
 fn validateCpuState() void {
     if (cpu.leaf_0x81.edx.nx == 1) {
         const efer = reg.Efer.get();
-        log.apanic(efer.nxe == 0, "arch: No Execute Disable bit isn't enabled!\n", .{});
+        log.apanic(!efer.nxe, "arch: No Execute Disable bit isn't enabled!\n", .{});
     }
 
     log.apanic(paging_mode_request.response.mode != limine.LIMINE_PAGING_MODE_X86_64_4LVL, "arch: Paging Mode isn't 4 level!\n", .{});
 
-    if (cpu.leaf_0x1.ecx.x2apic) {
+    if (cpu.leaf_0x1.ecx.x2apic == 1) {
         const apic = reg.ApicBase.get();
-        log.apanic(apic.x2apic == 0, "arch: X2APIC isn't enabled!\n", .{});
+        log.apanic(!apic.x2apic, "arch: X2APIC isn't enabled!\n", .{});
     }
 }
 
@@ -150,7 +150,7 @@ fn setupFp() void {
 fn setupGdt() void {
     print("\narch: Setting up Global Descriptor Table (GDT)\n", .{});
 
-    const gdt= mm.memory.pmalloc(reg.Gdtr.Layout);
+    const gdt= bin.ptrCast(*reg.Gdtr.Layout, mm.memory.pmallocBytes(@sizeOf(reg.Gdtr.Layout) + api.cpu.FEATURES.NUM_CPU_CORES * @sizeOf(reg.TssDesc)));
     gdt.kmode_code.seg_type = .SEG_CODE_ER;
     gdt.kmode_code.priv_level = 0;
     gdt.kmode_code.size = false;
@@ -173,11 +173,12 @@ fn setupGdt() void {
 
     // Create per-core tss
     for (0..api.cpu.FEATURES.NUM_CPU_CORES) |i| {
-        const tss_desc = &gdt.tss[i];
+        const tss_desc : *reg.TssDesc align(8) = &gdt.getTss()[i];
         const new_tss = mm.memory.pmalloc(reg.Tss);
-
-        tss_desc.address1 = @intCast(bin.getBits(24, 0, @intFromPtr(tss_desc)));
-        tss_desc.address2 = @intCast(bin.getBits(40, 24, @intFromPtr(tss_desc)));
+        const tss = @intFromPtr(new_tss);
+        tss_desc.word1.address1 = @intCast(bin.getBits(24, 0, tss));
+        tss_desc.word1.address2 = @intCast(bin.getBits(8, 24, tss));
+        tss_desc.word2.address3 = @intCast(bin.getBits(32, 32, tss));
 
         // Assign interrupt stacks (stacks are at top of memory allocation)
         for (0..7) |j| {
@@ -207,24 +208,28 @@ fn setupIdt() void {
 
     for (0..256) |i| {
         const func = irq.irqStubTable[i];
-        const common_gate : reg.Idtr.IdtGateDesc = .{
-            .ist = 1,
-            .offset1 = @intCast(bin.getBits(16, 0, func)),
-            .offset2 = @intCast(bin.getBits(48, 16, func)),
-        };
 
-        idt.id_gate[i] = common_gate;
+        idt.id_gate[i] = .{
+            .word1 = .{
+                .ist = 1,
+                .offset1 = @intCast(bin.getBits(16, 0, func)),
+                .offset2 = @intCast(bin.getBits(16, 16, func)),
+            },
+            .word2 = .{
+                .offset3 = @intCast(bin.getBits(32, 32, func)),
+            }
+        };
     }
 
     // Intel idt[9], idt[15], and idt[22]->idt[31] irqs should never fire
 
     // All these interrupts have separate safe IST stacks
-    idt.id_gate[@intFromEnum(irq.VecNum.DEBUG_XCP)].ist       = 2;
-    idt.id_gate[@intFromEnum(irq.VecNum.NON_MASK_IRQ)].ist    = 3;
-    idt.id_gate[@intFromEnum(irq.VecNum.DOUBLE_FAULT)].ist    = 4;
-    idt.id_gate[@intFromEnum(irq.VecNum.MACHINE_CHECK)].ist   = 5;
-    idt.id_gate[@intFromEnum(irq.VecNum.BAD_STACK_SEG)].ist   = 6;
-    idt.id_gate[@intFromEnum(irq.VecNum.GEN_PROTECT)].ist     = 7;
+    idt.id_gate[@intFromEnum(irq.VecNum.DEBUG_XCP)].word1.ist       = 2;
+    idt.id_gate[@intFromEnum(irq.VecNum.NON_MASK_IRQ)].word1.ist    = 3;
+    idt.id_gate[@intFromEnum(irq.VecNum.DOUBLE_FAULT)].word1.ist    = 4;
+    idt.id_gate[@intFromEnum(irq.VecNum.MACHINE_CHECK)].word1.ist   = 5;
+    idt.id_gate[@intFromEnum(irq.VecNum.BAD_STACK_SEG)].word1.ist   = 6;
+    idt.id_gate[@intFromEnum(irq.VecNum.GEN_PROTECT)].word1.ist     = 7;
 
     IDTR.base = @intFromPtr(idt);
 }
@@ -235,10 +240,10 @@ fn setupSyscalls() void {
     reg.Efer.set(efer);
 
     // Set the syscall entry point (asm)
-    reg.SyscallLStar.set(kernel.pm.syscall.syscallHandler);
+    reg.SyscallLStar.set(@intFromPtr(&kernel.pm.syscall.syscallHandler));
 
     // Set the RFLAGS mask on syscall entry
-    var rflags : reg.Rflags = @bitCast(0);
+    var rflags : reg.Rflags = @bitCast(@as(u64, 0));
 
     // Flags to clear
     rflags.trap = true;
@@ -252,6 +257,56 @@ fn setupSyscalls() void {
     const kernel_cs : u64 = @offsetOf(reg.Gdtr.Layout, "kmode_code") << 32;
     const user_cs : u64 = @offsetOf(reg.Gdtr.Layout, "umode_code") << 48;
     reg.SyscallStar.set(kernel_cs | user_cs);
+}
+
+fn smp_cpu_init(smp_info : *limine.LimineMpInfoX86) void {
+    // Make sure the cpu is as limine reports
+    validateCpuState();
+
+    // The OS id for the processor
+    const cpu_id : u8 = @intCast(smp_info.extra_argument);
+
+    reg.Gdtr.set(&GDTR);
+
+    reg.Idtr.set(&IDTR);
+
+    reg.Tss.set(@intCast(GDTR.base + @sizeOf(reg.Gdtr.Layout) + cpu_id * @sizeOf(reg.TssDesc)));
+
+    api.cpu.setPerCpu(@ptrFromInt(mm.memory.PER_CPU_DATA.val + mm.memory.PER_CPU_DATA_SIZE * cpu_id));
+
+    reg.Pat.set(PAT);
+
+    setupSyscalls();
+
+    if (smp_info.lapic_id != smp_request.response.x86.bsp_lapic_id) {
+        //setupApicCore();
+
+        // Go Idle
+        api.cpu.idleEntry();
+    }
+}
+
+fn setupSmp(init_bsp : bool) void {
+    // Setup SMP cores
+    for (0..smp_request.response.x86.cpu_count) |i| {
+        // For now, cpu id mapping is from smp_request index to its lapic id
+        const smp_info = smp_request.response.x86.cpus.x86[i];
+
+        // The kernel-number for the core
+        smp_info.extra_argument = i;
+
+        // Is Bootstrap core (setup first)
+        if (smp_info.lapic_id == smp_request.response.x86.bsp_lapic_id) {
+            if (init_bsp) {
+                smp_cpu_init(smp_info);
+                return;
+            }
+            continue;
+        }
+
+        // Causes the parked smp core to jump to smp_cpu_init
+        @atomicStore(u64, @as(*u64, @ptrFromInt(smp_info.goto_address)), @intFromPtr(&smp_cpu_init), .seq_cst);
+    }
 }
 
 pub export fn init() void {
@@ -277,4 +332,6 @@ pub export fn init() void {
     setupGdt();
 
     setupIdt();
+
+    setupSmp(true);
 }

@@ -37,6 +37,18 @@ pub fn alignDown(num : anytype, mul : anytype) u64 {
     return num_typed & ~(mul_typed - 1);
 }
 
+pub fn alignUpNum(num : anytype, mul : anytype) u64 {
+    const num_typed : u64 = @intCast(num);
+    const mul_typed : u64 = @intCast(mul);
+    return (num_typed + mul_typed - 1) / (mul_typed * mul_typed);
+}
+
+pub fn alignDownNum(num : anytype, mul : anytype) u64 {
+    const num_typed : u64 = @intCast(num);
+    const mul_typed : u64 = @intCast(mul);
+    return num_typed - (num_typed % mul_typed);
+}
+
 pub fn maxAlignBetween(addr : anytype, limit : anytype) u64 {
     const range : u64 = dist(addr, limit);
     const pow2 : u64 = setBit(63 - @clz(range));
@@ -91,11 +103,19 @@ pub fn setIfSmaller(comptime T: type, current: *T, new_value: T) void {
 
 pub fn isZero(val : anytype) bool {
     return std.mem.allEqual(u8, std.mem.asBytes(&val), 0);
-    //return std.mem.eql(u8, std.mem.asBytes(&val), std.mem.zeroes(@TypeOf(val)));
 }
 
 pub fn ptrCast(comptime T : type, val : *anyopaque) T {
     return @ptrCast(@alignCast(val));
+}
+
+pub fn getFlexArray(comptime T : type, comptime O : type, val : *T) [*]O {
+    const base: [*]u8 = @ptrCast(val);
+
+    const start = std.mem.alignForward(u64, @sizeOf(T), @alignOf(O));
+    const raw = base + start;
+
+    return @ptrCast(@alignCast(raw));
 }
 
 pub fn SizedType(comptime size: usize, comptime alignment: u29) type {

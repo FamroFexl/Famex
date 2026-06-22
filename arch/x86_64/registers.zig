@@ -1,6 +1,9 @@
 const builtin = @import("builtin");
 const is_kernel = builtin.target.os.tag == .freestanding;
 const MAX_NUM_CPUS = if (is_kernel) @import("kernel").config.MAX_NUM_CPUS else 0;
+const cpu = if (is_kernel) @import("arch_api").cpu;
+const print = if (is_kernel) @import("kernel").util.log.print else void;
+const bin = if (is_kernel) @import("kernel").util.binary else void;
 
 const std = @import("std");
 
@@ -238,6 +241,7 @@ pub const Rflags = packed struct(u64) {
     virt_irq : bool,        //System Virtual Interrupt
     virt_irq_pend :bool,    //System Virtual Interrupt Pending
     id : bool,              //System ID
+    __pad4 : u42,
 
     extern fn getRflags() callconv(.c) Rflags;
     pub const get = getRflags;
@@ -292,21 +296,30 @@ pub const SegDesc = packed struct(u64) {
     };
 };
 
-pub const TssDesc = packed struct(u128) {
-    seg_limit1      : u16 = @sizeOf(Tss) - 1,
-    address1        : u24,
-    seg_type        : SysSegType = .TSS_AVAILABLE,
-    __zero1         : u1 = 0,
-    desc_priv_lvl   : u2 = 0,   // Descriptor Privilege Level
-    seg_present     : bool = true,     // Segment present flag
-    seg_limit2      : u4 = 0,
-    __pad1          : bool,     // Unused flag for other use
-    __zero2         : u2 = 0,
-    granularity     : bool = true,
-    address2        : u40,
-    __rsvd1         : u8 = 0,
-    __zero3         : u5 = 0,
-    __rsvd2         : u19 = 0,
+pub const TssDesc = struct {
+    word1 : packed struct(u64) {
+        seg_limit1      : u16 = @sizeOf(Tss) - 1,
+        address1        : u24,
+        seg_type        : SysSegType = .TSS_AVAILABLE,
+        __zero1         : u1 = 0,
+        desc_priv_lvl   : u2 = 0,   // Descriptor Privilege Level
+        seg_present     : bool = true,     // Segment present flag
+        seg_limit2      : u4 = 0,
+        __pad1          : bool,     // Unused flag for other use
+        __zero2         : u2 = 0,
+        granularity     : bool = true,
+        address2        : u8,
+    },
+    word2 : packed struct(u64) {
+        address3        : u32,
+        __rsvd1         : u8 = 0,
+        __zero3         : u5 = 0,
+        __rsvd2         : u19 = 0,
+    },
+
+    comptime {
+        std.debug.assert(@alignOf(@This()) == 8);
+    }
 };
 
 pub const Gdtr = packed struct(u80) {
@@ -324,7 +337,13 @@ pub const Gdtr = packed struct(u80) {
         kmode_data : SegDesc,      // Kernel Mode Data Segment
         umode_code : SegDesc,      // User Mode Code Segment
         umode_data : SegDesc,      // User Mode Data Segment
-        tss : [MAX_NUM_CPUS]TssDesc, // Task-State Segments, one for each logical core (irq stacks)
+
+        // Task-State Segments, one for each logical core (irq stacks)
+        pub fn getTss(self : *@This()) []TssDesc {
+            return bin.getFlexArray(Layout, TssDesc, self)[0..cpu.FEATURES.NUM_CPU_CORES];
+        }
+
+        comptime { std.debug.assert(@sizeOf(Layout) == 40); }
     };
 
     extern fn getGdtr(gdtr : *Gdtr) callconv(.c) void;
@@ -340,26 +359,33 @@ pub const Idtr = packed struct(u80) {
 
     pub const Layout = struct {
         id_gate : [256]IdtGateDesc,
+
+        comptime { std.debug.assert(@alignOf(@This()) == 8); }
     };
 
-    pub const IdtGateDesc = packed struct(u128) {
-        offset1         : u16,
-        seg_select      : u16 = @offsetOf(Gdtr.Layout, "kmode_code"),
-        ist             : u3,       // Interrupt Stack Table (used only if seg_type is INTERRUPT_GATE or TRAP_GATE)
-        __zero1         : u5 = 0,
-        gate_type       : SysSegType = .INTERRUPT_GATE,
-        __zero2         : u1 = 0,
-        priv_lvl        : u2 = 0,
-        present         : bool = true,
-        offset2         : u48,
-        __rsvd1         : u32 = 0,
+    pub const IdtGateDesc = struct {
+        word1 : packed struct(u64) {
+            offset1         : u16,
+            seg_select      : u16 = @offsetOf(Gdtr.Layout, "kmode_code"),
+            ist             : u3,       // Interrupt Stack Table (used only if seg_type is INTERRUPT_GATE or TRAP_GATE)
+            __zero1         : u5 = 0,
+            gate_type       : SysSegType = .INTERRUPT_GATE,
+            __zero2         : u1 = 0,
+            priv_lvl        : u2 = 0,
+            present         : bool = true,
+            offset2         : u16,
+        },
+        word2 : packed struct(u64) {
+            offset3         : u32,
+            __rsvd1         : u32 = 0,
+        },
     };
 
-    extern fn getIdt(idtr : *Idtr) callconv(.c)void;
-    pub const get = getIdt;
+    extern fn getIdtr(idtr : *Idtr) callconv(.c)void;
+    pub const get = getIdtr;
 
-    extern fn setIdt(idtr : *Idtr) callconv(.c) void;
-    pub const set = setIdt;
+    extern fn setIdtr(idtr : *Idtr) callconv(.c) void;
+    pub const set = setIdtr;
 };
 
 pub const Tss = struct {
@@ -371,10 +397,7 @@ pub const Tss = struct {
     __rsvd4     : u64 = 0,
     iom_base    : u16 = std.math.maxInt(u16),   // 16-bit offset to the I/O permission bit map from the TSS base (disabled)
 
-    comptime {
-        if (@sizeOf(Tss) != 104)
-            @compileError("TSS struct is the wrong size!");
-    }
+    comptime { std.debug.assert(@sizeOf(@This()) == 104); }
 
     extern fn getTss() callconv(.c) u16;
     pub const get = getTss;
@@ -414,7 +437,7 @@ pub fn CreateMsr(comptime msr : u32, comptime T : type) type {
         }
 
         pub fn set(reg : Layout) void {
-            setMsr(addr, reg);
+            setMsr(addr, @bitCast(reg));
         }
     };
 }
@@ -557,6 +580,7 @@ pub const Efer = CreateMsr(0xC0000080, packed struct(u64) {
     __pad2 : u1,    // Reserved
     lma : bool,     //IA-32e mode operation active
     nxe : bool,     //Execute Disable Bit enable
+    __pad3 : u51,
 });
 
 pub const SyscallStar = CreateMsr(0xC0000081, u64);

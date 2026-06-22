@@ -86,7 +86,7 @@ pub extern fn idleEntry() callconv(.c) noreturn;
 pub extern fn irqEnable() callconv(.c) void;
 
 /// Disable IRQs
-pub extern fn irqDisabled() callconv(.c) void;
+pub extern fn irqDisable() callconv(.c) void;
 
 /// Get if IRQs are enabled
 pub fn irqEnabled() bool {
