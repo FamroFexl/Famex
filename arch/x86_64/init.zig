@@ -15,6 +15,7 @@ const cpu = @import("cpu.zig");
 const timers = @import("timers.zig");
 const reg = @import("registers.zig");
 const irq = @import("irq.zig");
+const apic = @import("apic.zig");
 const PatTypes = reg.PatTypes;
 
 pub var paging_mode_request = limine.LiminePagingModeRequest {
@@ -52,8 +53,7 @@ fn validateCpuState() void {
     log.apanic(paging_mode_request.response.mode != limine.LIMINE_PAGING_MODE_X86_64_4LVL, "arch: Paging Mode isn't 4 level!\n", .{});
 
     if (cpu.leaf_0x1.ecx.x2apic == 1) {
-        const apic = reg.ApicBase.get();
-        log.apanic(!apic.x2apic, "arch: X2APIC isn't enabled!\n", .{});
+        log.apanic(!reg.ApicBase.get().x2apic, "arch: X2APIC isn't enabled!\n", .{});
     }
 }
 
@@ -100,7 +100,7 @@ fn ensureFeatures() void {
 extern fn fpStateReset() callconv(.c) void;
 
 fn setupFp() void {
-    print("\narch: Setting up Floating Point (X87, SSE", .{});
+    print("arch: Setting up Floating Point (X87, SSE", .{});
 
     var cr4 = reg.Cr4.get();
     cr4.osfxcr = true;
@@ -148,7 +148,7 @@ fn setupFp() void {
 
 /// Only one GDT for all cores
 fn setupGdt() void {
-    print("\narch: Setting up Global Descriptor Table (GDT)\n", .{});
+    print("arch: Setting up Global Descriptor Table (GDT)\n", .{});
 
     const gdt= bin.ptrCast(*reg.Gdtr.Layout, mm.memory.pmallocBytes(@sizeOf(reg.Gdtr.Layout) + api.cpu.FEATURES.NUM_CPU_CORES * @sizeOf(reg.TssDesc)));
     gdt.kmode_code.seg_type = .SEG_CODE_ER;
@@ -202,7 +202,7 @@ fn setupGdt() void {
 
 /// One IDT for all cores
 fn setupIdt() void {
-    print("\narch: Setting up Interrupt Descriptor Table (IDT)\n", .{});
+    print("arch: Setting up Interrupt Descriptor Table (IDT)\n", .{});
 
     const idt = mm.memory.pmalloc(reg.Idtr.Layout);
 
@@ -264,22 +264,23 @@ fn smp_cpu_init(smp_info : *limine.LimineMpInfoX86) void {
     validateCpuState();
 
     // The OS id for the processor
-    const cpu_id : u8 = @intCast(smp_info.extra_argument);
+    const cpuId : u8 = @intCast(smp_info.extra_argument);
+    cpu.cpuId.getLocal().* = cpuId;
 
     reg.Gdtr.set(&GDTR);
 
     reg.Idtr.set(&IDTR);
 
-    reg.Tss.set(@intCast(GDTR.base + @sizeOf(reg.Gdtr.Layout) + cpu_id * @sizeOf(reg.TssDesc)));
+    reg.Tss.set(@intCast(GDTR.base + @sizeOf(reg.Gdtr.Layout) + cpuId * @sizeOf(reg.TssDesc)));
 
-    api.cpu.setPerCpu(@ptrFromInt(mm.memory.PER_CPU_DATA.val + mm.memory.PER_CPU_DATA_SIZE * cpu_id));
+    api.cpu.setPerCpu(@ptrFromInt(mm.memory.PER_CPU_DATA.val + mm.memory.PER_CPU_DATA_SIZE * cpuId));
 
     reg.Pat.set(PAT);
 
     setupSyscalls();
 
     if (smp_info.lapic_id != smp_request.response.x86.bsp_lapic_id) {
-        //setupApicCore();
+        apic.setupCore();
 
         // Go Idle
         api.cpu.idleEntry();
@@ -296,8 +297,8 @@ fn setupSmp(init_bsp : bool) void {
         smp_info.extra_argument = i;
 
         // Is Bootstrap core (setup first)
-        if (smp_info.lapic_id == smp_request.response.x86.bsp_lapic_id) {
-            if (init_bsp) {
+        if (init_bsp) {
+            if (smp_info.lapic_id == smp_request.response.x86.bsp_lapic_id) {
                 smp_cpu_init(smp_info);
                 return;
             }
@@ -334,4 +335,6 @@ pub export fn init() void {
     setupIdt();
 
     setupSmp(true);
+
+    apic.setup();
 }

@@ -16,9 +16,15 @@ pub const Process = struct {
     addr_space : vmm.VmSpace,
 };
 
-pub var kernel_process : Process = undefined;
+pub var kernelProcess : Process = undefined;
 
-pub const per_cpu = struct {
+pub const CpuMask = u64;
+
+pub fn cpuMaskFull() CpuMask {
+    return bin.setBits(cpu.FEATURES.NUM_CPU_CORES);
+}
+
+pub const perCpu = struct {
     /// The minimum allocation size of a percpu variable
     pub const PER_CPU_DYN_ALLOC_BYTES = 64;
 
@@ -50,11 +56,11 @@ pub fn PerCpuStat(comptime T: type) type {
         const data: T linksection(".percpu") = undefined;
 
         pub fn getLocal() *T {
-            return getLocalPercpu(T, @intFromPtr(&data) - per_cpu.PER_CPU_LINKER_OFFSET.val);
+            return getLocalPercpu(T, @intFromPtr(&data) - perCpu.PER_CPU_LINKER_OFFSET.val);
         }
 
         pub fn getGlobal(cpu_num : anytype) *T {
-            return getGlobalPercpu(T, cpu_num, @intFromPtr(&data) - per_cpu.PER_CPU_LINKER_OFFSET.val);
+            return getGlobalPercpu(T, cpu_num, @intFromPtr(&data) - perCpu.PER_CPU_LINKER_OFFSET.val);
         }
     };
 }
@@ -67,26 +73,26 @@ pub fn PerCpuDyn(comptime T: type) type {
         pub fn alloc(self : *@This()) void {
             log.apanic(self.data != null, "pm: A percpu variable attempted to allocate when already allocated!\n", .{});
 
-            const num = std.math.divCeil(u64, @sizeOf(T), per_cpu.PER_CPU_DYN_ALLOC_BYTES) catch unreachable;
+            const num = std.math.divCeil(u64, @sizeOf(T), perCpu.PER_CPU_DYN_ALLOC_BYTES) catch unreachable;
             var index : u64 = undefined;
             {
-                per_cpu.dyn_alloc_bmap_lock.lock();
-                defer per_cpu.dyn_alloc_bmap_lock.unlock();
+                perCpu.dyn_alloc_bmap_lock.lock();
+                defer perCpu.dyn_alloc_bmap_lock.unlock();
 
-                index = per_cpu.dyn_alloc_bmap.findAndSet(num).?;
+                index = perCpu.dyn_alloc_bmap.findAndSet(num).?;
             }
 
-            const cur = (index + num) * per_cpu.PER_CPU_DYN_ALLOC_BYTES;
-            if (cur > per_cpu.cur_offset.val) {
-                const last = per_cpu.cur_offset.val + bin.alignUp(cur, types.SIZE_4KB);
+            const cur = (index + num) * perCpu.PER_CPU_DYN_ALLOC_BYTES;
+            if (cur > perCpu.cur_offset.val) {
+                const last = perCpu.cur_offset.val + bin.alignUp(cur, types.SIZE_4KB);
 
                 var pfe : mm.paging.Pte = mm.paging.PFE_DEFAULTS[0];
                 pfe.setGlobal(0, true);
 
                 for (0..cpu.FEATURES.NUM_CPU_CORES) |i| {
-                    const percpu = @intFromPtr(getGlobalPercpu(*anyopaque, i, 0)) + per_cpu.PER_CPU_STARTING_OFFSET.val;
+                    const percpu = @intFromPtr(getGlobalPercpu(*anyopaque, i, 0)) + perCpu.PER_CPU_STARTING_OFFSET.val;
 
-                    var state = paging.PfeState.create(.MAP, &kernel_process.addr_space, .{.val = percpu + per_cpu.cur_offset.val}, .{.val = percpu + last}, .LEVEL_4KB);
+                    var state = paging.PfeState.create(.MAP, &kernelProcess.addr_space, .{.val = percpu + perCpu.cur_offset.val}, .{.val = percpu + last}, .LEVEL_4KB);
 
                     while (true) {
                         const pte = state.mapNext() orelse break;
@@ -95,24 +101,24 @@ pub fn PerCpuDyn(comptime T: type) type {
                     }
                 }
 
-                per_cpu.cur_offset.val = last;
+                perCpu.cur_offset.val = last;
             }
 
-            self.data = @ptrFromInt(per_cpu.PER_CPU_STARTING_OFFSET.val + cur);
+            self.data = @ptrFromInt(perCpu.PER_CPU_STARTING_OFFSET.val + cur);
         }
 
         pub fn free(self : *@This()) void {
             log.apanic(self.data == null, "pm: A percpu variable attempted to free when it was already free!\n", .{});
 
             const addr = @intFromPtr(self.data);
-            const bit_pos = (addr - per_cpu.PER_CPU_STARTING_OFFSET.val) / per_cpu.PER_CPU_DYN_ALLOC_BYTES;
-            const bits = std.math.divCeil(u64, @sizeOf(T), per_cpu.PER_CPU_DYN_ALLOC_BYTES) catch unreachable;
+            const bit_pos = (addr - perCpu.PER_CPU_STARTING_OFFSET.val) / perCpu.PER_CPU_DYN_ALLOC_BYTES;
+            const bits = std.math.divCeil(u64, @sizeOf(T), perCpu.PER_CPU_DYN_ALLOC_BYTES) catch unreachable;
 
             {
-                per_cpu.dyn_alloc_bmap_lock.lock();
-                defer per_cpu.dyn_alloc_bmap_lock.unlock();
+                perCpu.dyn_alloc_bmap_lock.lock();
+                defer perCpu.dyn_alloc_bmap_lock.unlock();
 
-                per_cpu.dyn_alloc_bmap.clear(bit_pos, bits);
+                perCpu.dyn_alloc_bmap.clear(bit_pos, bits);
             }
         }
 
@@ -126,15 +132,26 @@ pub fn PerCpuDyn(comptime T: type) type {
     };
 }
 
-pub const CpuMask = u64;
+pub const ThreadBase = struct {
+    owner : *Process,
 
-const cpuId = PerCpuStat(u8);
+    preemptDepth : u8,
+    migrateDepth : u8,
+};
 
-pub fn getCpuId() u8 {
-    return cpuId.getLocal().*;
+pub const KThread = struct {
+    base : ThreadBase,
+};
+
+pub const UThread = struct {
+    base : ThreadBase,
+};
+
+pub fn preemptSave() void {
+
 }
 
-pub fn setupCpuId() void {
+pub fn preemptRestore() void {
 
 }
 

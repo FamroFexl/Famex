@@ -16,6 +16,11 @@
       "name": "uninstall",
       "description": "Remove build artifacts from prefix path",
       "kind": "uninstall"
+    },
+    {
+      "name": "check",
+      "description": "Check if famex compiles",
+      "kind": "compile"
     }
   ],
   "modules": [

@@ -354,8 +354,8 @@ fn mapPercpu(kernel_root_pt : *paging.Ptable) void {
     const shdr = elf_hdr.getShdrByName(".percpu").?;
     const size = bin.alignUp(shdr.size, types.SIZE_4KB);
 
-    process.per_cpu.PER_CPU_LINKER_OFFSET = .{.val = shdr.addr};
-    process.per_cpu.PER_CPU_STARTING_OFFSET = .{.val = size};
+    process.perCpu.PER_CPU_LINKER_OFFSET = .{.val = shdr.addr};
+    process.perCpu.PER_CPU_STARTING_OFFSET = .{.val = size};
 
     var pfe : paging.Pte = paging.PFE_DEFAULTS[0];
     pfe.setGlobal(0, true);
@@ -374,19 +374,19 @@ fn mapPercpuDyn() void {
     print("  Mapping per-cpu dynamic region\n", .{});
 
     // This gives us 2MB per cpu of potential dynamic allocations
-    const num_bits = types.SIZE_2MB / process.per_cpu.PER_CPU_DYN_ALLOC_BYTES;
+    const num_bits = types.SIZE_2MB / process.perCpu.PER_CPU_DYN_ALLOC_BYTES;
     const size = bin.toBytes(num_bits);
     const addr = memory.pmallocBytes(size);
     memory.memset(addr, size, 0);
-    process.per_cpu.dyn_alloc_bmap.init(addr, num_bits);
-    process.per_cpu.dyn_alloc_bmap_lock.init();
+    process.perCpu.dyn_alloc_bmap.init(addr, num_bits);
+    process.perCpu.dyn_alloc_bmap_lock.init();
 }
 
 fn switchToNewPtables() void {
     // Setup paging information
     paging.setup();
 
-    const kernel_root_pt = &process.kernel_process.addr_space.root_pt;
+    const kernel_root_pt = &process.kernelProcess.addr_space.root_pt;
 
     // The new kernel root page table
     kernel_root_pt.* = @ptrFromInt(allocBootPage().to_virt().val);

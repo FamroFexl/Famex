@@ -1,15 +1,17 @@
+const std = @import("std");
+
+const kernel = @import("kernel");
+const print = kernel.util.log.print;
+const bin = kernel.util.binary;
+const types = kernel.util.types;
+
+const cpu = @import("arch").cpu;
+
 const paging = @import("paging.zig");
 const pmm = @import("pmm.zig");
 const vmm = @import("vmm.zig");
 const slub = @import("slub_alloc.zig");
 const buddy = @import("buddy_alloc.zig");
-
-const std = @import("std");
-const print = @import("kernel").util.log.print;
-const bin = @import("kernel").util.binary;
-const types = @import("kernel").util.types;
-
-const cpu = @import("arch").cpu;
 
 pub const Addr = u64;
 
@@ -147,4 +149,5 @@ pub fn setup() void {
     vmm.setup();
 
     print("mm: Setting up Read-Copy-Update\n", .{});
+    kernel.pm.ipc.rcu.setup();
 }

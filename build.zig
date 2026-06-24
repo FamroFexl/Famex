@@ -49,4 +49,14 @@ pub fn build(b: *std.Build) !void {
     famex.link_data_sections = true;
 
     b.installArtifact(famex);
+
+    const famex_check = b.addExecutable(.{
+        .name = "famex.elf",
+        .root_module = arch_module,
+        .use_lld = true,
+        .use_llvm = true,
+    });
+
+    const check = b.step("check", "Check if famex compiles");
+    check.dependOn(&famex_check.step);
 }

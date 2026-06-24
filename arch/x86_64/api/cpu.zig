@@ -3,16 +3,17 @@ pub const CpuState= @import("arch").reg.CpuState;
 const reg = @import("arch").reg;
 const cpu = @import("arch").cpu;
 
+const proc = @import("kernel").pm.process;
+
 const CpuFeatures = struct {
     PHYS_ADDR_BITS : u8,        // Physical memory address bits
     VIRT_ADDR_BITS : u8,        // Virtual memory address bits
+    CACHELINE_SIZE : u16,
     MAX_PAGE_SIZE : u3,         // Max page size in levels (starting from 0)
-    PAGE_TABLE_LEVELS : u8,     // Number of page table levels
+    PAGE_TABLE_LEVELS : u8,     // Number of page table levels (starting from 1)
     EXECUTE_BIT : bool,
     READ_BIT : bool,
     NUM_CPU_CORES : u64,
-    CACHELINE_SIZE : u16,
-    FLOATING_POINT : bool,
 };
 
 pub var FEATURES : CpuFeatures = undefined;
@@ -91,4 +92,8 @@ pub extern fn irqDisable() callconv(.c) void;
 /// Get if IRQs are enabled
 pub fn irqEnabled() bool {
     return reg.Rflags.get().irq_enable;
+}
+
+pub fn getCpuId() u8 {
+    return cpu.cpuId.getLocal().*;
 }

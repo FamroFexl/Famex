@@ -33,7 +33,7 @@ const LocalPagePool = struct {
     pages : util.data.Stack,
 };
 
-const local_page_pool = process.PerCpuStat(LocalPagePool);
+const localPagePool = process.PerCpuStat(LocalPagePool);
 
 pub fn orderToSize(order : anytype) usize {
     return @as(u64, types.SIZE_4KB) << @intCast(order);
@@ -48,7 +48,7 @@ fn setupPageCache() void {
     print("  Initializing page cache\n", .{});
 
     for(0..cpu.FEATURES.NUM_CPU_CORES) |i| {
-        const pool = local_page_pool.getGlobal(i);
+        const pool = localPagePool.getGlobal(i);
         pool.current = 0;
         pool.pages.init();
     }
@@ -198,7 +198,7 @@ pub fn __freePage(addr : mem.Paddr) void {
 pub fn allocPage4k() mem.Paddr {
     process.irqSave();
 
-    const pool = local_page_pool.getLocal();
+    const pool = localPagePool.getLocal();
 
     var page : mem.Paddr = undefined;
     if(pool.current == 0) {
@@ -221,7 +221,7 @@ pub fn allocPage4k() mem.Paddr {
 pub fn freePage4k(addr : mem.Paddr) void {
     process.irqSave();
 
-    const pool = local_page_pool.getLocal();
+    const pool = localPagePool.getLocal();
     if (pool.current < config.PER_CPU_PAGE_NUM) {
         pool.pages.push(@ptrFromInt(addr.to_virt()));
         pool.current += 1;

@@ -1,5 +1,6 @@
 const cpuid_db = @import("lib").cpuid_db;
 const kernel = @import("kernel");
+const proc = kernel.pm.process;
 
 const api = @import("arch_api");
 const log = kernel.util.log;
@@ -10,6 +11,8 @@ pub var FP_SAVE_POOL : kernel.mm.slub_alloc.SlubPool = undefined;
 pub var FP_INIT : api.cpu.FpuState = undefined;
 /// Use XSave if true, FXSave if false
 pub var XSAVE_ON : bool = false;
+
+pub const cpuId = proc.PerCpuStat(u8);
 
 ///  AMD:     "AuthenticAMD"
 const signature_AMD_ebx : u32 =  0x68747541;

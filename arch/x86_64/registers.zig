@@ -1,9 +1,10 @@
 const builtin = @import("builtin");
+
 const is_kernel = builtin.target.os.tag == .freestanding;
 const MAX_NUM_CPUS = if (is_kernel) @import("kernel").config.MAX_NUM_CPUS else 0;
-const cpu = if (is_kernel) @import("arch_api").cpu;
 const print = if (is_kernel) @import("kernel").util.log.print else void;
 const bin = if (is_kernel) @import("kernel").util.binary else void;
+const cpu = if (is_kernel) @import("arch_api").cpu;
 
 const std = @import("std");
 
@@ -419,8 +420,8 @@ pub extern fn getTsc() callconv(.c) u64;
 
 pub extern fn tlbPageFlush(page : *anyopaque) callconv(.c) void;
 
-extern fn getMsr(msr : u64) callconv(.c) u64;
-extern fn setMsr(msr : u64, val : u64) callconv(.c) void;
+pub extern fn getMsr(msr : u32) callconv(.c) u64;
+pub extern fn setMsr(msr : u32, val : u64) callconv(.c) void;
 
 pub fn CreateMsr(comptime msr : u32, comptime T : type) type {
     comptime {
@@ -458,7 +459,7 @@ pub fn CreateReadMsr(comptime msr : u32, comptime T : type) type {
     };
 }
 
-const Msr = enum(u32) {
+pub const Msr = enum(u32) {
     MONITOR_FILTER_SIZE = 6,    // Provides info useful for sleeping CPU cores
     FEATURE_CONTROL = 58,       // Determines virtualization capabilities (VT-x) (practically read only)
     XAPIC_DISABLE_STATUS = 189, // XAPIC disabled in favor of X2APIC
@@ -469,21 +470,22 @@ const Msr = enum(u32) {
     THERM_INTERRUPT = 411,      // Enable or disable different processor temperature interrupts
     THERM_STATUS,               // Processor thermals status (read only)
     ENERGY_PERF_BIA = 432,      // Energy policy
+    X2APIC_MSR_BASE = 800,
 };
 
 pub const ApicBase = CreateMsr(27, packed struct(u64) {
-    __pad : u8,         // Reserved
-    bsp : bool,         // Bootstrap Processor (set by bios and read-only)
-    __pad2 : u1,        // Reserved
-    x2apic : bool,      // x2APIC Mode Enable
-    apic_ge : bool,     // APIC Global Enable
-    apic_base : u52,  // Base Address of APIC is 4KiB aligned, identical to CR3
+    __pad : u8 = 0,         // Reserved
+    bsp : bool,             // Bootstrap Processor (set by bios and read-only)
+    __pad2 : u1 = 0,        // Reserved
+    x2apic : bool,          // x2APIC Mode Enable
+    apic_ge : bool,         // APIC Global Enable
+    apic_base : u52,        // Base Address of APIC is 4KiB aligned, identical to CR3
 });
 
 /// XAPIC disabled in favor of X2APIC
 pub const XapicDisableStatus = CreateMsr(189, packed struct(u64) {
     xapic_off : bool,   // Legacy XAPIC (0) Enabled (1) Disabled
-    __pad : u63,
+    __pad : u63 = 0,
 });
 
 /// Enumeration of Architectural Features (read only)
@@ -574,13 +576,13 @@ pub const MiscEnable = CreateMsr(416, packed struct(u64) {
 pub const TscDeadline = CreateMsr(1760, u64);
 
 pub const Efer = CreateMsr(0xC0000080, packed struct(u64) {
-    sce : bool,     //SYSCALL/SYSRET instructions enable
-    __pad : u8,     // Reserved
-    lme : bool,     //IA-32e mode operation enable
-    __pad2 : u1,    // Reserved
-    lma : bool,     //IA-32e mode operation active
-    nxe : bool,     //Execute Disable Bit enable
-    __pad3 : u51,
+    sce : bool,         //SYSCALL/SYSRET instructions enable
+    __pad : u8 = 0,     // Reserved
+    lme : bool,         //IA-32e mode operation enable
+    __pad2 : u1 = 0,    // Reserved
+    lma : bool,         //IA-32e mode operation active
+    nxe : bool,         //Execute Disable Bit enable
+    __pad3 : u51 = 0,
 });
 
 pub const SyscallStar = CreateMsr(0xC0000081, u64);

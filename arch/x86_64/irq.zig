@@ -7,6 +7,10 @@ const print = kernel.util.log.print;
 
 pub extern const irqStubTable : [256]u64;
 
+pub const IPI_IDT = 253;            // Inter-Processor Interrupt generic entry
+pub const LOCAL_TIMER_IDT = 254;    // Local timer (LAPIC Timer One-Shot or TSC Deadline) entry
+pub const SIVR_IDT = 255;           // Spurious Interrupt Vector Register entry
+
 // Interrupt Descriptor Table exeception/interrupt vectors (local APIC internal)
 pub const VecNum = enum(u8) {
     DIVIDE_ERROR        = 0,    // Divide error (fault)

@@ -262,6 +262,7 @@ pub const SlubPool = struct {
         const slab : *Slab = @ptrFromInt(bin.alignDown(new_addr.val, buddy.orderToSize(info.get_data().order)));
 
         if (builtin.mode == .Debug) {
+            // Frees technically don't need knowledge of the pool, but like linked list delete, it is a form of documentation
             log.apanic(slab.pool != pool, "A free was requested on the wrong SLUB pool!\n", .{});
         }
 
