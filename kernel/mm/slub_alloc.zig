@@ -55,7 +55,7 @@ const Slab = struct {
 
     pub fn remoteFreeObj(slab : *@This(), addr : mem.Vaddr) void {
         const pool = slab.pool;
-        slab.remote_free.push(addr.ptr());
+        slab.remote_free.push(@ptrCast(@alignCast(addr.ptr())));
         const inuse : u16 = slab.inuse.fetchSub(1, .seq_cst) - 1;
 
         // Slab is empty, add to free list
@@ -191,9 +191,9 @@ pub const SlubPool = struct {
     }
 
     pub fn getPool(addr : *anyopaque) *SlubPool {
-        const vaddr : mem.Vaddr = .{.val = @intFromPtr(@as(*u64, @ptrCast(addr)))};
+        const vaddr : mem.Vaddr = .{.val = @intFromPtr(@as(*u64, @ptrCast(@alignCast(addr))))};
         const order = vaddr.to_info().getData().order;
-        const slab : *Slab = bin.alignDown(vaddr.val, buddy.orderToSize(order));
+        const slab : *Slab = bin.castPtr(*Slab, @ptrFromInt(bin.alignDown(vaddr.val, buddy.orderToSize(order))));
         return slab.pool;
     }
 
@@ -258,17 +258,15 @@ pub const SlubPool = struct {
 
     pub fn free(pool : *@This(), addr : *anyopaque) void {
         const new_addr : mem.Vaddr = .{.val = @intFromPtr(addr)};
-        const info = addr.to_info();
-        const slab : *Slab = @ptrFromInt(bin.alignDown(new_addr.val, buddy.orderToSize(info.get_data().order)));
+        const info = new_addr.to_info();
+        const slab : *Slab = @ptrFromInt(bin.alignDown(new_addr.val, buddy.orderToSize(info.getData().order)));
 
-        if (builtin.mode == .Debug) {
-            // Frees technically don't need knowledge of the pool, but like linked list delete, it is a form of documentation
-            log.apanic(slab.pool != pool, "A free was requested on the wrong SLUB pool!\n", .{});
-        }
+        // Frees technically don't need knowledge of the pool, but like linked list delete, it is a form of documentation
+        std.debug.assert(slab.pool == pool);
 
         // Local free
         if (slab == slab.pool.local_slab.getLocal().*) {
-            slab.local_free.push(new_addr.ptr());
+            slab.local_free.push(@ptrCast(@alignCast(new_addr.ptr())));
             _ = slab.inuse.fetchSub(1, .seq_cst);
         }
         // Remote free
@@ -394,7 +392,7 @@ fn slubPoolPmalloc(size : u64) void {
     if (pool != null and pool.?.object_size == aligned_8)
         return;
 
-    const new_pool = bin.ptrCast(*SlubPool, slub_pool_pool.alloc());
+    const new_pool = bin.castPtr(*SlubPool, slub_pool_pool.alloc());
     new_pool.__init(aligned_8, 8, order, count, null);
 
     // Initialize pool in object array

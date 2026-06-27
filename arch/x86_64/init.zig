@@ -4,6 +4,7 @@ const log = kernel.util.log;
 const print = log.print;
 const bin = kernel.util.binary;
 const types = kernel.util.types;
+const acpi = kernel.io.acpi;
 
 const lib = @import("lib");
 const cpuid = lib.cpuid_db;
@@ -150,7 +151,7 @@ fn setupFp() void {
 fn setupGdt() void {
     print("arch: Setting up Global Descriptor Table (GDT)\n", .{});
 
-    const gdt= bin.ptrCast(*reg.Gdtr.Layout, mm.memory.pmallocBytes(@sizeOf(reg.Gdtr.Layout) + api.cpu.FEATURES.NUM_CPU_CORES * @sizeOf(reg.TssDesc)));
+    const gdt= bin.castPtr(*reg.Gdtr.Layout, mm.memory.pmallocBytes(@sizeOf(reg.Gdtr.Layout) + api.cpu.FEATURES.NUM_CPU_CORES * @sizeOf(reg.TssDesc)));
     gdt.kmode_code.seg_type = .SEG_CODE_ER;
     gdt.kmode_code.priv_level = 0;
     gdt.kmode_code.size = false;
@@ -322,7 +323,7 @@ pub export fn init() void {
     api.cpu.FEATURES.VIRT_ADDR_BITS = @intCast(cpu.leaf_0x88.eax.virt_addr_bits);
     api.cpu.FEATURES.PAGE_TABLE_LEVELS = 4;
 
-    api.cpu.FEATURES.CACHELINE_SIZE = 64;
+    api.cpu.FEATURES.CACHELINE_SIZE = @intCast(cpu.leaf_0x1.ebx.clflush_size * 8);
 
     api.cpu.FEATURES.NUM_CPU_CORES = smp_request.response.x86.cpu_count;
 
@@ -335,6 +336,8 @@ pub export fn init() void {
     setupIdt();
 
     setupSmp(true);
+
+    //acpi.setupTables();
 
     apic.setup();
 }

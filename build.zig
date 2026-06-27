@@ -57,6 +57,7 @@ pub fn build(b: *std.Build) !void {
         .use_llvm = true,
     });
 
+
     const check = b.step("check", "Check if famex compiles");
     check.dependOn(&famex_check.step);
 }

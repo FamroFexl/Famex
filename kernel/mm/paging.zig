@@ -1,4 +1,4 @@
-const builtin = @import("builtin");
+const std = @import("std");
 
 const kernel = @import("kernel");
 const types = kernel.util.types;
@@ -48,7 +48,7 @@ pub const PageInfo = extern struct {
 
     /// Somehow, packed structs require pow2 aligned types, so we
     /// can't have a packed struct with an arbitrary number of bytes.
-    const DataLayout = packed struct {
+    const DataLayout = packed struct(u24) {
         flags : Flags,
         order : u5,
         region : u11,
@@ -141,12 +141,12 @@ fn pteInit(state : *PfeState, level : anytype, alloc : bool) ?*Pte {
                 pte.?.* = PTE_DEFAULTS[level];
                 pte.?.setEntry(level, page);
 
-                state.walk[level - 1] = bin.ptrCast(*Ptable, page.to_virt().ptr());
+                state.walk[level - 1] = bin.castPtr(*Ptable, page.to_virt().ptr());
 
                 pte = pteInit(state, level - 1, alloc);
             },
             .TABLE => {
-                state.walk[level - 1] = bin.ptrCast(*Ptable, pte.?.getEntry(level).to_virt().ptr());
+                state.walk[level - 1] = bin.castPtr(*Ptable, pte.?.getEntry(level).to_virt().ptr());
                 pte = pteInit(state, level - 1, alloc);
             },
             .PFE => continue,
@@ -212,7 +212,7 @@ fn pteNext(state : *PfeState, level : anytype, alloc : bool) ?*Pte {
             .PFE => continue,
         }
 
-        const table = bin.ptrCast(*Ptable, page.to_virt().ptr());
+        const table = bin.castPtr(*Ptable, page.to_virt().ptr());
         state.walk[level - 1] = table;
 
         return &table.pte[entry];
@@ -313,8 +313,7 @@ pub const PfeState = struct {
     }
 
     pub fn getNext(state : *@This()) ?*Pte {
-        if (builtin.mode == .Debug and state.iterator != .GET)
-            log.panic("Mixed PFE iterator types!", .{});
+        std.debug.assert(state.iterator == .GET);
 
         state.pfe = pteNext(state, state.level, false);
         while (state.pfe and getPteType(state.level, state.pfe) != .PFE) {
@@ -325,15 +324,13 @@ pub const PfeState = struct {
     }
 
     pub fn mapNext(state : *@This()) ?*Pte {
-        if (builtin.mode == .Debug and state.iterator != .MAP)
-            log.panic("Mixed PFE iterator types!", .{});
+        std.debug.assert(state.iterator == .MAP);
 
         return pteNext(state, state.level, true);
     }
 
     pub fn unmapNext(state : *@This(), prior_unmapped : bool) ?Pte {
-        if (builtin.mode == .Debug and state.iterator != .UNMAP)
-            log.panic("Mixed PFE iterator types!", .{});
+        std.debug.assert(state.iterator == .UNMAP);
 
         return pteUnmapNext(state, prior_unmapped);
     }

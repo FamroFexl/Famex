@@ -105,17 +105,21 @@ pub fn isZero(val : anytype) bool {
     return std.mem.allEqual(u8, std.mem.asBytes(&val), 0);
 }
 
-pub fn ptrCast(comptime T : type, val : *anyopaque) T {
+/// Ptr and align cast
+pub fn castPtr(comptime T : type, val : *anyopaque) T {
     return @ptrCast(@alignCast(val));
 }
 
 pub fn getFlexArray(comptime T : type, comptime O : type, val : *T) [*]O {
+    // When allocating structs with a flex array, we expect 8 byte alignment
+    std.debug.assert(@alignOf(O) == 8);
+
     const base: [*]u8 = @ptrCast(val);
 
     const start = std.mem.alignForward(u64, @sizeOf(T), @alignOf(O));
     const raw = base + start;
 
-    return @ptrCast(@alignCast(raw));
+    return castPtr([*]O, raw);
 }
 
 pub fn SizedType(comptime size: usize, comptime alignment: u29) type {

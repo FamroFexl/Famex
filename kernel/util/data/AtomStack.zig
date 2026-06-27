@@ -1,13 +1,11 @@
 const std = @import("std");
-const Order = std.builtin.AtomicOrder;
-const Op = std.builtin.AtomicRmwOp;
 
 next : std.atomic.Value(?*@This()),
 
 pub const Node = @This();
 
 pub fn init(stack : *@This()) void {
-    stack.next = .init(null);
+    stack.next.store(null, .unordered);
 }
 
 pub fn empty(stack : *@This()) bool {

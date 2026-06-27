@@ -4,3 +4,4 @@ pub const List = @import("List.zig");
 pub const Bitmap = @import("Bitmap.zig");
 pub const CpuTree = @import("CpuTree.zig");
 pub const DeferTree = @import("DeferTree.zig");
+pub const Queue = @import("Queue.zig");

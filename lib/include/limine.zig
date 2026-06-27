@@ -85,6 +85,17 @@ pub const LimineMemmapEntry = extern struct {
 
 };
 
+pub const LimineRsdpResponse = extern struct {
+    revision : u64,
+    address : *anyopaque,
+};
+
+pub const LimineRsdpRequest = extern struct {
+    id : LimineReqId = req_id(0xc5e77b6b397e7b43, 0x27637845accdcf3c),
+    revision : u64 = LIMINE_REVISION,
+    response : *LimineRsdpResponse = undefined,
+};
+
 pub const LimineMemmapResponse = extern struct {
     revision : u64,
     entry_count : u64,

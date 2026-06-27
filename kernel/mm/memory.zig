@@ -82,6 +82,12 @@ pub fn memset(ptr : *anyopaque, size : anytype, val : u8) void {
     @memset(bytes[0..size], val);
 }
 
+pub fn memcpy(dest : *anyopaque, src : *anyopaque, size : anytype) void {
+    const destBytes : [*]u8 = @ptrCast(dest);
+    const srcBytes : [*]u8 = @ptrCast(src);
+    @memcpy(destBytes[0..size], srcBytes[0..size]);
+}
+
 pub fn pmallocBytes(size : usize) *anyopaque {
     // Size is larger than max slub size
     if (size > slub.MAX_SLUB_SIZE) {
@@ -99,14 +105,14 @@ pub fn pmalloc(comptime T: type) *T {
 
 pub fn pfreeBytes(addr : *anyopaque) void {
     // Is a page, not a slub object
-    const vaddr : Vaddr = @intFromPtr(addr);
+    const vaddr : Vaddr = .as_virt(@intFromPtr(addr));
     const info = vaddr.to_info();
-    if (bin.alignDown(vaddr.val, buddy.orderToSize(info.getData().order) == vaddr.val)) {
-        buddy.freePage(vaddr.to_phys().val);
+    if (bin.alignDown(vaddr.val, buddy.orderToSize(info.getData().order)) == vaddr.val) {
+        buddy.freePage(vaddr.to_phys());
         return;
     }
 
-    slub.SlubPool.free(slub.SlubPool.getPool(addr));
+    slub.SlubPool.free(slub.SlubPool.getPool(addr), addr);
 }
 
 pub fn pfree(comptime T: type, addr : *T) void {

@@ -17,7 +17,7 @@ pub fn tryLock(spinlock : *@This()) bool {
     proc.irqSave();
     const locked = !spinlock.val.rmw(.Xchg, true, .acquire);
     if (locked) {
-        locks.lockAdd(bin.ptrCast(*anyopaque, spinlock));
+        locks.lockAdd(bin.castPtr(*anyopaque, spinlock));
     }
     else {
         proc.irqRestore();
@@ -30,7 +30,7 @@ pub fn lock(spinlock : *@This()) void {
     proc.irqSave();
 
     if (!spinlock.val.rmw(.Xchg, true, .acquire)) {
-        locks.lockAdd(bin.ptrCast(*anyopaque, spinlock));
+        locks.lockAdd(bin.castPtr(*anyopaque, spinlock));
         return;
     }
 
@@ -38,13 +38,13 @@ pub fn lock(spinlock : *@This()) void {
         cpu.spinWaitLoop();
     }
 
-    locks.lockAdd(bin.ptrCast(*anyopaque, spinlock));
+    locks.lockAdd(bin.castPtr(*anyopaque, spinlock));
 }
 
 pub fn unlock(spinlock : *@This()) void {
     spinlock.val.store(false, .release);
 
-    locks.lockRemove(bin.ptrCast(*anyopaque, spinlock));
+    locks.lockRemove(bin.castPtr(*anyopaque, spinlock));
 
     proc.irqRestore();
 }

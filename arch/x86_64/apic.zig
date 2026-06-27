@@ -27,7 +27,7 @@ pub const LapicIdReg = packed struct(u32) {
 pub const LvtReg = packed struct(u32) {
     vector              : u8,              // LVT number
     deliveryMode       : DeliveryMode,     // Interrupt type to be sent (not for lvt_err)
-    __pad               : u1 = 0,
+    __pad               : u1 = undefined,
     deliveryStatus     : u1,               // (0) No interrupt pending, (1) Interrupt is pending at processor
 
     // For LVT_LINT0 or LVT_LINT1 only
@@ -38,7 +38,7 @@ pub const LvtReg = packed struct(u32) {
     mask                : u1,              // (0) Interrupt reception, (1) Inhibits reception
     // Intel defines 2 bits for support of TSC_DEADLINE. AMD only has single bit.
     timerMode          : TimerMode,        // Timer mode (for lvt_timer only)
-    __pad2              : u13 = 0,
+    __pad2              : u13 = undefined,
 
     // Type of interrupt to be sent to the processor
     pub const DeliveryMode = enum(u3) {
@@ -76,12 +76,12 @@ pub const IcrReg = packed struct(u64) {
     deliveryMode   : u3,
     destMode       : DestMode,         // Interrupt type to be sent
     deliveryStatus : u1,               // (0) No interrupt pending, (1) Interrupt is pending at processor (not used in x2apic)
-    __pad           : u1 = 0,
+    __pad           : u1 = undefined,
     level           : u1,              // (0) De-Assert, (1) Assert
     triggerMode    : TriggerMode,      // (0) Edge-sensitive, (1) Level Sensitive (when using DMODE_INIT)
-    __pad2          : u2 = 0,
+    __pad2          : u2 = undefined,
     destShorthand  : DestShorthand,    // Optional shorthand used for destination
-    __pad3          : u12 = 0,
+    __pad3          : u12 = undefined,
     //Only the top 8 bits contain the ID if x2apic is enabled
     destField      : u32,              // Destination Processor by APIC ID (physical) or MDA (logical)
 
@@ -105,13 +105,13 @@ pub const IcrReg = packed struct(u64) {
 
 // Logical Destination Register
 pub const LdrReg = packed struct(u32) {
-    __pad       : u24 = 0,
+    __pad       : u24 = undefined,
     logApicId : u8,    // Logical APIC ID
 };
 
 // Destination Format Register
 pub const DfrReg = packed struct(u32) {
-    __pad : u28 = 0,
+    __pad : u28 = undefined,
     model : DfrModel,
 
     pub const DfrModel = enum(u4) {
@@ -129,7 +129,7 @@ pub const PrioReg = packed struct(u32) {
 // Timer Divide Configuration Register
 pub const TimerDcReg = packed struct(u32) {
     divVal : DivideValue,
-    __pad : u28 = 0,
+    __pad : u28 = undefined,
 
     // Timer Divide Configuration values
     pub const DivideValue = enum(u4) {
@@ -146,7 +146,7 @@ pub const TimerDcReg = packed struct(u32) {
 
 // Generic Interrupt Pending Register (IRR, ISR, TMR)
 pub const IprReg = packed struct(u256) {
-    __pad : u16 = 0,
+    __pad : u16 = undefined,
     vec1 : u48,   // Pending vectors
     vec2 : u64,
     vec3 : u64,
@@ -158,9 +158,9 @@ pub const SvrReg = packed struct(u64) {
     vector      : u8,      // Spurious Vector
     apic_on     : bool,    // APIC Software (0) disable, (1) enable
     fpc         : bool,    // Focused Processor Checking
-    __pad       : u2 = 0,
+    __pad       : u2 = undefined,
     eoiSupr    : bool,     // EIO-Broadcast Suppression
-    __pad2      : u51 = 0,
+    __pad2      : u51 = undefined,
 };
 
 const ApicReg = enum {
@@ -332,7 +332,7 @@ pub fn setupTimer() void {
     });
 
     var lvtTimer = std.mem.zeroes(LvtReg);
-    lvtTimer.vector = irq.LOCAL_TIMER_IDT;
+    lvtTimer.vector = @intFromEnum(irq.VecNum.LOCAL_TIMER);
     lvtTimer.mask = 0;
     lvtTimer.deliveryMode = .FIXED;
     lvtTimer.timerMode = if (timers.TSC_DEADLINE and timers.TSC_INVARIANT) .DEADLINE else .ONE_SHOT;
@@ -361,7 +361,7 @@ pub fn setupCore() void {
 
     var svrReg= std.mem.zeroes(SvrReg);
     svrReg.apic_on = true;
-    svrReg.vector = irq.SIVR_IDT;
+    svrReg.vector = @intFromEnum(irq.VecNum.SIVR);
     svrReg.eoiSupr = true;
     set(.svr, svrReg);
 }

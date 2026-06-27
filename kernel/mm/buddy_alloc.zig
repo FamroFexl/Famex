@@ -178,7 +178,7 @@ pub fn __freePage(addr : mem.Paddr) void {
             break;
         }
 
-        orders[buddy_data.order].free.remove(@ptrFromInt(buddy));
+        orders[buddy_data.order].free.remove(@ptrFromInt(buddy.val));
 
         // Set block to start of new block
         block.val &= ~size;
@@ -223,7 +223,7 @@ pub fn freePage4k(addr : mem.Paddr) void {
 
     const pool = localPagePool.getLocal();
     if (pool.current < config.PER_CPU_PAGE_NUM) {
-        pool.pages.push(@ptrFromInt(addr.to_virt()));
+        pool.pages.push(@ptrFromInt(addr.to_virt().val));
         pool.current += 1;
     }
     else {

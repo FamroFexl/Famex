@@ -132,8 +132,11 @@ pub fn PerCpuDyn(comptime T: type) type {
     };
 }
 
+pub const Tid = u32;
+
 pub const ThreadBase = struct {
     owner : *Process,
+    tid : Tid,
 
     preemptDepth : u8,
     migrateDepth : u8,
@@ -172,6 +175,6 @@ pub fn irqRestore() void {
     }
 }
 
-pub export fn inKmode(state : *cpu.CpuState) callconv(.c) bool {
+pub export fn inKmode(state : *cpu.CpuState) bool {
     return state.getStack() >= mem.KERNEL_MEMORY.val;
 }

@@ -7,10 +7,6 @@ const print = kernel.util.log.print;
 
 pub extern const irqStubTable : [256]u64;
 
-pub const IPI_IDT = 253;            // Inter-Processor Interrupt generic entry
-pub const LOCAL_TIMER_IDT = 254;    // Local timer (LAPIC Timer One-Shot or TSC Deadline) entry
-pub const SIVR_IDT = 255;           // Spurious Interrupt Vector Register entry
-
 // Interrupt Descriptor Table exeception/interrupt vectors (local APIC internal)
 pub const VecNum = enum(u8) {
     DIVIDE_ERROR        = 0,    // Divide error (fault)
@@ -33,7 +29,12 @@ pub const VecNum = enum(u8) {
     SIMD_FP_XCP         = 19,   // SIMD FP exception (fault)
     VIRT_XCP            = 20,   // Virtualization exception (fault)
     CTRL_PROT_XC        = 21,   // Control protection exception (fault) (error code)
-    X86_VEC_UINT        = 32    // User-defined interrupts (interrupt) (32-255)
+
+    UINT_START          = 32,   // User-defined interrupts start
+    UINT_END            = 252,  // User-defined interrupts end
+    IPI                 = 253,  // Inter-Processor Interrupt generic entry
+    LOCAL_TIMER         = 254,  // Local timer (LAPIC Timer One-Shot or TSC Deadline) entry
+    SIVR                = 255,  // Spurious Interrupt Vector Register entry
 };
 
 /// Interrupt handler (called by asm)
@@ -42,7 +43,7 @@ pub const VecNum = enum(u8) {
 /// error: pushed by specific interrupts, otherwise contains garbage (rip)
 /// vec_num: what needs to be done depending on interrupt vector type
 ///
-pub export fn interruptVectorHandler(state : *reg.CpuState, err : u64, vec_num : u64) callconv(.c) void {
+pub export fn interruptVectorHandler(state : *reg.CpuState, err : u64, vec_num : u64) void {
     _ = state;
     _ = err;
     _ = vec_num;

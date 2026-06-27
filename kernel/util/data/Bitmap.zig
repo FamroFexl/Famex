@@ -11,13 +11,13 @@ addr : [*]u64,
 /// Init a bitmap with an amount of bits
 pub fn init(bmap : *@This(), addr : *anyopaque, num_bits : u64) void {
     bmap.num_bits = num_bits;
-    bmap.addr = bin.ptrCast([*]u64, addr);
+    bmap.addr = bin.castPtr([*]u64, addr);
 }
 
 /// Create a bitmap with an amount of bits
 pub fn create(addr : *anyopaque, num_bits : u64) @This() {
     return .{
-        .addr = bin.ptrCast([*]u64, addr),
+        .addr = bin.castPtr([*]u64, addr),
         .num_bits = num_bits,
     };
 }
