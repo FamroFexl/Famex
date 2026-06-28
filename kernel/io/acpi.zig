@@ -18,7 +18,7 @@ export fn AcpiOsTerminate() acpica.ACPI_STATUS {
 }
 
 export fn AcpiOsGetRootPointer() acpica.ACPI_PHYSICAL_ADDRESS {
-    return @intFromPtr(kernel.rsdp_request.response.address);
+    return @intFromPtr(kernel.Limine.rsdp_request.response.address);
 }
 
 export fn AcpiOsPredefinedOverride(initVal : ?*const acpica.ACPI_PREDEFINED_NAMES, newVal : ?*acpica.ACPI_STRING) acpica.ACPI_STATUS {
@@ -170,9 +170,8 @@ export fn AcpiOsFree(memory : ?*anyopaque) void {
 }
 
 export fn AcpiOsMapMemory(where : acpica.ACPI_PHYSICAL_ADDRESS, length : acpica.ACPI_SIZE) *anyopaque {
-    _ = where;
     _ = length;
-    return @ptrFromInt(2);
+    return mem.Paddr.asPhys(where).toVirt().ptr();
 }
 
 export fn AcpiOsUnmapMemory(logicalAddress : ?*anyopaque, size : acpica.ACPI_SIZE) void {
@@ -183,8 +182,8 @@ export fn AcpiOsUnmapMemory(logicalAddress : ?*anyopaque, size : acpica.ACPI_SIZ
 export fn AcpiOsGetPhysicalAddress(logicalAddress : ?*anyopaque, physicalAddress : ?*acpica.ACPI_PHYSICAL_ADDRESS) acpica.ACPI_STATUS {
     if (logicalAddress == null or physicalAddress == null) return acpica.AE_BAD_PARAMETER;
 
-    const vaddr = mem.Vaddr.as_virt(@intFromPtr(logicalAddress));
-    physicalAddress.?.* = vaddr.to_phys().val;
+    const vaddr = mem.Vaddr.asVirt(@intFromPtr(logicalAddress));
+    physicalAddress.?.* = vaddr.toPhys().val;
 
     return acpica.AE_OK;
 }
@@ -297,7 +296,7 @@ export fn AcpiOsReadMemory(address : acpica.ACPI_PHYSICAL_ADDRESS, value : ?*u64
     if (value == null) return acpica.AE_BAD_PARAMETER;
     if (address == 0) return acpica.AE_ERROR;
 
-    const vaddr = mem.Paddr.as_phys(address).to_virt();
+    const vaddr = mem.Paddr.asPhys(address).toVirt();
 
     mem.memcpy(value.?, vaddr.ptr(), width);
 
@@ -308,7 +307,7 @@ export fn AcpiOsWriteMemory(address : acpica.ACPI_PHYSICAL_ADDRESS, value : ?*u6
     if (value == null) return acpica.AE_BAD_PARAMETER;
     if (address == 0) return acpica.AE_ERROR;
 
-    const vaddr = mem.Paddr.as_phys(address).to_virt();
+    const vaddr = mem.Paddr.asPhys(address).toVirt();
 
     mem.memcpy(vaddr.ptr(), value.?, width);
 
@@ -336,7 +335,6 @@ pub fn setupSubsys() void {
 pub fn setupTables() void {
     print("\ninit: Initializing ACPI Tables\n", .{});
     const tables = mem.pmallocBytes(@sizeOf(acpica.ACPI_TABLE_DESC) * 16);
-    print("after\n", .{});
     _ = acpica.AcpiInitializeTables(@ptrCast(@alignCast(tables)), 16, 1);
 
     print("  ACPI Tables: ", .{});
@@ -347,20 +345,3 @@ pub fn setupTables() void {
         print("{s:4}", .{table.?.*.*.Signature});
     }
 }
-
-// void setup_acpi_tables() {
-//     print("\ninit: Initializing ACPI Tables\n");
-//
-//     ACPI_TABLE_DESC* tables = pmalloc(sizeof(ACPI_TABLE_DESC) * 16);
-//     AcpiInitializeTables(tables, 16, true);
-//
-//     ACPI_TABLE_HEADER *table;
-//     ACPI_STATUS status;
-//     print("  ACPI Tables: ");
-//     for (int i = 0; i < 10; i++ ) {
-//         status = AcpiGetTableByIndex(i, &table);
-//         if (status == AE_BAD_PARAMETER) break;
-//         print("%.4s ", table->Signature);
-//     }
-//     print("\n");
-// }

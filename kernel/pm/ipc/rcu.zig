@@ -12,15 +12,15 @@ var TREE : *DeferTree = undefined;
 
 pub fn RcuPtr(comptime T : type) type {
     return struct {
-        ptr : std.atomic.Value(?*T),
+        ptr : std.atomic.Value(*T),
 
         /// Get the RCU ptr
-        pub fn get(self : *@This()) ?*T {
+        pub fn get(self : *@This()) *T {
             return self.ptr.load(.acquire);
         }
 
         /// Set the RCU to ptr and return the old value
-        pub fn set(self : *@This(), ptr : ?*T) ?*T {
+        pub fn set(self : *@This(), ptr : ?*T) *T {
             return self.ptr.swap(ptr, if (ptr == null) .unordered else .release);
         }
 
@@ -40,7 +40,7 @@ pub fn RcuPtr(comptime T : type) type {
         }
 
         /// RCU read lock and RCU ptr return
-        pub fn lockAndGet(self : *@This()) ?*T {
+        pub fn lockAndGet(self : *@This()) *T {
             lock();
             return get(self);
         }

@@ -8,6 +8,7 @@ const util = kernel.util;
 const log = util.log;
 const bin = util.binary;
 const types = util.types;
+const sched = kernel.pm.sched.scheduler;
 const cpu = @import("arch").cpu;
 
 const std = @import("std");
@@ -39,9 +40,15 @@ pub const perCpu = struct {
     /// Every bit in this is equivalent to 64 bytes
     pub var dyn_alloc_bmap : util.data.Bitmap = undefined;
     pub var dyn_alloc_bmap_lock : util.Spinlock = undefined;
+
+    // Used for enabling preemption checks after initialization is complete
+    pub var isSetup = false;
 };
 
 fn getLocalPercpu(comptime T: type, addr : u64) *T {
+    // Get local percpu must execute without threat of being transferred to a new cpu
+    std.debug.assert(!perCpu.isSetup or !cpu.irqEnabled() or sched.cThread().preemptDepth > 0);
+
     return @ptrFromInt(@intFromPtr(cpu.getPerCpu()) + addr);
 }
 
@@ -151,11 +158,41 @@ pub const UThread = struct {
 };
 
 pub fn preemptSave() void {
+    irqSave();
+    defer irqRestore();
 
+    sched.cThread().preemptDepth += 1;
 }
 
 pub fn preemptRestore() void {
+    irqSave();
+    defer irqRestore();
 
+    const data = sched.schedData.getLocal();
+    const depth = &data.current.preemptDepth;
+    depth.* -= 1;
+
+    if (depth.* == 0 and data.flags.reschedule) {
+        // yield_thread()
+    }
+}
+
+/// Prevent cpu thread migration
+pub fn migrateSave() void {
+    irqSave();
+    defer irqRestore();
+
+    const data = sched.schedData.getLocal();
+    data.current.migrateDepth += 1;
+}
+
+/// Enable cpu thread migration
+pub fn migrateRestore() void {
+    irqSave();
+    defer irqRestore();
+
+    const data = sched.schedData.getLocal();
+    data.current.migrateDepth -= 1;
 }
 
 const irqSaveDepth = PerCpuStat(u64);
@@ -167,6 +204,8 @@ pub fn irqSave() void {
 }
 
 pub fn irqRestore() void {
+    std.debug.assert(!cpu.irqEnabled());
+
     const depth = irqSaveDepth.getLocal();
     depth.* -= 1;
 

@@ -76,8 +76,8 @@ fn sanitizeMmap() u64 {
     log.printChar('-', 60);
     print("\n", .{});
 
-    for(0..kernel.mmap_request.response.*.entry_count) |i| {
-        const entry = &kernel.mmap_request.response.*.entries[i].*;
+    for(0..kernel.Limine.mmap_request.response.*.entry_count) |i| {
+        const entry = &kernel.Limine.mmap_request.response.*.entries[i].*;
 
         print("  0x{X:<18} 0x{X:<18} ", .{entry.base, entry.base + entry.length});
         log.printSize(entry.length, 10);
@@ -87,8 +87,8 @@ fn sanitizeMmap() u64 {
     var num_usable : u64 = 0;
 
     // Align region bounds to 4KB page sizes
-    for(0..kernel.mmap_request.response.*.entry_count) |i| {
-        const entry = &kernel.mmap_request.response.*.entries[i].*;
+    for(0..kernel.Limine.mmap_request.response.*.entry_count) |i| {
+        const entry = &kernel.Limine.mmap_request.response.*.entries[i].*;
 
         entry.base = bin.alignDown(entry.base, types.SIZE_4KB);
         entry.length = bin.alignUp(entry.length, types.SIZE_4KB);
@@ -108,10 +108,10 @@ fn sanitizeMmap() u64 {
     }
 
     // Remove region overlaps using overlap_priority
-    for(0..(kernel.mmap_request.response.*.entry_count - 1)) |i| {
-        const entry = &kernel.mmap_request.response.*.entries[i].*;
+    for(0..(kernel.Limine.mmap_request.response.*.entry_count - 1)) |i| {
+        const entry = &kernel.Limine.mmap_request.response.*.entries[i].*;
         if(entry.length == 0) continue;
-        const next_entry = &kernel.mmap_request.response.*.entries[i+1].*;
+        const next_entry = &kernel.Limine.mmap_request.response.*.entries[i+1].*;
 
         if (entry.base + entry.length > next_entry.base) {
             // First has higher priority, move next up
@@ -131,8 +131,8 @@ fn sanitizeMmap() u64 {
     log.printChar('-', 60);
     print("\n", .{});
 
-    for (0..kernel.mmap_request.response.*.entry_count) |i| {
-        const entry = &kernel.mmap_request.response.*.entries[i].*;
+    for (0..kernel.Limine.mmap_request.response.*.entry_count) |i| {
+        const entry = &kernel.Limine.mmap_request.response.*.entries[i].*;
         if(entry.length == 0)
             continue;
 
@@ -147,8 +147,8 @@ fn sanitizeMmap() u64 {
 fn populateUsable() void {
     var usable_index : u64 = 0;
 
-    for(0..kernel.mmap_request.response.*.entry_count) |i| {
-        const entry = &kernel.mmap_request.response.*.entries[i].*;
+    for(0..kernel.Limine.mmap_request.response.*.entry_count) |i| {
+        const entry = &kernel.Limine.mmap_request.response.*.entries[i].*;
 
         if (entry.type != .USABLE) continue;
 
@@ -220,8 +220,8 @@ fn mapPageMdata(kernel_root_pt : *paging.Ptable) void {
     var mem_size : u64 = 0;
     var metadata_size : u64 = 0;
 
-    for(0..kernel.mmap_request.response.*.entry_count) |i| {
-        const entry = &kernel.mmap_request.response.*.entries[i].*;
+    for(0..kernel.Limine.mmap_request.response.*.entry_count) |i| {
+        const entry = &kernel.Limine.mmap_request.response.*.entries[i].*;
 
         if (entry.type != .USABLE) continue;
 
@@ -234,7 +234,7 @@ fn mapPageMdata(kernel_root_pt : *paging.Ptable) void {
         var page : u64 = page_start;
         while (page < page_end) : (page += types.SIZE_4KB) {
             pframe.setEntry(0, allocBootPage());
-            paging.mapBootPage(memory.Vaddr.as_virt(page), pframe, 0, kernel_root_pt);
+            paging.mapBootPage(memory.Vaddr.asVirt(page), pframe, 0, kernel_root_pt);
         }
     }
 
@@ -256,8 +256,8 @@ fn mapNewHhdm(kernel_root_pt : *paging.Ptable) void {
         pte.setGlobal(i, true);
     }
 
-    outer: for(0..kernel.mmap_request.response.*.entry_count) |i| {
-        const entry = &kernel.mmap_request.response.*.entries[i].*;
+    outer: for(0..kernel.Limine.mmap_request.response.*.entry_count) |i| {
+        const entry = &kernel.Limine.mmap_request.response.*.entries[i].*;
         if (entry.length == 0) continue;
 
         switch (entry.type) {
@@ -297,10 +297,10 @@ fn mapNewHhdm(kernel_root_pt : *paging.Ptable) void {
 fn mapKernelImage(kernel_root_pt : *paging.Ptable) void {
     print("  Mapping Kernel Image\n", .{});
 
-    log.apanic(kernel.executable_address_request.response.*.virtual_base != memory.KERNEL_IMAGE.val,
+    log.apanic(kernel.Limine.executable_address_request.response.*.virtual_base != memory.KERNEL_IMAGE.val,
         "mm: Limine kernel base doesn't match the expected base!\n", .{});
 
-    const elf_hdr = bin.castPtr(*elf.ElfHdr, kernel.executable_file_request.response.*.executable_file.address);
+    const elf_hdr = bin.castPtr(*elf.ElfHdr, kernel.Limine.executable_file_request.response.*.executable_file.address);
     log.apanic(!elf_hdr.isElf(), "mm: Kernel ELF file wasn't found! Cannot remap kernel image!\n", .{});
     for(0..elf_hdr.ph_num) |i| {
         const phdr = elf_hdr.getPhdrByIndex(i).?;
@@ -315,7 +315,7 @@ fn mapKernelImage(kernel_root_pt : *paging.Ptable) void {
         const start : memory.Vaddr = .{.val = phdr.vaddr};
         const size : usize = phdr.mem_sz;
 
-        const pstart : u64 = kernel.executable_address_request.response.*.physical_base + start.val - memory.KERNEL_IMAGE.val;
+        const pstart : u64 = kernel.Limine.executable_address_request.response.*.physical_base + start.val - memory.KERNEL_IMAGE.val;
 
         var addr : u64 = 0;
         while(addr < size) : (addr += types.SIZE_4KB) {
@@ -328,16 +328,16 @@ fn mapKernelImage(kernel_root_pt : *paging.Ptable) void {
 fn mapModules(kernel_root_pt : *paging.Ptable) void {
     print("  Mapping Kernel Modules\n", .{});
 
-    if (kernel.module_request.response == null) return;
+    if (kernel.Limine.module_request.response == null) return;
 
     var pfe : paging.Pte = paging.PFE_DEFAULTS[0];
     pfe.setGlobal(0, true);
 
-    for(0..kernel.mmap_request.response.*.entry_count) |i| {
-        const module = &kernel.module_request.response.?.modules[i].*;
+    for(0..kernel.Limine.mmap_request.response.*.entry_count) |i| {
+        const module = &kernel.Limine.module_request.response.?.modules[i].*;
 
-        const vaddr : memory.Vaddr = memory.Vaddr.as_virt(bin.alignDown(@intFromPtr(module.address), types.SIZE_4KB));
-        const paddr : memory.Paddr = vaddr.to_phys();
+        const vaddr : memory.Vaddr = memory.Vaddr.asVirt(bin.alignDown(@intFromPtr(module.address), types.SIZE_4KB));
+        const paddr : memory.Paddr = vaddr.toPhys();
 
         var j : u64 = 0;
         while (j < bin.alignUp(module.size, types.SIZE_4KB)) : (j += types.SIZE_4KB) {
@@ -350,7 +350,7 @@ fn mapModules(kernel_root_pt : *paging.Ptable) void {
 fn mapPercpu(kernel_root_pt : *paging.Ptable) void {
     print("  Mapping per-cpu static region\n", .{});
 
-    const elf_hdr = bin.castPtr(*elf.ElfHdr, kernel.executable_file_request.response.*.executable_file.address);
+    const elf_hdr = bin.castPtr(*elf.ElfHdr, kernel.Limine.executable_file_request.response.*.executable_file.address);
     const shdr = elf_hdr.getShdrByName(".percpu").?;
     const size = bin.alignUp(shdr.size, types.SIZE_4KB);
 
@@ -389,7 +389,7 @@ fn switchToNewPtables() void {
     const kernel_root_pt = &process.kernelProcess.addr_space.root_pt;
 
     // The new kernel root page table
-    kernel_root_pt.* = @ptrFromInt(allocBootPage().to_virt().val);
+    kernel_root_pt.* = @ptrFromInt(allocBootPage().toVirt().val);
     memory.memset(kernel_root_pt.*, types.SIZE_4KB, 0);
 
     // Setup page metadata
@@ -415,7 +415,7 @@ fn switchToNewPtables() void {
 pub fn setup() void {
     print("\nmm: Setting up Physical Memory Management\n", .{});
 
-    memory.PAGE_OFFSET.val = kernel.hhdm_request.response.*.offset;
+    memory.PAGE_OFFSET.val = kernel.Limine.hhdm_request.response.*.offset;
     if(memory.PAGE_OFFSET.val != memory.KERNEL_MEMORY.val) {
         panic("mm: Limine specified a different PAGE_OFFSET than expected! {} vs {}\n", .{memory.PAGE_OFFSET, memory.KERNEL_MEMORY});
     }
@@ -432,9 +432,9 @@ pub fn setup() void {
     switchToNewPtables();
 
     // Temporary way to set the cpu data of the bootstrap processor
-    for (0..kernel.smp_request.response.x86.cpu_count) |i| {
-        const smp_info : limine.LimineMpInfoX86 = kernel.smp_request.response.x86.cpus.x86[i].*;
-        if (smp_info.lapic_id == kernel.smp_request.response.x86.bsp_lapic_id) {
+    for (0..kernel.Limine.smp_request.response.x86.cpu_count) |i| {
+        const smp_info : limine.LimineMpInfoX86 = kernel.Limine.smp_request.response.x86.cpus.x86[i].*;
+        if (smp_info.lapic_id == kernel.Limine.smp_request.response.x86.bsp_lapic_id) {
             arch.cpu.setPerCpu(@ptrFromInt(memory.PER_CPU_DATA.val + memory.PER_CPU_DATA_SIZE * i));
         }
     }

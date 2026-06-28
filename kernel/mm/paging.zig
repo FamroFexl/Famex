@@ -67,7 +67,7 @@ pub const PageInfo = extern struct {
     }
 
     pub fn toVirt(self : *@This()) memory.Vaddr {
-        return self.toPhys().to_virt();
+        return self.toPhys().toVirt();
     }
 
     comptime {
@@ -141,12 +141,12 @@ fn pteInit(state : *PfeState, level : anytype, alloc : bool) ?*Pte {
                 pte.?.* = PTE_DEFAULTS[level];
                 pte.?.setEntry(level, page);
 
-                state.walk[level - 1] = bin.castPtr(*Ptable, page.to_virt().ptr());
+                state.walk[level - 1] = bin.castPtr(*Ptable, page.toVirt().ptr());
 
                 pte = pteInit(state, level - 1, alloc);
             },
             .TABLE => {
-                state.walk[level - 1] = bin.castPtr(*Ptable, pte.?.getEntry(level).to_virt().ptr());
+                state.walk[level - 1] = bin.castPtr(*Ptable, pte.?.getEntry(level).toVirt().ptr());
                 pte = pteInit(state, level - 1, alloc);
             },
             .PFE => continue,
@@ -212,7 +212,7 @@ fn pteNext(state : *PfeState, level : anytype, alloc : bool) ?*Pte {
             .PFE => continue,
         }
 
-        const table = bin.castPtr(*Ptable, page.to_virt().ptr());
+        const table = bin.castPtr(*Ptable, page.toVirt().ptr());
         state.walk[level - 1] = table;
 
         return &table.pte[entry];
@@ -260,7 +260,7 @@ fn pteUnmapNext(state : *PfeState, prior_unmapped : bool) ?Pte {
         const entry = getPtableEntry(cur_state.cur, i);
         const next_pte = &cur_state.walk[i].pte[entry];
         const table_entry = next_pte.getEntry(level);
-        const table : *Ptable = @ptrCast(table_entry.to_virt().ptr());
+        const table : *Ptable = @ptrCast(table_entry.toVirt().ptr());
 
         for (0..PTE_ENTRIES) |j| {
             // Does the entry exist?
@@ -344,7 +344,7 @@ pub fn printPtables(root_pt : *Ptable, level : anytype, min : anytype) void {
             PteType.EMPTY => continue :outer,
             PteType.TABLE => {
                 const page : memory.Paddr = pte.getEntry(level);
-                const table : *Ptable = @ptrFromInt(page.to_virt().val);
+                const table : *Ptable = @ptrFromInt(page.toVirt().val);
                 log.printChar(' ', (cpu.FEATURES.PAGE_TABLE_LEVELS - 1 - level) * 4);
                 print("Table {d} 0x{X}\n", .{i, page.val});
                 if (level - 1 >= min)
@@ -369,11 +369,11 @@ pub fn mapBootPage(addr : memory.Vaddr, pte : Pte, level : u8, root_pt : *Ptable
         if(!current_pte.getPresent(i)) {
             current_pte.* = PTE_DEFAULTS[i];
             const page : memory.Paddr = pmm.allocBootPage();
-            memory.memset(@ptrFromInt(page.to_virt().val), types.SIZE_4KB, 0);
+            memory.memset(@ptrFromInt(page.toVirt().val), types.SIZE_4KB, 0);
             current_pte.setEntry(i, page);
         }
 
-        cur_pt = @ptrFromInt(current_pte.getEntry(i).to_virt().val);
+        cur_pt = @ptrFromInt(current_pte.getEntry(i).toVirt().val);
         current_pte = &cur_pt.pte[getPtableEntry(addr, i - 1)];
     }
 
@@ -382,10 +382,10 @@ pub fn mapBootPage(addr : memory.Vaddr, pte : Pte, level : u8, root_pt : *Ptable
 
 // Switches to new table and returns the old tables
 pub fn switchPageTables(new_tables : *Ptable) *Ptable {
-    const cur : *Ptable = arch.paging.get_page_tables();
+    const cur : *Ptable = arch.paging.getPageTables();
     if(cur == new_tables) return new_tables;
 
-    arch.paging.set_page_tables(new_tables);
+    arch.paging.setPageTables(new_tables);
 
     return cur;
 }

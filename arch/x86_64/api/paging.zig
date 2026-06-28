@@ -9,19 +9,19 @@ const PatType = reg.Pat.Layout.PatType;
 
 const cpu = @import("cpu.zig");
 
-pub fn set_page_tables(tables : *paging.Ptable) void {
-    reg.Cr3.set(@bitCast(mem.Vaddr.as_virt(@intFromPtr(tables)).to_phys().val));
+pub fn setPageTables(tables : *paging.Ptable) void {
+    reg.Cr3.set(@bitCast(mem.Vaddr.asVirt(@intFromPtr(tables)).toPhys().val));
 }
 
-pub fn get_page_tables() *paging.Ptable {
-    return @ptrFromInt(mem.Paddr.as_phys(@bitCast(reg.Cr3.get())).to_virt().val);
+pub fn getPageTables() *paging.Ptable {
+    return @ptrFromInt(mem.Paddr.asPhys(@bitCast(reg.Cr3.get())).toVirt().val);
 }
 
-pub fn flush_tlb() void {
+pub fn flushTlb() void {
     reg.Cr3.set(reg.Cr3.get());
 }
 
-pub fn flush_page(page : *anyopaque) void {
+pub fn flushPage(page : *anyopaque) void {
     reg.tlb_page_flush(page);
 }
 

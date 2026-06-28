@@ -204,32 +204,32 @@ const RegInfo = struct {
 
 fn getRegInfo(comptime reg : ApicReg) RegInfo {
     return switch (reg) {
-        .lid        => RegInfo{.offset = 8, .size = LapicIdReg, .xwrite = false},
-        .lvr        => RegInfo{.offset = 12, .size = LapicVerReg, .xwrite = false},
-        .tpr        => RegInfo{.offset = 32, .size = PrioReg},
-        .apr        => RegInfo{.offset = 36, .size = PrioReg, .xwrite = false},
-        .ppr        => RegInfo{.offset = 40, .size = PrioReg},
-        .eoi        => RegInfo{.offset = 44, .size = u32, .xread = false},
-        .rrd        => RegInfo{.offset = 48, .size = u32, .xwrite = false},
-        .ldr        => RegInfo{.offset = 52, .size = LdrReg, .x2write = false},
-        .dfr        => RegInfo{.offset = 56, .size = DfrReg, .x2read = false, .x2write = false},
-        .svr        => RegInfo{.offset = 60, .size = SvrReg},
-        .isr        => RegInfo{.offset = 64, .size = IprReg, .xwrite = false},
-        .tmr        => RegInfo{.offset = 96, .size = IprReg, .xwrite = false},
-        .irr        => RegInfo{.offset = 128, .size = IprReg, .xwrite = false},
-        .esr        => RegInfo{.offset = 160, .size = EsrReg},
-        .lvtCmci    => RegInfo{.offset = 188, .size = LvtReg},
-        .icr        => RegInfo{.offset = 192, .size = IcrReg},
-        .lvtTimer   => RegInfo{.offset = 200, .size = LvtReg},
-        .lvtTs      => RegInfo{.offset = 204, .size = LvtReg},
-        .lvtPmc     => RegInfo{.offset = 208, .size = LvtReg},
-        .lvtLint0   => RegInfo{.offset = 212, .size = LvtReg},
-        .lvtLint1   => RegInfo{.offset = 216, .size = LvtReg},
-        .lvtErr     => RegInfo{.offset = 220, .size = LvtReg},
-        .timerIc    => RegInfo{.offset = 224, .size = u32},
-        .timerCc    => RegInfo{.offset = 228, .size = u32, .xwrite = false},
-        .timerDc    => RegInfo{.offset = 248, .size = TimerDcReg},
-        .selfIpi    => RegInfo{.offset = 252, .size = u32, .xread = false, .xwrite = false, .x2read = false},
+        .lid        => .{.offset = 8, .size = LapicIdReg, .xwrite = false},
+        .lvr        => .{.offset = 12, .size = LapicVerReg, .xwrite = false},
+        .tpr        => .{.offset = 32, .size = PrioReg},
+        .apr        => .{.offset = 36, .size = PrioReg, .xwrite = false},
+        .ppr        => .{.offset = 40, .size = PrioReg},
+        .eoi        => .{.offset = 44, .size = u32, .xread = false},
+        .rrd        => .{.offset = 48, .size = u32, .xwrite = false},
+        .ldr        => .{.offset = 52, .size = LdrReg, .x2write = false},
+        .dfr        => .{.offset = 56, .size = DfrReg, .x2read = false, .x2write = false},
+        .svr        => .{.offset = 60, .size = SvrReg},
+        .isr        => .{.offset = 64, .size = IprReg, .xwrite = false},
+        .tmr        => .{.offset = 96, .size = IprReg, .xwrite = false},
+        .irr        => .{.offset = 128, .size = IprReg, .xwrite = false},
+        .esr        => .{.offset = 160, .size = EsrReg},
+        .lvtCmci    => .{.offset = 188, .size = LvtReg},
+        .icr        => .{.offset = 192, .size = IcrReg},
+        .lvtTimer   => .{.offset = 200, .size = LvtReg},
+        .lvtTs      => .{.offset = 204, .size = LvtReg},
+        .lvtPmc     => .{.offset = 208, .size = LvtReg},
+        .lvtLint0   => .{.offset = 212, .size = LvtReg},
+        .lvtLint1   => .{.offset = 216, .size = LvtReg},
+        .lvtErr     => .{.offset = 220, .size = LvtReg},
+        .timerIc    => .{.offset = 224, .size = u32},
+        .timerCc    => .{.offset = 228, .size = u32, .xwrite = false},
+        .timerDc    => .{.offset = 248, .size = TimerDcReg},
+        .selfIpi    => .{.offset = 252, .size = u32, .xread = false, .xwrite = false, .x2read = false},
     };
 }
 
@@ -326,7 +326,7 @@ pub fn setIcrDest(icr : *IcrReg, dest : u32) void {
     }
 }
 
-pub fn setupTimer() void {
+fn setupTimer() void {
     set(.timerDc, .{
         .divVal = .BY_1,
     });
@@ -353,7 +353,7 @@ pub fn setupCore() void {
     }
     else {
         apicBase.x2apic = false;
-        apicBase.apic_base = @intCast(apicRegMap.to_phys().val >> 12);
+        apicBase.apic_base = @intCast(apicRegMap.toPhys().val >> 12);
     }
     regs.ApicBase.set(apicBase);
 

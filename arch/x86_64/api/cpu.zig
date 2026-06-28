@@ -94,6 +94,28 @@ pub fn irqEnabled() bool {
     return reg.Rflags.get().irq_enable;
 }
 
+pub const MemFence = struct {
+    /// Read/write memory fence
+    pub fn full() void {
+        asm volatile("mfence");
+    }
+
+    /// Read memory fence
+    pub fn read() void {
+        asm volatile("lfence");
+    }
+
+    /// Write memory fence
+    pub fn write() void {
+        asm volatile("sfence");
+    }
+
+    /// Compiler reordering fence
+    pub fn comp() void {
+        asm volatile("" ::: "memory");
+    }
+};
+
 pub fn getCpuId() u8 {
     return cpu.cpuId.getLocal().*;
 }

@@ -27,11 +27,9 @@ pub fn module(b : *std.Build, options : *const std.Build.Module.CreateOptions) *
         .link_libc = false,
     }).addModule("acpica");
 
-    const files = collectFiles(b, "src", ".c") catch undefined;
-
     acpica_module.addCSourceFiles(.{
         .root = b.path(cwd ++ "src/"),
-        .files = files,
+        .files = collectFiles(b, "src", ".c") catch undefined,
     });
 
     acpica_module.addIncludePath(b.path(cwd ++ "include"));

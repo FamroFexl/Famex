@@ -17,11 +17,11 @@
 #ifndef LIMINE_H
 #define LIMINE_H 1
 
-#include <stdint.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
+#define int64_t long long
+#define uint64_t unsigned long long
+#define uint32_t unsigned int
+#define uint16_t unsigned short
+#define uint8_t unsigned char
 
 /* Misc */
 

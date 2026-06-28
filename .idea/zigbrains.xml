@@ -92,11 +92,21 @@
       "public": true,
       "imports": [
         {
+          "name": "acpica",
+          "owner": 0,
+          "module": 4
+        },
+        {
           "name": "arch",
           "owner": 0,
           "module": 1
         }
       ]
+    },
+    {
+      "root": "generated",
+      "public": true,
+      "imports": []
     }
   ],
   "dependencies": []

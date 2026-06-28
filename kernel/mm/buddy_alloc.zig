@@ -88,10 +88,10 @@ fn setupRegionOrders() void {
 
             const order = sizeToOrder(block_size);
 
-            orders[order].free.insertFront(@ptrFromInt(cur.to_virt().val));
+            orders[order].free.insertFront(@ptrFromInt(cur.toVirt().val));
             orders[order].num_free += 1;
 
-            cur.to_info().setData(.{
+            cur.toInfo().setData(.{
                 .flags = .{.free = true,},
                 .region = @intCast(i),
                 .order = @intCast(order),
@@ -100,7 +100,7 @@ fn setupRegionOrders() void {
             // Initialize all in-between pages in the block
             var page : mem.Paddr = .{.val = cur.val + types.SIZE_4KB};
             while (page.val < cur.val + block_size) : (page.val += types.SIZE_4KB) {
-                page.to_info().setData(.{
+                page.toInfo().setData(.{
                     .order = 0,
                     .region = @intCast(i),
                     .flags = @bitCast(@as(u8, 0)),
@@ -133,18 +133,18 @@ pub fn __allocPage(order : u8) error{OrderEmpty}!mem.Paddr {    // No pages coul
     const block : mem.Vaddr = .{.val = @intFromPtr(orders[order_index].free.removeFront())};
     orders[order_index].num_free -= 1;
 
-    const info = block.to_info();
+    const info = block.toInfo();
     var data = info.getData();
     data.flags.free = false;
     data.order = @intCast(order);
-    block.to_info().setData(data);
+    block.toInfo().setData(data);
     info.setData(data);
 
     // Split the block and insert buddy blocks until the order is reached
     var i : i8 = @as(i8, @intCast(order_index)) - 1;
     while (i >= order) : (i -= 1) {
         const buddy : mem.Vaddr = .{.val = block.val ^ orderToSize(i)};
-        const buddy_info = buddy.to_info();
+        const buddy_info = buddy.toInfo();
         var buddy_data = buddy_info.getData();
         buddy_data.flags.free = true;
         buddy_data.order = @intCast(i);
@@ -153,21 +153,21 @@ pub fn __allocPage(order : u8) error{OrderEmpty}!mem.Paddr {    // No pages coul
         orders[@intCast(i)].num_free += 1;
     }
 
-    return block.to_phys();
+    return block.toPhys();
 }
 
 pub fn __freePage(addr : mem.Paddr) void {
     util.locks.lockHeld(&orders_lock);
 
     var block = addr;
-    var block_info = block.to_info();
+    var block_info = block.toInfo();
     var block_data = block_info.getData();
 
     for (block_data.order..(MAX_BUDDY_ORDER + 1)) |i| {
         const size = orderToSize(block_data.order);
 
         const buddy : mem.Paddr = .{.val = addr.val ^ size};
-        const buddy_info = buddy.to_info();
+        const buddy_info = buddy.toInfo();
         const buddy_data = buddy_info.getData();
         const region = pmm.USABLE[buddy_data.region];
 
@@ -183,7 +183,7 @@ pub fn __freePage(addr : mem.Paddr) void {
         // Set block to start of new block
         block.val &= ~size;
 
-        block_info = block.to_info();
+        block_info = block.toInfo();
         block_data = block_info.getData();
         block_data.order += 1;
         block_info.setData(block_data);
@@ -191,7 +191,7 @@ pub fn __freePage(addr : mem.Paddr) void {
 
     block_data.flags.free = true;
     block_info.setData(block_data);
-    orders[block_data.order].free.insertFront(@ptrFromInt(block.to_virt().val));
+    orders[block_data.order].free.insertFront(@ptrFromInt(block.toVirt().val));
     orders[block_data.order].num_free += 1;
 }
 
@@ -223,7 +223,7 @@ pub fn freePage4k(addr : mem.Paddr) void {
 
     const pool = localPagePool.getLocal();
     if (pool.current < config.PER_CPU_PAGE_NUM) {
-        pool.pages.push(@ptrFromInt(addr.to_virt().val));
+        pool.pages.push(@ptrFromInt(addr.toVirt().val));
         pool.current += 1;
     }
     else {
@@ -239,7 +239,7 @@ pub fn freePage4k(addr : mem.Paddr) void {
 pub fn zallocPage4k() mem.Paddr {
     const page = allocPage4k();
 
-    mem.memset(@ptrFromInt(page.to_virt().val), types.SIZE_4KB, 0);
+    mem.memset(@ptrFromInt(page.toVirt().val), types.SIZE_4KB, 0);
 
     return page;
 }
@@ -269,7 +269,7 @@ pub fn zallocPage(order : u8) mem.Paddr {
 }
 
 pub fn freePage(addr : mem.Paddr) void {
-    if (addr.to_info().getData().order == 0) {
+    if (addr.toInfo().getData().order == 0) {
         freePage4k(addr);
         return;
     }

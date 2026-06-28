@@ -2,22 +2,22 @@ const builtin = @import("builtin");
 
 const is_kernel = builtin.target.os.tag == .freestanding;
 const MAX_NUM_CPUS = if (is_kernel) @import("kernel").config.MAX_NUM_CPUS else 0;
-const print = if (is_kernel) @import("kernel").util.log.print else void;
-const bin = if (is_kernel) @import("kernel").util.binary else void;
+const print = if (is_kernel) @import("kernel").util.log.print;
+const bin = if (is_kernel) @import("kernel").util.binary;
 const cpu = if (is_kernel) @import("arch_api").cpu;
 
 const std = @import("std");
 
 pub const CpuState = struct {
-    rax : u64,  // Accumulator
-    rbx : u64,  // Base
-    rcx : u64,  // Counter
-    rdx : u64,  // Data
-    rsi : u64,  // Source string index
-    rdi : u64,  // Destination string index
+    rax : u64,
+    rbx : u64,
+    rcx : u64,
+    rdx : u64,
+    rsi : u64,
+    rdi : u64,
     rsp : u64,  // Stack pointer
-    rbp : u64,  // Base pointer
-    r8  : u64,  // General purpose regs
+    rbp : u64,
+    r8  : u64,
     r9  : u64,
     r10 : u64,
     r11 : u64,
@@ -26,7 +26,7 @@ pub const CpuState = struct {
     r14 : u64,
     r15 : u64,
 
-    rflags : u64,   // RFLAGS Control register
+    rflags : u64,   // Flags register
     rip : u64,      // Instruction pointer
 
     fs_base : u64,  // User FS.Base
@@ -71,7 +71,7 @@ pub const CpuState = struct {
     }
 
     /// Get a register pointer from an argument number
-    pub fn getArg(state : *@This(), arg : u8) *u64 {
+    pub fn getArg(state : *@This(), arg : anytype) *u64 {
         return switch (arg) {
             0 => &state.rdi,
             1 => &state.rsi,
@@ -89,13 +89,15 @@ pub const CpuState = struct {
     }
 
     /// Get a register pointer from an argument number (for syscall register format)
-    pub fn getArgSys(state : *@This(), arg : u8) *u64 {
+    pub fn getArgSys(state : *@This(), arg : anytype) *u64 {
         return switch (arg) {
             2 => &state.r10,
             else => getArg(state, arg),
         };
     }
 };
+
+pub extern fn fpStateReset() callconv(.c) void;
 
 pub const Cr0 = packed struct(u64) {
     pe : bool,      //Protected Mode Enable
@@ -306,7 +308,7 @@ pub const TssDesc = struct {
         desc_priv_lvl   : u2 = 0,   // Descriptor Privilege Level
         seg_present     : bool = true,     // Segment present flag
         seg_limit2      : u4 = 0,
-        __pad1          : bool,     // Unused flag for other use
+        __pad1          : bool = false,     // Unused flag for other use
         __zero2         : u2 = 0,
         granularity     : bool = true,
         address2        : u8,
@@ -327,13 +329,15 @@ pub const Gdtr = packed struct(u80) {
     limit : u16 = @sizeOf(Layout) - 1,
     base : u64,
 
+    comptime {std.debug.assert(@offsetOf(Gdtr, "limit") + 2 == @offsetOf(Gdtr, "base"));}
+
     /// We just need to init a null segment, 4 code/data segments, and a tss segment for each cpu core
     ///
     /// The ordering is important and is expected by the syscall/sysret instructions. Null descriptor
     /// must be first, Kmode data must be after Kmode code and Umode data must be after Umode code. This
     /// ordering is required by x86. Other segments and their positions are kernel-defined.
     pub const Layout = struct {
-        null_desc  : SegDesc = @bitCast(@as(u64,0)),  // Null descriptor
+        null_desc  : SegDesc = std.mem.zeroes(SegDesc),  // Null descriptor
         kmode_code : SegDesc,      // Kernel Mode Code Segment
         kmode_data : SegDesc,      // Kernel Mode Data Segment
         umode_code : SegDesc,      // User Mode Code Segment
@@ -407,7 +411,7 @@ pub const Tss = struct {
     pub const set = setTss;
 };
 
-pub const IrqFrame = packed struct(u384) {
+pub const IrqFrame = struct {
     err : u64,      // Error code
     rip : u64,      // Program counter
     cs : u64,       // Code segment

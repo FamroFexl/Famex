@@ -37,15 +37,15 @@ pub var leaf_0x87 : cpuid_db.leaf_0x80000007_0 = undefined;
 pub var leaf_0x88 : cpuid_db.leaf_0x80000008_0 = undefined;
 
 pub fn setCpuVendor() void {
-    if (leaf_0x0.ebx.cpu_vendorid_0 == signature_INTEL_ebx and
-        leaf_0x0.edx.cpu_vendorid_1 == signature_INTEL_edx and
-        leaf_0x0.ecx.cpu_vendorid_2 == signature_INTEL_ecx) {
+    if (leaf_0x0.cpu_vendorid_0 == signature_INTEL_ebx and
+        leaf_0x0.cpu_vendorid_1 == signature_INTEL_edx and
+        leaf_0x0.cpu_vendorid_2 == signature_INTEL_ecx) {
         VENDOR = CpuVendor.INTEL;
     }
     else if (
-    leaf_0x0.ebx.cpu_vendorid_0 == signature_AMD_ebx and
-        leaf_0x0.edx.cpu_vendorid_1 == signature_AMD_edx and
-        leaf_0x0.ecx.cpu_vendorid_2 == signature_AMD_ecx) {
+        leaf_0x0.cpu_vendorid_0 == signature_AMD_ebx and
+        leaf_0x0.cpu_vendorid_1 == signature_AMD_edx and
+        leaf_0x0.cpu_vendorid_2 == signature_AMD_ecx) {
         VENDOR = CpuVendor.AMD;
     }
     else {
@@ -73,12 +73,16 @@ pub fn cpuid(comptime T: type, leaf : u32, subleaf : u32) T {
           [count] "{ecx}" (subleaf)
     );
 
-    return .{
-        .eax = @bitCast(eax),
-        .ebx = @bitCast(ebx),
-        .ecx = @bitCast(ecx),
-        .edx = @bitCast(edx)
+    const cpuidPacked = packed struct {
+        eax : u32, ebx : u32, ecx : u32, edx : u32,
+    }{
+        .eax = eax,
+        .ebx = ebx,
+        .ecx = ecx,
+        .edx = edx,
     };
+
+    return @bitCast(cpuidPacked);
 }
 
 pub fn initCpuid() void {

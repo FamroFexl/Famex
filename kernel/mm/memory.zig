@@ -18,15 +18,15 @@ pub const Addr = u64;
 pub const Paddr = struct {
     val : u64,
 
-    pub fn as_phys(num : u64) Paddr {
+    pub fn asPhys(num : u64) Paddr {
         return .{.val = num};
     }
 
-    pub fn to_virt(self : @This()) Vaddr {
+    pub fn toVirt(self : @This()) Vaddr {
         return .{.val = self.val + PAGE_OFFSET.val};
     }
 
-    pub fn to_info(self : @This()) *paging.PageInfo {
+    pub fn toInfo(self : @This()) *paging.PageInfo {
         return @ptrFromInt(PAGE_METADATA.val + ((self.val / types.SIZE_4KB) * @sizeOf(paging.PageInfo)));
     }
 
@@ -38,16 +38,16 @@ pub const Paddr = struct {
 pub const Vaddr = struct {
     val : u64,
 
-    pub fn as_virt(num : u64) Vaddr {
+    pub fn asVirt(num : u64) Vaddr {
         return .{.val = num};
     }
 
-    pub fn to_phys(self : @This()) Paddr {
+    pub fn toPhys(self : @This()) Paddr {
         return .{.val = self.val - PAGE_OFFSET.val};
     }
 
-    pub fn to_info(self : @This()) *paging.PageInfo {
-        return self.to_phys().to_info();
+    pub fn toInfo(self : @This()) *paging.PageInfo {
+        return self.toPhys().toInfo();
     }
 
     pub fn ptr(self : @This()) *anyopaque {
@@ -91,7 +91,7 @@ pub fn memcpy(dest : *anyopaque, src : *anyopaque, size : anytype) void {
 pub fn pmallocBytes(size : usize) *anyopaque {
     // Size is larger than max slub size
     if (size > slub.MAX_SLUB_SIZE) {
-        return buddy.allocPage(@intCast(buddy.sizeToOrder(size))).to_virt().ptr();
+        return buddy.allocPage(@intCast(buddy.sizeToOrder(size))).toVirt().ptr();
     }
 
     return slub.SlubPool.alloc(slub.object_pools[size >> 3].load(.acquire).?);
@@ -105,10 +105,10 @@ pub fn pmalloc(comptime T: type) *T {
 
 pub fn pfreeBytes(addr : *anyopaque) void {
     // Is a page, not a slub object
-    const vaddr : Vaddr = .as_virt(@intFromPtr(addr));
-    const info = vaddr.to_info();
+    const vaddr : Vaddr = .asVirt(@intFromPtr(addr));
+    const info = vaddr.toInfo();
     if (bin.alignDown(vaddr.val, buddy.orderToSize(info.getData().order)) == vaddr.val) {
-        buddy.freePage(vaddr.to_phys());
+        buddy.freePage(vaddr.toPhys());
         return;
     }
 

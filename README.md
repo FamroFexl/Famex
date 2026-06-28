@@ -1,5 +1,7 @@
 ## Style Guide
-- UPPERCASE is reserved for global variables that are const or are effectively const (set once)
-- TitleCase is reserved for types
-- enum entries should be snake_case
-- Functions should be camelCase or snake_case
+- UPPER_SNAKE_CASE is for global variables that are const or are effectively const (set once)
+- Special generated types using PerCpuDyn, RcuPtr, etc should be camelCase
+- TitleCase is reserved for regular types
+- enum entries should be UPPER_SNAKE_CASE
+- Functions, global variables, and type fields should be camelCase
+- Local variables should be camelCase but can be snake_case

@@ -14,8 +14,13 @@ const SchedData = struct {
     sched : [std.meta.fields(Policy).len]*anyopaque,
     idle : *kernel.pm.process.ThreadBase,
     current : *kernel.pm.process.ThreadBase,
+    flags : Flags,
     // kstacktop
     // nextTimer
+
+    const Flags = packed struct {
+        reschedule : bool,
+    };
 };
 
 pub const schedData = kernel.pm.process.PerCpuStat(SchedData);

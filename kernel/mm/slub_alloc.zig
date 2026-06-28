@@ -164,13 +164,13 @@ pub const SlubPool = struct {
         while (i < buddy.orderToSize(pool.order)) : (i += types.SIZE_4KB) {
             const page : mem.Paddr = .{.val = pages.val + i};
 
-            const info = page.to_info();
+            const info = page.toInfo();
             var info_data = info.getData();
             info_data.order = @intCast(pool.order);
             info.setData(info_data);
         }
 
-        const slab : *Slab = @ptrCast(@alignCast(pages.to_virt().ptr()));
+        const slab : *Slab = @ptrCast(@alignCast(pages.toVirt().ptr()));
         slab.local_free.init();
         slab.remote_free.init();
 
@@ -192,7 +192,7 @@ pub const SlubPool = struct {
 
     pub fn getPool(addr : *anyopaque) *SlubPool {
         const vaddr : mem.Vaddr = .{.val = @intFromPtr(@as(*u64, @ptrCast(@alignCast(addr))))};
-        const order = vaddr.to_info().getData().order;
+        const order = vaddr.toInfo().getData().order;
         const slab : *Slab = bin.castPtr(*Slab, @ptrFromInt(bin.alignDown(vaddr.val, buddy.orderToSize(order))));
         return slab.pool;
     }
@@ -258,7 +258,7 @@ pub const SlubPool = struct {
 
     pub fn free(pool : *@This(), addr : *anyopaque) void {
         const new_addr : mem.Vaddr = .{.val = @intFromPtr(addr)};
-        const info = new_addr.to_info();
+        const info = new_addr.toInfo();
         const slab : *Slab = @ptrFromInt(bin.alignDown(new_addr.val, buddy.orderToSize(info.getData().order)));
 
         // Frees technically don't need knowledge of the pool, but like linked list delete, it is a form of documentation
@@ -311,7 +311,7 @@ fn setupObjectArray() void {
     print("  Setting up the PMalloc pool object array\n", .{});
 
     const order = buddy.sizeToOrder(MAX_SLUB_SIZE);
-    const vaddr : mem.Vaddr = buddy.allocPage(order).to_virt();
+    const vaddr : mem.Vaddr = buddy.allocPage(order).toVirt();
     mem.memset(@ptrFromInt(vaddr.val), buddy.orderToSize(order), 0);
 
     object_pools = @ptrFromInt(vaddr.val);
