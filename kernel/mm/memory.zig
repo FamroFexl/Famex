@@ -156,8 +156,4 @@ pub fn setup() void {
 
     print("mm: Setting up Read-Copy-Update\n", .{});
     kernel.pm.ipc.rcu.setup();
-
-    var unit = kernel.pm.time.TimeUnit{.S = 10};
-    unit.sub(.{.S = 5}, true);
-    print("unit {}\n", .{unit});
 }

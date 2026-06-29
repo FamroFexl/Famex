@@ -8,88 +8,53 @@ var CALIBRATION_CLOCK : Clock = undefined;
 
 var unixOffset : u64 = undefined;
 
+const TimeUnit = enum(u8) {
+    SEC = 0,
+    MSEC = 1,
+    USEC = 2,
+    NSEC = 3,
+};
+
 /// Stores and mutates time units
-pub const TimeUnit = union(enum) {
-    S : u64,
-    MS : u64,
-    US : u64,
-    NS : u64,
+pub const Time = struct {
+    nsec : u64,
 
-    const Tag = @typeInfo(@This()).@"union".tag_type.?;
-
-    fn convert(this : @This(), to : Tag, ceil : bool) u64 {
-        const diff : i8 = @intFromEnum(to) - @intFromEnum(@as(Tag, this));
-
-        switch (this) { inline else => |val| {
-            if (diff > 0) {
-                const pow = std.math.pow(u64, 1000, @intCast(diff));
-
-                return val * pow;
-            }
-            else {
-                const pow = std.math.pow(u64, 1000, @intCast(-diff));
-
-                return (val + if (ceil) pow - 1 else 0) / pow;
-            }
-        }}
+    pub fn create(unit : TimeUnit, val : u64) @This() {
+        var time : @This() = undefined;
+        time.set(unit, val);
+        return time;
     }
 
-    pub fn get(this : @This()) u64 {
-        return switch (this) { inline else => |val| val};
+    pub fn get(this : @This(), unit : TimeUnit, ceil : bool) u64 {
+        const pow = std.math.pow(u64, 1000, 3 - @intFromEnum(unit));
+        return (this.nsec + if (ceil) pow - 1 else 0) / pow;
     }
 
-    /// Add to the time
-    pub fn add(this : *@This(), unit : TimeUnit, ceil : bool) void {
-        const old = get(this.*);
-        const tape = convert(unit, @as(Tag, this.*), ceil);
+    pub fn set(this : *@This(), unit : TimeUnit, val : u64) void {
+        this.nsec = val * std.math.pow(u64, 1000, 3 - @intFromEnum(unit));
+    }
 
-        const overflow = @addWithOverflow(old, tape);
+    pub fn dist(this : @This(), other : @This(), unit : TimeUnit, ceil : bool) @This() {
+        const between = kernel.bin.dist(this.nsec, other.nsec);
+        return get(.{.nsec = between}, unit, ceil);
+    }
+
+    pub fn add(this : *@This(), unit : TimeUnit, val : u64) void {
+        var in : Time = undefined;
+        set(&in, unit, val);
+        const overflow = @addWithOverflow(this.nsec, in.nsec);
+
         std.debug.assert(overflow[1] == 0);
 
-        const new = overflow[0];
-
-        switch (this.*) {
-            .S => this.* = .{ .S = new },
-            .MS => this.* = .{ .MS = new },
-            .US => this.* = .{ .US = new },
-            .NS => this.* = .{ .NS = new },
-        }
+        this.nsec = overflow[0];
     }
 
-    /// Subtract from the time
-    pub fn sub(this : *@This(), unit : TimeUnit, ceil : bool) void {
-        const old = get(this.*);
-        const snip = convert(unit, @as(Tag, this.*), ceil);
+    pub fn sub(this : *@This(), unit : TimeUnit, val : u64) void {
+        var in : Time = undefined;
+        set(&in, unit, val);
+        const underflow = @subWithOverflow(this.nsec, in.nsec);
 
-        const underflow = @subWithOverflow(old, snip);
-        const new = if (underflow[1] == 1) 0 else underflow[0];
-
-        switch (this.*) {
-            .S => this.* = .{ .S = new },
-            .MS => this.* = .{ .MS = new },
-            .US => this.* = .{ .US = new },
-            .NS => this.* = .{ .NS = new },
-        }
-    }
-
-    /// Convert to seconds
-    pub fn s(this : @This(), ceil : bool) TimeUnit {
-        return TimeUnit{.S = this.convert(.S, ceil)};
-    }
-
-    /// Convert to milliseconds
-    pub fn ms(this : @This(), ceil : bool) TimeUnit {
-        return TimeUnit{.MS = this.convert(.MS, ceil)};
-    }
-
-    /// Convert to microseconds
-    pub fn us(this : @This(), ceil : bool) TimeUnit {
-        return TimeUnit{.US = this.convert(.US, ceil)};
-    }
-
-    /// Convert to nanoseconds
-    pub fn ns(this : @This(), ceil : bool) TimeUnit {
-        return TimeUnit{.NS = this.convert(.NS, ceil)};
+        this.nsec = if (underflow[1] == 1) 0 else underflow[0];
     }
 };
 

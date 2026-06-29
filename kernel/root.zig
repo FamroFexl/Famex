@@ -57,7 +57,7 @@ pub const RcuAsync = pm.ipc.rcu.RcuAsync;
 pub const RcuPtr = pm.ipc.rcu.RcuPtr;
 pub const Mutex = pm.ipc.Mutex;
 pub const Semaphore = pm.ipc.Semaphore;
-pub const TimeUnit = pm.time.TimeUnit;
+pub const Time = pm.time.Time;
 
 pub const pmalloc = mm.memory.pmalloc;
 pub const pmallocBytes = mm.memory.pmallocBytes;
