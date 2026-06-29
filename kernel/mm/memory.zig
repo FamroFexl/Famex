@@ -10,8 +10,8 @@ const cpu = @import("arch").cpu;
 const paging = @import("paging.zig");
 const pmm = @import("pmm.zig");
 const vmm = @import("vmm.zig");
-const slub = @import("slub_alloc.zig");
-const buddy = @import("buddy_alloc.zig");
+const slub = @import("slubAlloc.zig");
+const buddy = @import("buddyAlloc.zig");
 
 pub const Addr = u64;
 
@@ -112,7 +112,7 @@ pub fn pfreeBytes(addr : *anyopaque) void {
         return;
     }
 
-    slub.SlubPool.free(slub.SlubPool.getPool(addr), addr);
+    slub.SlubPool.free(addr);
 }
 
 pub fn pfree(comptime T: type, addr : *T) void {
@@ -156,4 +156,8 @@ pub fn setup() void {
 
     print("mm: Setting up Read-Copy-Update\n", .{});
     kernel.pm.ipc.rcu.setup();
+
+    var unit = kernel.pm.time.TimeUnit{.S = 10};
+    unit.sub(.{.S = 5}, true);
+    print("unit {}\n", .{unit});
 }

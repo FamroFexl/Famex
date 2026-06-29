@@ -333,7 +333,7 @@ pub fn setupSubsys() void {
 }
 
 pub fn setupTables() void {
-    print("\ninit: Initializing ACPI Tables\n", .{});
+    print("init: Initializing ACPI Tables\n", .{});
     const tables = mem.pmallocBytes(@sizeOf(acpica.ACPI_TABLE_DESC) * 16);
     _ = acpica.AcpiInitializeTables(@ptrCast(@alignCast(tables)), 16, 1);
 

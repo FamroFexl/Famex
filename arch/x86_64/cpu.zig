@@ -6,7 +6,7 @@ const api = @import("arch_api");
 const log = kernel.util.log;
 
 /// Pool for FP save state allocations
-pub var FP_SAVE_POOL : kernel.mm.slub_alloc.SlubPool = undefined;
+pub var FP_SAVE_POOL : kernel.mm.slubAlloc.SlubPool = undefined;
 /// Used to initialize FP states for new threads
 pub var FP_INIT : api.cpu.FpuState = undefined;
 /// Use XSave if true, FXSave if false

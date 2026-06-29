@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const acpica = @import("acpica/build.zig");
+const linux = @import("linux/build.zig");
 
 const cwd = "lib/";
 
@@ -9,6 +10,8 @@ pub fn module(b : *std.Build, options : *const std.Build.Module.CreateOptions) *
     lib_module.root_source_file = b.path(cwd ++ "root.zig");
 
     lib_module.addImport("acpica", acpica.module(b, options));
+
+    lib_module.addImport("linux", linux.module(b, options));
 
     return lib_module;
 }

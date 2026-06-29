@@ -28,3 +28,15 @@ pub const schedData = kernel.pm.process.PerCpuStat(SchedData);
 pub fn cThread() *kernel.pm.process.ThreadBase {
     return schedData.getLocal().current;
 }
+
+fn loadThread(new : *kernel.ThreadBase, state : *kernel.CpuState) void {
+    const data = schedData.getLocal();
+
+    data.current.context = state.*;
+
+    data.current = new;
+    // set kstack top
+    state.* = new.context;
+
+    kernel.mm.paging.switchPageTables(new.owner.addr_space.rootPt);
+}

@@ -12,8 +12,8 @@ const process = kernel.pm.process;
 const memory = @import("memory.zig");
 const vmm = @import("vmm.zig");
 const paging = @import("paging.zig");
-const buddy_alloc = @import("buddy_alloc.zig");
-const slub_alloc = @import("slub_alloc.zig");
+const buddyAlloc = @import("buddyAlloc.zig");
+const slubAlloc = @import("slubAlloc.zig");
 const Addr = memory.Addr;
 
 const arch = @import("arch");
@@ -386,7 +386,7 @@ fn switchToNewPtables() void {
     // Setup paging information
     paging.setup();
 
-    const kernel_root_pt = &process.kernelProcess.addr_space.root_pt;
+    const kernel_root_pt = &process.kernelProcess.addr_space.rootPt;
 
     // The new kernel root page table
     kernel_root_pt.* = @ptrFromInt(allocBootPage().toVirt().val);
@@ -441,9 +441,9 @@ pub fn setup() void {
 
     kernel.util.locks.setup();
 
-    buddy_alloc.setup();
+    buddyAlloc.setup();
 
     mapPercpuDyn();
 
-    slub_alloc.setup();
+    slubAlloc.setup();
 }

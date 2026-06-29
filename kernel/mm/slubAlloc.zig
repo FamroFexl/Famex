@@ -12,7 +12,7 @@ const builtin = @import("builtin");
 
 const cpu = @import("arch").cpu;
 
-const buddy = @import("buddy_alloc.zig");
+const buddy = @import("buddyAlloc.zig");
 const mem = @import("memory.zig");
 
 pub var MAX_SLUB_ORDER : u8 = undefined;
@@ -150,7 +150,7 @@ pub const SlubPool = struct {
     }
 
     pub fn create(size : usize, alignment : u16, obj_init : ?fn (*anyopaque) void) *SlubPool {
-        const pool : *SlubPool = slub_pool_pool.alloc();
+        const pool : *SlubPool = bin.castPtr(*SlubPool, slub_pool_pool.alloc());
         pool.init(size, alignment, obj_init);
 
         return pool;
@@ -256,13 +256,10 @@ pub const SlubPool = struct {
         return @ptrCast(stack.pop());
     }
 
-    pub fn free(pool : *@This(), addr : *anyopaque) void {
+    pub fn free(addr : *anyopaque) void {
         const new_addr : mem.Vaddr = .{.val = @intFromPtr(addr)};
         const info = new_addr.toInfo();
         const slab : *Slab = @ptrFromInt(bin.alignDown(new_addr.val, buddy.orderToSize(info.getData().order)));
-
-        // Frees technically don't need knowledge of the pool, but like linked list delete, it is a form of documentation
-        std.debug.assert(slab.pool == pool);
 
         // Local free
         if (slab == slab.pool.local_slab.getLocal().*) {
@@ -275,10 +272,10 @@ pub const SlubPool = struct {
         }
     }
 
-    pub fn freeBulk(pool : *@This(), stack : Stack) void {
+    pub fn freeBulk(stack : Stack) void {
         while (true) {
             const node = stack.pop orelse break;
-            free(pool, node);
+            free(node);
         }
     }
 };
@@ -370,7 +367,7 @@ fn setupSlubPoolPool() void {
     }
 }
 
-fn slubPoolPmalloc(size : u64) void {
+pub fn slubPoolPmalloc(size : u64) void {
     var aligned_8 = bin.alignUp(size, 8);
 
     const order = getSlubOrder(aligned_8, 8);

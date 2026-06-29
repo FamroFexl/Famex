@@ -353,7 +353,7 @@ pub export fn init() void {
 
     setupSmp(true);
 
-    //acpi.setupTables();
+    acpi.setupTables();
 
     apic.setup();
 }

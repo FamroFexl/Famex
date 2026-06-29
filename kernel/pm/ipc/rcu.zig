@@ -1,3 +1,5 @@
+//! Read->Copy->Update mechanism for seamless pointer swapping and object freeing
+
 const std = @import("std");
 
 const kernel = @import("kernel");
@@ -6,11 +8,107 @@ const DeferTree = kernel.util.data.DeferTree;
 
 const cpu = @import("arch").cpu;
 
-pub const RcuFree = DeferTree.State;
+const rcu = @This();
 
 var TREE : *DeferTree = undefined;
 
-pub fn RcuPtr(comptime T : type) type {
+/// Synchronous wait until the next grace period
+pub fn sync() void {
+    TREE.wait();
+}
+
+/// RCU read lock
+pub fn lock() void {
+    proc.preemptSave();
+}
+
+/// RCU read unlock
+pub fn unlock() void {
+    proc.preemptRestore();
+}
+
+pub fn asyncFree(state : *RcuAsync, callback : fn (*RcuAsync) void) void {
+    TREE.push(state, callback);
+}
+
+pub fn syncFree(state : *RcuAsync, callback : fn (*RcuAsync) void) void {
+    rcu.sync();
+    callback(state);
+}
+
+fn pmallocFree(comptime T : type, ptr : *anyopaque) void {
+    kernel.pfree(T, ptr);
+}
+
+fn slubAllocFree(ptr : *anyopaque) void {
+    kernel.SlubPool.free(ptr);
+}
+
+fn buddyAllocFree(ptr : *anyopaque) void {
+    kernel.freePage(kernel.Vaddr.asVirt(@intFromPtr(ptr)).toPhys());
+}
+
+const AllocType = enum {
+    PMALLOC,
+    //VMALLOC,
+    SLUB_ALLOC,
+    BUDDY_ALLOC,
+};
+
+pub const RcuAsync = DeferTree.State;
+
+fn RcuFree(comptime T : type, comptime alloc : AllocType) type {
+    return struct {
+        pub var val : *T = undefined;
+
+        fn getName() []const u8 {
+            return comptime blk: {
+                for (@typeInfo(T).@"struct".fields) |f| {
+                    if (f.type == RcuAsync) break :blk f.name;
+                }
+                unreachable;
+            };
+        }
+
+        fn getState() *RcuAsync {
+            return &@field(val, getName());
+        }
+
+        fn free(ptr : *anyopaque) void {
+            switch (alloc) {
+                .PMALLOC => pmallocFree(T, ptr),
+                .BUDDY_ALLOC => buddyAllocFree(ptr),
+                .SLUB_ALLOC => slubAllocFree(ptr),
+            }
+        }
+
+        /// Free after sync
+        pub fn syncFree() void {
+            rcu.sync();
+            free(val);
+        }
+
+        pub fn get() *T {
+            return val;
+        }
+
+        fn freeAsync(state : *RcuAsync) void {
+            free(@fieldParentPtr(getName(), state));
+        }
+
+        /// Async free
+        pub fn asyncFree() void {
+            TREE.push(getState(), freeAsync);
+        }
+
+        /// Async free with other
+        pub fn asyncFreeOther(callback : fn (*RcuAsync) void) void {
+            TREE.push(getState(), callback);
+        }
+    };
+}
+
+pub fn RcuPtr(comptime T : type, comptime alloc : AllocType) type {
     return struct {
         ptr : std.atomic.Value(*T),
 
@@ -20,35 +118,22 @@ pub fn RcuPtr(comptime T : type) type {
         }
 
         /// Set the RCU to ptr and return the old value
-        pub fn set(self : *@This(), ptr : ?*T) *T {
-            return self.ptr.swap(ptr, if (ptr == null) .unordered else .release);
-        }
-
-        /// Asynchronous free using a free struct
-        pub fn async(free : *RcuFree, callback : fn (*RcuFree) void) void {
-            TREE.push(free, callback);
-        }
-
-        /// Synchronous wait until the next grace period
-        pub fn sync() void {
-            TREE.wait();
-        }
-
-        /// RCU read lock
-        pub fn lock() void {
-            proc.preemptSave();
+        pub fn swap(self : *@This(), ptr : *T) type {
+            const old = self.ptr.swap(ptr, if (ptr == null) .unordered else .release);
+            const free = RcuFree(T, alloc);
+            free.val = old;
+            return free;
         }
 
         /// RCU read lock and RCU ptr return
         pub fn lockAndGet(self : *@This()) *T {
-            lock();
+            rcu.lock();
             return get(self);
         }
 
-        /// RCU read unlock
-        pub fn unlock() void {
-            proc.preemptRestore();
-        }
+        pub const lock = rcu.lock;
+
+        pub const unlock = rcu.unlock;
     };
 }
 

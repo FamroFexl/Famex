@@ -50,6 +50,10 @@ pub fn print(comptime str : []const u8, args: anytype) void {
     printChars(out.ptr, out.len);
 }
 
+pub fn printDirect(str : []const u8) void {
+    printChars(str.ptr, str.len);
+}
+
 pub fn printChar(char : u8, num : u8) void {
     var buf : [128]u8 = undefined;
     @memset(&buf, char);

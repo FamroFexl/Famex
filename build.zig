@@ -33,6 +33,7 @@ pub fn build(b: *std.Build) !void {
     kernel_module.addImport("arch", arch_api_module);
     kernel_module.addImport("lib", lib_module);
 
+    lib_module.addImport("kernel", kernel_module);
     lib_module.addImport("arch", arch_api_module);
 
     const famex = b.addExecutable(.{

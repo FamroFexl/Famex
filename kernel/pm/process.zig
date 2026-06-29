@@ -3,7 +3,7 @@ const mm = kernel.mm;
 const vmm = mm.vmm;
 const mem = mm.memory;
 const paging = mm.paging;
-const buddy = mm.buddy_alloc;
+const buddy = mm.buddyAlloc;
 const util = kernel.util;
 const log = util.log;
 const bin = util.binary;
@@ -15,6 +15,42 @@ const std = @import("std");
 
 pub const Process = struct {
     addr_space : vmm.VmSpace,
+    state : State,
+
+    const State = enum {
+        RUNNING,       // The process is running
+        STOPPED,       // The process has been stopped (all threads THRD_STOPPED)
+        ZOMBIE,        // The process is waiting to be reaped
+    };
+};
+
+pub const Tid = u32;
+
+pub const ThreadBase = struct {
+    owner : *Process,
+    state : State,
+
+    context : kernel.CpuState,
+    tid : Tid,
+
+    preemptDepth : u8,
+    migrateDepth : u8,
+
+    const State = enum {
+        RUNNING,           // Is running or waiting to start running
+        INTERRUPTABLE,     // Interruptable sleep
+        UNINTERRUPTIBLE,   // Uninterruptable sleep
+        STOPPED,           // Suspended by unblockable signal (SIGSTOP)
+        DEAD               // Being cleaned up
+    };
+};
+
+pub const KThread = struct {
+    base : ThreadBase,
+};
+
+pub const UThread = struct {
+    base : ThreadBase,
 };
 
 pub var kernelProcess : Process = undefined;
@@ -138,24 +174,6 @@ pub fn PerCpuDyn(comptime T: type) type {
         }
     };
 }
-
-pub const Tid = u32;
-
-pub const ThreadBase = struct {
-    owner : *Process,
-    tid : Tid,
-
-    preemptDepth : u8,
-    migrateDepth : u8,
-};
-
-pub const KThread = struct {
-    base : ThreadBase,
-};
-
-pub const UThread = struct {
-    base : ThreadBase,
-};
 
 pub fn preemptSave() void {
     irqSave();

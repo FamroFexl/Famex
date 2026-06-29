@@ -1,3 +1,5 @@
+//! Deferred action cpu synchronization tree, useful for things like RCU free
+
 const CpuTree = @import("CpuTree.zig");
 
 const kernel = @import("kernel");
@@ -59,7 +61,7 @@ pub fn push(tree : *@This(), state : *State, callback : fn (*State) void) void {
     proc.preemptSave();
     defer proc.preemptRestore();
 
-    const stacks = tree.stacks.getLocal().*;
+    var stacks = tree.stacks.getLocal().*;
     stacks[stack].push(&state.node);
 }
 

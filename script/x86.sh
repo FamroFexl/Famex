@@ -1,10 +1,10 @@
-cd ../zig-out/bin
-
 pkill -9 -f qemu-system-x86_64
 
 set -e
 
 zig build -Darch=x86_64
+
+cd ../zig-out/bin
 
 ../../script/generate_iso.sh famex.elf
 

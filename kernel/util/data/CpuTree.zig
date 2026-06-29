@@ -1,8 +1,10 @@
+//! Cache-friendly cpu synchronization mechanism
+
 const cpu = @import("arch").cpu;
 
 const kernel = @import("kernel");
 const proc = kernel.pm.process;
-const slub = kernel.mm.slub_alloc;
+const slub = kernel.mm.slubAlloc;
 const mem = kernel.mm.memory;
 const log = kernel.util.log;
 const bin = kernel.util.binary;
@@ -15,9 +17,7 @@ mask : proc.CpuMask,
 curPeriod : std.atomic.Value(u64),
 maxContention : u8,
 
-fn syncNull(val : u64) void {
-    _ = val;
-}
+fn syncNull(_ : u64) void {}
 
 fn leafNodes(self : *@This()) [*]*Node {
     return bin.getFlexArray(@This(), *Node, self);

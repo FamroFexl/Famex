@@ -7,7 +7,7 @@ const bin = kernel.util.binary;
 const memory = @import("memory.zig");
 const vmm = @import("vmm.zig");
 const pmm = @import("pmm.zig");
-const buddy = @import("buddy_alloc.zig");
+const buddy = @import("buddyAlloc.zig");
 
 const arch = @import("arch");
 pub const Pte = arch.paging.Pte;
@@ -303,7 +303,7 @@ pub const PfeState = struct {
             .level = @intFromEnum(level),
             .walk = blk: {
                 var walk : [PTE_MAX_DEPTH]*Ptable = undefined;
-                walk[cpu.FEATURES.PAGE_TABLE_LEVELS - 1] = space.root_pt;
+                walk[cpu.FEATURES.PAGE_TABLE_LEVELS - 1] = space.rootPt;
                 break :blk walk;
             },
             .init = false,
@@ -388,6 +388,16 @@ pub fn switchPageTables(new_tables : *Ptable) *Ptable {
     arch.paging.setPageTables(new_tables);
 
     return cur;
+}
+
+pub fn setupRootPt(rootPt : *Ptable) void {
+    const level = cpu.FEATURES.PAGE_TABLE_LEVELS - 1;
+    for ((PTE_ENTRIES/2)..PTE_ENTRIES) |i| {
+        if (rootPt.pte[i].getPresent(level)) continue;
+
+        rootPt.pte[i] = PTE_DEFAULTS[level];
+        rootPt.pte[i].setEntry(level, kernel.zallocPage4k());
+    }
 }
 
 fn setupPtes() void {
