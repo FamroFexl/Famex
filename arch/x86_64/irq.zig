@@ -1,9 +1,11 @@
-const reg = @import("registers.zig");
-const cpu = @import("arch_api").cpu;
 const kernel = @import("kernel");
 const bin = kernel.util.bin;
 const mm = kernel.mm;
 const print = kernel.util.log.print;
+
+const reg = @import("registers.zig");
+const cpu = @import("arch_api").cpu;
+const apic = @import("apic.zig");
 
 pub extern const irqStubTable : [256]u64;
 

@@ -11,6 +11,8 @@
 
 #define ACPI_MACHINE_WIDTH          64
 
+#define ACPI_MISALIGNMENT_NOT_SUPPORTED
+
 /**
 #define ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsInitialize
 #define ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsTerminate

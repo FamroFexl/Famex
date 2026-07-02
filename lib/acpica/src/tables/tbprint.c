@@ -254,7 +254,6 @@ AcpiTbPrintTableHeader (
 {
     ACPI_TABLE_HEADER       LocalHeader;
 
-
     if (ACPI_COMPARE_NAMESEG (Header->Signature, ACPI_SIG_FACS))
     {
         /* FACS only has signature and length fields */

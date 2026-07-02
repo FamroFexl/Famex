@@ -1,6 +1,7 @@
 pub const cpu = @import("cpu.zig");
 pub const reg = @import("registers.zig");
 pub const irq = @import("irq.zig");
+pub const apic = @import("apic.zig");
 
 const std = @import("std");
 const kernel = @import("kernel");

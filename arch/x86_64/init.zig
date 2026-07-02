@@ -339,7 +339,7 @@ pub export fn init() void {
     api.cpu.FEATURES.VIRT_ADDR_BITS = @intCast(cpu.leaf_0x88.virt_addr_bits);
     api.cpu.FEATURES.PAGE_TABLE_LEVELS = 4;
 
-    api.cpu.FEATURES.CACHELINE_SIZE = @intCast(cpu.leaf_0x1.clflush_size * 8);
+    //api.cpu.FEATURES.CACHELINE_SIZE = @intCast(cpu.leaf_0x1.clflush_size * 8);
 
     api.cpu.FEATURES.NUM_CPU_CORES = smp_request.response.x86.cpu_count;
 
@@ -355,5 +355,5 @@ pub export fn init() void {
 
     acpi.setupTables();
 
-    apic.setup();
+    //apic.setup();
 }

@@ -5,10 +5,11 @@ const cpu = @import("arch").cpu;
 
 const proc = @import("kernel").pm.process;
 
+pub const CACHELINE_SIZE = 64;
+
 const CpuFeatures = struct {
     PHYS_ADDR_BITS : u8,        // Physical memory address bits
     VIRT_ADDR_BITS : u8,        // Virtual memory address bits
-    CACHELINE_SIZE : u16,
     MAX_PAGE_SIZE : u3,         // Max page size in levels (starting from 0)
     PAGE_TABLE_LEVELS : u8,     // Number of page table levels (starting from 1)
     EXECUTE_BIT : bool,

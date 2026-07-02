@@ -1,6 +1,6 @@
 const std = @import("std");
 
-next : ?*@This(),
+next : ?*@This() = null,
 
 pub const Node = @This();
 

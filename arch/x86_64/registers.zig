@@ -344,8 +344,8 @@ pub const Gdtr = packed struct(u80) {
         umode_data : SegDesc,      // User Mode Data Segment
 
         // Task-State Segments, one for each logical core (irq stacks)
-        pub fn getTss(self : *@This()) []TssDesc {
-            return bin.getFlexArray(Layout, TssDesc, self)[0..cpu.FEATURES.NUM_CPU_CORES];
+        pub fn getTss(this : *@This()) []TssDesc {
+            return bin.getFlexArray(Layout, TssDesc, this)[0..cpu.FEATURES.NUM_CPU_CORES];
         }
 
         comptime { std.debug.assert(@sizeOf(Layout) == 40); }

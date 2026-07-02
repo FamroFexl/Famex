@@ -9,6 +9,7 @@ const log = util.log;
 const bin = util.binary;
 const types = util.types;
 const sched = kernel.pm.sched.scheduler;
+const time = @import("time.zig");
 const cpu = @import("arch").cpu;
 
 const std = @import("std");
@@ -17,10 +18,20 @@ pub const Process = struct {
     addr_space : vmm.VmSpace,
     state : State,
 
+    timeLock : kernel.RwLock,
+    times : PTimes,
+
     const State = enum {
         RUNNING,       // The process is running
         STOPPED,       // The process has been stopped (all threads THRD_STOPPED)
         ZOMBIE,        // The process is waiting to be reaped
+    };
+
+    const PTimes = struct {
+        ktime : kernel.Time = .{.nsec = 0},    // User-mode time of process
+        utime : kernel.Time = .{.nsec = 0},    // Kernel-mode time of process
+        cuTime : kernel.Time = .{.nsec = 0},   // User-mode time of all terminated child processes
+        ckTime : kernel.Time = .{.nsec = 0},   // Kernel-mode time of all terminated child processes
     };
 };
 
@@ -33,6 +44,9 @@ pub const ThreadBase = struct {
     context : kernel.CpuState,
     tid : Tid,
 
+    timeLock : kernel.RwLock,
+    ktime : kernel.Time,
+
     preemptDepth : u8,
     migrateDepth : u8,
 
@@ -43,6 +57,44 @@ pub const ThreadBase = struct {
         STOPPED,           // Suspended by unblockable signal (SIGSTOP)
         DEAD               // Being cleaned up
     };
+
+    pub fn preemptSave() void {
+        kernel.irqSave();
+        defer kernel.irqRestore();
+
+        sched.cThread().preemptDepth += 1;
+    }
+
+    pub fn preemptRestore() void {
+        kernel.irqSave();
+        defer kernel.irqRestore();
+
+        const data = sched.schedData.getLocal();
+        const depth = &data.current.preemptDepth;
+        depth.* -= 1;
+
+        if (depth.* == 0 and data.flags.reschedule) {
+            // yield_thread()
+        }
+    }
+
+    /// Prevent cpu thread migration
+    pub fn migrateSave() void {
+        kernel.irqSave();
+        defer kernel.irqRestore();
+
+        const data = sched.schedData.getLocal();
+        data.current.migrateDepth += 1;
+    }
+
+    /// Enable cpu thread migration
+    pub fn migrateRestore() void {
+        kernel.irqSave();
+        defer kernel.irqRestore();
+
+        const data = sched.schedData.getLocal();
+        data.current.migrateDepth -= 1;
+    }
 };
 
 pub const KThread = struct {
@@ -51,6 +103,8 @@ pub const KThread = struct {
 
 pub const UThread = struct {
     base : ThreadBase,
+
+    utime : kernel.Time,
 };
 
 pub var kernelProcess : Process = undefined;
@@ -113,8 +167,8 @@ pub fn PerCpuDyn(comptime T: type) type {
     return struct {
         data : ?*T = null,
 
-        pub fn alloc(self : *@This()) void {
-            log.apanic(self.data != null, "pm: A percpu variable attempted to allocate when already allocated!\n", .{});
+        pub fn alloc(this : *@This()) void {
+            log.apanic(this.data != null, "pm: A percpu variable attempted to allocate when already allocated!\n", .{});
 
             const num = std.math.divCeil(u64, @sizeOf(T), perCpu.PER_CPU_DYN_ALLOC_BYTES) catch unreachable;
             var index : u64 = undefined;
@@ -147,13 +201,13 @@ pub fn PerCpuDyn(comptime T: type) type {
                 perCpu.cur_offset.val = last;
             }
 
-            self.data = @ptrFromInt(perCpu.PER_CPU_STARTING_OFFSET.val + cur);
+            this.data = @ptrFromInt(perCpu.PER_CPU_STARTING_OFFSET.val + cur);
         }
 
-        pub fn free(self : *@This()) void {
-            log.apanic(self.data == null, "pm: A percpu variable attempted to free when it was already free!\n", .{});
+        pub fn free(this : *@This()) void {
+            log.apanic(this.data == null, "pm: A percpu variable attempted to free when it was already free!\n", .{});
 
-            const addr = @intFromPtr(self.data);
+            const addr = @intFromPtr(this.data);
             const bit_pos = (addr - perCpu.PER_CPU_STARTING_OFFSET.val) / perCpu.PER_CPU_DYN_ALLOC_BYTES;
             const bits = std.math.divCeil(u64, @sizeOf(T), perCpu.PER_CPU_DYN_ALLOC_BYTES) catch unreachable;
 
@@ -165,73 +219,61 @@ pub fn PerCpuDyn(comptime T: type) type {
             }
         }
 
-        pub fn getLocal(self : *@This()) *T {
-            return getLocalPercpu(T, @intFromPtr(self.data.?));
+        pub fn getLocal(this : *@This()) *T {
+            return getLocalPercpu(T, @intFromPtr(this.data.?));
         }
 
-        pub fn getGlobal(self : *@This(), cpu_num : anytype) *T {
-            return getGlobalPercpu(T, cpu_num, @intFromPtr(self.data.?));
+        pub fn getGlobal(this : *@This(), cpu_num : anytype) *T {
+            return getGlobalPercpu(T, cpu_num, @intFromPtr(this.data.?));
         }
     };
 }
 
-pub fn preemptSave() void {
-    irqSave();
-    defer irqRestore();
+pub const startTime = PerCpuStat(u64);
 
-    sched.cThread().preemptDepth += 1;
+pub fn startTimeReset() u64 {
+    const mono = time.getMonoClock();
+    const localStart = startTime.getLocal();
+
+    const out = mono.nsec - localStart.*;
+    localStart.* = mono.nsec;
+
+    return out;
 }
 
-pub fn preemptRestore() void {
-    irqSave();
-    defer irqRestore();
+pub fn addKtime() void {
+    const ktime = startTimeReset();
 
-    const data = sched.schedData.getLocal();
-    const depth = &data.current.preemptDepth;
-    depth.* -= 1;
+    const cThread = sched.cThread();
 
-    if (depth.* == 0 and data.flags.reschedule) {
-        // yield_thread()
-    }
+    cThread.timeLock.writeLock();
+    cThread.ktime.nsec += ktime;
+    cThread.timeLock.writeUnlock();
+
+    cThread.owner.timeLock.writeLock();
+    cThread.owner.times.ktime.nsec += ktime;
+    cThread.owner.timeLock.writeUnlock();
 }
 
-/// Prevent cpu thread migration
-pub fn migrateSave() void {
-    irqSave();
-    defer irqRestore();
+pub fn addUtime() void {
+    const utime = startTimeReset();
 
-    const data = sched.schedData.getLocal();
-    data.current.migrateDepth += 1;
-}
+    const cThread = sched.cThread();
+    const uThread : UThread = @fieldParentPtr("base", cThread);
 
-/// Enable cpu thread migration
-pub fn migrateRestore() void {
-    irqSave();
-    defer irqRestore();
+    cThread.timeLock.writeLock();
+    uThread.utime.nsec += utime;
+    cThread.timeLock.writeUnlock();
 
-    const data = sched.schedData.getLocal();
-    data.current.migrateDepth -= 1;
-}
-
-const irqSaveDepth = PerCpuStat(u64);
-
-pub fn irqSave() void {
-    cpu.irqDisable();
-
-    irqSaveDepth.getLocal().* += 1;
-}
-
-pub fn irqRestore() void {
-    std.debug.assert(!cpu.irqEnabled());
-
-    const depth = irqSaveDepth.getLocal();
-    depth.* -= 1;
-
-    if (depth.* == 0) {
-        cpu.irqEnable();
-    }
+    cThread.owner.timeLock.writeLock();
+    cThread.owner.times.utime.nsec += utime;
+    cThread.owner.timeLock.writeUnlock();
 }
 
 pub export fn inKmode(state : *cpu.CpuState) bool {
     return state.getStack() >= mem.KERNEL_MEMORY.val;
+}
+
+pub fn setup() void {
+
 }

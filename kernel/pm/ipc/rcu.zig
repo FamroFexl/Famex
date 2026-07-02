@@ -19,12 +19,12 @@ pub fn sync() void {
 
 /// RCU read lock
 pub fn lock() void {
-    proc.preemptSave();
+    kernel.ThreadBase.preemptSave();
 }
 
 /// RCU read unlock
 pub fn unlock() void {
-    proc.preemptRestore();
+    kernel.ThreadBase.preemptRestore();
 }
 
 pub fn asyncFree(state : *RcuAsync, callback : fn (*RcuAsync) void) void {
@@ -113,22 +113,22 @@ pub fn RcuPtr(comptime T : type, comptime alloc : AllocType) type {
         ptr : std.atomic.Value(*T),
 
         /// Get the RCU ptr
-        pub fn get(self : *@This()) *T {
-            return self.ptr.load(.acquire);
+        pub fn get(this : *@This()) *T {
+            return this.ptr.load(.acquire);
         }
 
         /// Set the RCU to ptr and return the old value
-        pub fn swap(self : *@This(), ptr : *T) type {
-            const old = self.ptr.swap(ptr, if (ptr == null) .unordered else .release);
+        pub fn swap(this : *@This(), ptr : *T) RcuFree {
+            const old = this.ptr.swap(ptr, if (ptr == null) .unordered else .release);
             const free = RcuFree(T, alloc);
             free.val = old;
             return free;
         }
 
         /// RCU read lock and RCU ptr return
-        pub fn lockAndGet(self : *@This()) *T {
+        pub fn lockAndGet(this : *@This()) *T {
             rcu.lock();
-            return get(self);
+            return get(this);
         }
 
         pub const lock = rcu.lock;

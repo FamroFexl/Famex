@@ -198,7 +198,7 @@ pub const SlubPool = struct {
     }
 
     pub fn allocBulk(pool : *@This(), num : u64) Stack {
-        proc.irqSave();
+        kernel.irqSave();
 
         var slab : *Slab = pool.local_slab.getLocal().* orelse blk: {
             const new_slab = allocSlab(pool);
@@ -246,7 +246,7 @@ pub const SlubPool = struct {
             count -= 1;
         }
 
-        proc.irqRestore();
+        kernel.irqRestore();
 
         return stack;
     }
@@ -434,5 +434,5 @@ pub fn setup() void {
 
     setupPow2Pools();
 
-    cacheline_pool.init(cpu.FEATURES.CACHELINE_SIZE, cpu.FEATURES.CACHELINE_SIZE, null);
+    cacheline_pool.init(cpu.CACHELINE_SIZE, cpu.CACHELINE_SIZE, null);
 }

@@ -19,8 +19,8 @@ maxContention : u8,
 
 fn syncNull(_ : u64) void {}
 
-fn leafNodes(self : *@This()) [*]*Node {
-    return bin.getFlexArray(@This(), *Node, self);
+fn leafNodes(this : *@This()) [*]*Node {
+    return bin.getFlexArray(@This(), *Node, this);
 }
 
 const Node = struct {
@@ -206,14 +206,20 @@ pub fn report(tree : *@This(), cpu_num : anytype) bool {
 }
 
 /// Disable a cpu
-pub fn disable(tree : *@This(), cpu_num : anytype) void {
+pub fn disable(tree : *@This(), cpu_num : anytype) bool {
     const node = getNode(tree, cpu_num) orelse return;
+
+    var reported = false;
 
     node.spinlock.lock();
 
     bin.setFlag(cpu_num, &node.init);
 
+    if (node.cur & bin.setBit(cpu_num) == 1) reported = true;
+
     propagate(tree, node, bin.setBit(cpu_num));
+
+    return reported;
 }
 
 /// Enable a cpu

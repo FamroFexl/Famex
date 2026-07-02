@@ -18,7 +18,7 @@ export fn AcpiOsTerminate() acpica.ACPI_STATUS {
 }
 
 export fn AcpiOsGetRootPointer() acpica.ACPI_PHYSICAL_ADDRESS {
-    return @intFromPtr(kernel.Limine.rsdp_request.response.address);
+    return @intFromPtr(kernel.Limine.toPhys(kernel.Limine.rsdp_request.response.address));
 }
 
 export fn AcpiOsPredefinedOverride(initVal : ?*const acpica.ACPI_PREDEFINED_NAMES, newVal : ?*acpica.ACPI_STRING) acpica.ACPI_STATUS {
@@ -189,7 +189,14 @@ export fn AcpiOsGetPhysicalAddress(logicalAddress : ?*anyopaque, physicalAddress
 }
 
 export fn AcpiOsPrintf(format : [*:0]const u8, ...) void {
-    _ = format;
+    //var ap = @cVaStart();
+    //defer @cVaEnd(&ap);
+
+    //const ao : u64 = @cVaArg(&ap, c_ulonglong);
+
+    //kernel.log.print("0x{X} ", .{ao});
+    const slice = std.mem.span(format);
+    kernel.log.printDirect(slice);
 }
 
 export fn AcpiOsVprintf(format : [*:0]const u8, args: ?*anyopaque) void {
@@ -335,7 +342,9 @@ pub fn setupSubsys() void {
 pub fn setupTables() void {
     print("init: Initializing ACPI Tables\n", .{});
     const tables = mem.pmallocBytes(@sizeOf(acpica.ACPI_TABLE_DESC) * 16);
+    print("ptr {}\n", .{tables});
     _ = acpica.AcpiInitializeTables(@ptrCast(@alignCast(tables)), 16, 1);
+    print("after\n", .{});
 
     print("  ACPI Tables: ", .{});
     for (0..10) |i| {

@@ -22,16 +22,16 @@ pub const Paddr = struct {
         return .{.val = num};
     }
 
-    pub fn toVirt(self : @This()) Vaddr {
-        return .{.val = self.val + PAGE_OFFSET.val};
+    pub fn toVirt(this : @This()) Vaddr {
+        return .{.val = this.val + PAGE_OFFSET.val};
     }
 
-    pub fn toInfo(self : @This()) *paging.PageInfo {
-        return @ptrFromInt(PAGE_METADATA.val + ((self.val / types.SIZE_4KB) * @sizeOf(paging.PageInfo)));
+    pub fn toInfo(this : @This()) *paging.PageInfo {
+        return @ptrFromInt(PAGE_METADATA.val + ((this.val / types.SIZE_4KB) * @sizeOf(paging.PageInfo)));
     }
 
-    pub fn ptr(self : @This()) *anyopaque {
-        return @ptrFromInt(self.val);
+    pub fn ptr(this : @This()) *anyopaque {
+        return @ptrFromInt(this.val);
     }
 };
 
@@ -42,16 +42,16 @@ pub const Vaddr = struct {
         return .{.val = num};
     }
 
-    pub fn toPhys(self : @This()) Paddr {
-        return .{.val = self.val - PAGE_OFFSET.val};
+    pub fn toPhys(this : @This()) Paddr {
+        return .{.val = this.val - PAGE_OFFSET.val};
     }
 
-    pub fn toInfo(self : @This()) *paging.PageInfo {
-        return self.toPhys().toInfo();
+    pub fn toInfo(this : @This()) *paging.PageInfo {
+        return this.toPhys().toInfo();
     }
 
-    pub fn ptr(self : @This()) *anyopaque {
-        return @ptrFromInt(self.val);
+    pub fn ptr(this : @This()) *anyopaque {
+        return @ptrFromInt(this.val);
     }
 };
 

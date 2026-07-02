@@ -196,7 +196,7 @@ pub fn __freePage(addr : mem.Paddr) void {
 }
 
 pub fn allocPage4k() mem.Paddr {
-    process.irqSave();
+    kernel.irqSave();
 
     const pool = localPagePool.getLocal();
 
@@ -212,14 +212,14 @@ pub fn allocPage4k() mem.Paddr {
         pool.current -= 1;
     }
 
-    process.irqRestore();
+    kernel.irqRestore();
 
     return page;
 }
 
 // Adds a free page to the cache if the cache has space
 pub fn freePage4k(addr : mem.Paddr) void {
-    process.irqSave();
+    kernel.irqSave();
 
     const pool = localPagePool.getLocal();
     if (pool.current < config.PER_CPU_PAGE_NUM) {
@@ -233,7 +233,7 @@ pub fn freePage4k(addr : mem.Paddr) void {
         __freePage(addr);
     }
 
-    process.irqRestore();
+    kernel.irqRestore();
 }
 
 pub fn zallocPage4k() mem.Paddr {

@@ -5,3 +5,4 @@ pub const data = @import("data/root.zig");
 
 pub const locks = @import("locks.zig");
 pub const Spinlock = @import("Spinlock.zig");
+pub const RwLock = @import("RwLock.zig");

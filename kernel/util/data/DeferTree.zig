@@ -58,8 +58,8 @@ pub fn push(tree : *@This(), state : *State, callback : fn (*State) void) void {
     state.callback = callback;
     const stack = tree.cpuTree.getPeriod() % 3;
 
-    proc.preemptSave();
-    defer proc.preemptRestore();
+    kernel.ThreadBase.preemptSave();
+    defer kernel.ThreadBase.preemptRestore();
 
     var stacks = tree.stacks.getLocal().*;
     stacks[stack].push(&state.node);
@@ -70,8 +70,8 @@ fn pop(tree : *@This()) ?*State {
     const stack = (tree.cpuTree.getPeriod + 1) % 3;
     var node : util.data.Stack.Node = undefined;
 
-    proc.preemptSave();
-    defer proc.preemptRestore();
+    kernel.ThreadBase.preemptSave();
+    defer kernel.ThreadBase.preemptRestore();
 
     const stacks = tree.stacks.getLocal().*;
     node = stacks[stack].pop() orelse return null;
@@ -93,7 +93,16 @@ pub fn report(tree : *@This(), cpu_num : anytype) void {
 }
 
 pub fn disable(tree : *@This(), cpu_num : anytype) void {
-    tree.cpuTree.disable(cpu_num);
+    const reported = tree.cpuTree.disable(cpu_num);
+
+    if (!reported) {
+        // Free all nodes from 2 periods ago
+        while (true) {
+            const state = pop(tree) orelse break;
+
+            state.callback();
+        }
+    }
 }
 
 pub fn enable(tree : *@This(), cpu_num : anytype) void {

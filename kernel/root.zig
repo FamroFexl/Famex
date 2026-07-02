@@ -34,15 +34,16 @@ pub const Limine = struct {
     pub var smp_request : *limine.LimineMpRequest = undefined;
 
     const LIMINE_REQUESTS_END linksection(".limine_requests_end") = limine.LIMINE_REQUESTS_END_MARKER;
+
+    /// Convert Limine HHDM-resolved addresses to physical
+    pub fn toPhys(addr : *anyopaque) *anyopaque {
+        return @ptrFromInt(@intFromPtr(addr) - hhdm_request.response.offset);
+    }
 };
 
 // Common things that we want easy access to
-pub const preemptSave = pm.process.preemptSave;
-pub const preemptRestore = pm.process.preemptRestore;
-pub const migrateSave = pm.process.migrateSave;
-pub const migrateRestore = pm.process.migrateRestore;
-pub const irqSave = pm.process.irqSave;
-pub const irqRestore = pm.process.irqRestore;
+pub const irqSave = io.irq.irqSave;
+pub const irqRestore = io.irq.irqRestore;
 pub const inIrq = io.irq.inIrq;
 pub const CpuMask = pm.process.CpuMask;
 pub const cpuMaskFull = pm.process.cpuMaskFull;
@@ -79,6 +80,7 @@ pub const PfeState = mm.paging.PfeState;
 
 pub const bin = util.binary;
 pub const Spinlock = util.Spinlock;
+pub const RwLock = util.RwLock;
 pub const types = util.types;
 
 pub const AtomStack = util.data.AtomStack;

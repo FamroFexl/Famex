@@ -23,6 +23,17 @@ pub const LapicIdReg = packed struct(u32) {
     apicId : u8,
 };
 
+// Type of interrupt to be sent to the processor
+pub const DeliveryMode = enum(u3) {
+    FIXED = 0,
+    LOWEST_PRIORITY = 1,  // ICR only
+    SMI = 2,
+    NMI = 4,
+    INIT = 5,
+    START_UP = 6,         // ICR only
+    EXT_INT = 7,          // LVT reg only
+};
+
 // A Local Vector Table register
 pub const LvtReg = packed struct(u32) {
     vector              : u8,              // LVT number
@@ -39,17 +50,6 @@ pub const LvtReg = packed struct(u32) {
     // Intel defines 2 bits for support of TSC_DEADLINE. AMD only has single bit.
     timerMode          : TimerMode,        // Timer mode (for lvt_timer only)
     __pad2              : u13 = undefined,
-
-    // Type of interrupt to be sent to the processor
-    pub const DeliveryMode = enum(u3) {
-        FIXED = 0,
-        LOWEST_PRIORITY = 1,  // ICR only
-        SMI = 2,
-        NMI = 4,
-        INIT = 5,
-        START_UP = 6,         // ICR only
-        EXT_INT = 7,          // LVT reg only
-    };
 
     pub const TimerMode = enum(u2) {
         ONE_SHOT = 0, // Used for tickless kernels
@@ -73,7 +73,7 @@ pub const EsrReg = packed struct(u32) {
 // Interrupt Command Register (used for IPIs)
 pub const IcrReg = packed struct(u64) {
     vector          : u8,
-    deliveryMode   : u3,
+    deliveryMode   : DeliveryMode,
     destMode       : DestMode,         // Interrupt type to be sent
     deliveryStatus : u1,               // (0) No interrupt pending, (1) Interrupt is pending at processor (not used in x2apic)
     __pad           : u1 = undefined,

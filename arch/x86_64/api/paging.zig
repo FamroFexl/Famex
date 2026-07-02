@@ -86,80 +86,80 @@ pub const Pte = packed struct(u64) {
         return @enumFromInt(pat);
     }
 
-    pub fn setOsBits(self : *@This(), bits : u64) void {
-        self.ignored = @intCast(bits);
-        self.ignored2 = @intCast(bits >> 2);
+    pub fn setOsBits(this : *@This(), bits : u64) void {
+        this.ignored = @intCast(bits);
+        this.ignored2 = @intCast(bits >> 2);
     }
 
-    pub fn setCache(self : *@This(), level : anytype, cache : paging.PteCache) void {
-        setPat(self, level,switch(cache) {
+    pub fn setCache(this : *@This(), level : anytype, cache : paging.PteCache) void {
+        setPat(this, level,switch(cache) {
             .WRITE_BACK => .WRITE_BACK,
             .WRITE_COMBINING => .WRITE_COMBINING,
             .UNCACHED => .UNCACHEABLE,
         });
     }
 
-    pub fn setWrite(self : *@This(), level : anytype, write : bool) void {
+    pub fn setWrite(this : *@This(), level : anytype, write : bool) void {
         _ = level;
-        self.writable = write;
+        this.writable = write;
     }
 
-    pub fn setRead(self : *@This(), level : anytype, read : bool) void {
-        _ = self;
+    pub fn setRead(this : *@This(), level : anytype, read : bool) void {
+        _ = this;
         _ = level;
         _ = read;
         return;
     }
 
-    pub fn setExec(self : *@This(), level : anytype, exec : bool) void {
+    pub fn setExec(this : *@This(), level : anytype, exec : bool) void {
         _ = level;
         if(cpu.FEATURES.EXECUTE_BIT == false) return;
 
-        self.no_execute = !exec;
+        this.no_execute = !exec;
     }
 
-    pub fn setPresent(self : *@This(), level : anytype, present : bool) void {
+    pub fn setPresent(this : *@This(), level : anytype, present : bool) void {
         _ = level;
-        self.present = present;
+        this.present = present;
     }
 
-    pub fn setUser(self : *@This(), level : anytype, user : bool) void {
+    pub fn setUser(this : *@This(), level : anytype, user : bool) void {
         _ = level;
-        self.user = user;
+        this.user = user;
     }
 
-    pub fn setPfe(self : *@This(), level : anytype, pfe : bool) void {
+    pub fn setPfe(this : *@This(), level : anytype, pfe : bool) void {
         if(level > cpu.FEATURES.MAX_PAGE_SIZE) return;
 
         if(level == 0) return;
-        self.bits.pfe = pfe;
+        this.bits.pfe = pfe;
     }
 
-    pub fn setEntry(self : *@This(), level : anytype, entry : mem.Paddr) void {
-        const mask : u64 = mem.PHYS_ADDR_SIZE & (~bin.setBits((@as(u64, level) * paging.PTE_ENTRY_BITS * @as(u64, @intFromBool(self.getPfe(level)))) + paging.PTE_SIZE_BITS));
-        self.* = @bitCast((@as(u64, @bitCast(self.*)) & ~mask) | (entry.val & mask));
+    pub fn setEntry(this : *@This(), level : anytype, entry : mem.Paddr) void {
+        const mask : u64 = mem.PHYS_ADDR_SIZE & (~bin.setBits((@as(u64, level) * paging.PTE_ENTRY_BITS * @as(u64, @intFromBool(this.getPfe(level)))) + paging.PTE_SIZE_BITS));
+        this.* = @bitCast((@as(u64, @bitCast(this.*)) & ~mask) | (entry.val & mask));
     }
 
-    pub fn setEmpty(self : *@This(), level : anytype) void {
+    pub fn setEmpty(this : *@This(), level : anytype) void {
         _ = level;
-        self.* = @bitCast(@as(u64, 0));
+        this.* = @bitCast(@as(u64, 0));
     }
 
-    pub fn setAccessed(self : *@This(), level : anytype, accessed : bool) void {
+    pub fn setAccessed(this : *@This(), level : anytype, accessed : bool) void {
         _ = level;
-        self.accessed = accessed;
+        this.accessed = accessed;
     }
 
-    pub fn setGlobal(self : *@This(), level : anytype, global : bool) void {
-        debug.assert(self.getPfe(level));
+    pub fn setGlobal(this : *@This(), level : anytype, global : bool) void {
+        debug.assert(this.getPfe(level));
 
-        self.bits2.global = global;
+        this.bits2.global = global;
     }
 
-    pub fn setDirty(self : *@This(), level : anytype, dirty : bool) void {
-        debug.assert(self.getPfe(level));
+    pub fn setDirty(this : *@This(), level : anytype, dirty : bool) void {
+        debug.assert(this.getPfe(level));
 
-        self.dirty = dirty;
+        this.dirty = dirty;
     }
 
     pub fn getNumOsBits() u8 {
@@ -167,79 +167,79 @@ pub const Pte = packed struct(u64) {
         return 9;
     }
 
-    pub fn getOsBits(self : @This()) u64 {
+    pub fn getOsBits(this : @This()) u64 {
         var bits : u9 = 0;
-        bits |= @intCast(self.ignored);
-        bits |= @intCast(self.ignored2 << 2);
+        bits |= @intCast(this.ignored);
+        bits |= @intCast(this.ignored2 << 2);
 
         return @intCast(bits);
     }
 
-    pub fn getCache(self : *@This(), level : anytype) paging.PteCache {
-        return switch(getPat(self, level)) {
+    pub fn getCache(this : *@This(), level : anytype) paging.PteCache {
+        return switch(getPat(this, level)) {
             .WRITE_BACK => .WRITE_BACK,
             .WRITE_COMBINING => .WRITE_COMBINING,
             .UNCACHEABLE => .UNCACHED,
         };
     }
 
-    pub fn getWrite(self : *@This(), level : anytype) bool {
+    pub fn getWrite(this : *@This(), level : anytype) bool {
         _ = level;
-        return self.writable;
+        return this.writable;
     }
 
-    pub fn getRead(self : *@This(), level : anytype) bool {
-        _ = self;
+    pub fn getRead(this : *@This(), level : anytype) bool {
+        _ = this;
         _ = level;
         return true;
     }
 
-    pub fn getExec(self : *@This(), level : anytype) bool {
+    pub fn getExec(this : *@This(), level : anytype) bool {
         _ = level;
         if(cpu.FEATURES.EXECUTE_BIT == false) return true;
 
-        return !self.no_execute;
+        return !this.no_execute;
     }
 
-    pub fn getPresent(self : *@This(), level : anytype) bool {
+    pub fn getPresent(this : *@This(), level : anytype) bool {
         _ = level;
-        return self.present;
+        return this.present;
     }
 
-    pub fn getUser(self : *@This(), level : anytype) bool {
+    pub fn getUser(this : *@This(), level : anytype) bool {
         _ = level;
-        return self.user;
+        return this.user;
     }
 
-    pub fn getPfe(self : *@This(), level : anytype) bool {
+    pub fn getPfe(this : *@This(), level : anytype) bool {
         if(level == 0) return true;
-        return self.bits.pfe;
+        return this.bits.pfe;
     }
 
-    pub fn getEntry(self : *@This(), level : anytype) mem.Paddr {
-        const mask : u64 = mem.PHYS_ADDR_SIZE & (~bin.setBits((level * paging.PTE_ENTRY_BITS * @as(u64, @intFromBool(self.getPfe(level)))) + paging.PTE_SIZE_BITS));
-        return .{.val = @as(u64, @bitCast(self.*)) & mask,};
+    pub fn getEntry(this : *@This(), level : anytype) mem.Paddr {
+        const mask : u64 = mem.PHYS_ADDR_SIZE & (~bin.setBits((level * paging.PTE_ENTRY_BITS * @as(u64, @intFromBool(this.getPfe(level)))) + paging.PTE_SIZE_BITS));
+        return .{.val = @as(u64, @bitCast(this.*)) & mask,};
     }
 
-    pub fn getEmpty(self : *@This(), level : anytype) bool {
+    pub fn getEmpty(this : *@This(), level : anytype) bool {
         _ = level;
-        return bin.isZero(self.*);
+        return bin.isZero(this.*);
     }
 
-    pub fn getAccessed(self : *@This(), level : anytype) bool {
+    pub fn getAccessed(this : *@This(), level : anytype) bool {
         _ = level;
-        return self.accessed;
+        return this.accessed;
     }
 
-    pub fn getGlobal(self : *@This(), level : anytype) bool {
-        debug.assert(self.getPfe(level));
+    pub fn getGlobal(this : *@This(), level : anytype) bool {
+        debug.assert(this.getPfe(level));
 
-        return self.global;
+        return this.global;
     }
 
-    pub fn getDirty(self : *@This(), level : anytype) bool {
-        debug.assert(self.getPfe(level));
+    pub fn getDirty(this : *@This(), level : anytype) bool {
+        debug.assert(this.getPfe(level));
 
-        return self.dirty;
+        return this.dirty;
     }
 };

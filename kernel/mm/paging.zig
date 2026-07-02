@@ -54,20 +54,20 @@ pub const PageInfo = extern struct {
         region : u11,
     };
 
-    pub fn getData(self : @This()) DataLayout {
-        return @bitCast(self);
+    pub fn getData(this : @This()) DataLayout {
+        return @bitCast(this);
     }
 
-    pub fn setData(self : *@This(), data : DataLayout) void {
-        self.*.data = @bitCast(data);
+    pub fn setData(this : *@This(), data : DataLayout) void {
+        this.*.data = @bitCast(data);
     }
 
-    pub fn toPhys(self : *@This()) memory.Paddr {
-        return .{.val = ((@intFromPtr(self) - memory.PAGE_METADATA) / @sizeOf(@This())) * types.SIZE_4KB};
+    pub fn toPhys(this : *@This()) memory.Paddr {
+        return .{.val = ((@intFromPtr(this) - memory.PAGE_METADATA) / @sizeOf(@This())) * types.SIZE_4KB};
     }
 
-    pub fn toVirt(self : *@This()) memory.Vaddr {
-        return self.toPhys().toVirt();
+    pub fn toVirt(this : *@This()) memory.Vaddr {
+        return this.toPhys().toVirt();
     }
 
     comptime {

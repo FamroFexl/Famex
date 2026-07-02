@@ -5,3 +5,4 @@
 - enum entries should be UPPER_SNAKE_CASE
 - Functions, global variables, and type fields should be camelCase
 - Local variables should be camelCase but can be snake_case
+- "this" should only be used when referring to the outer scope type, like "this : @This()"
