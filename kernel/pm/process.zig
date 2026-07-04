@@ -55,6 +55,7 @@ pub const ThreadBase = struct {
     sched : SchedData,
 
     const SchedData = struct {
+        policy : sched.Policy,
         priority : u8,
     };
 
@@ -71,42 +72,60 @@ pub const ThreadBase = struct {
         __pad : u63,
     };
 
-    pub fn preemptSave() void {
+    pub fn preemptSave(this : *@This()) void {
         kernel.irqSave();
         defer kernel.irqRestore();
 
-        sched.cThread().preemptDepth += 1;
+        this.preemptDepth += 1;
     }
 
-    pub fn preemptRestore() void {
+    pub fn preemptRestore(this : *@This()) void {
         kernel.irqSave();
         defer kernel.irqRestore();
 
-        const data = sched.schedData.getLocal();
-        const depth = &data.current.preemptDepth;
-        depth.* -= 1;
+        this.preemptDepth -= 1;
 
-        if (depth.* == 0 and data.flags.reschedule) {
-            // yield_thread()
+        if (this.preemptDepth == 0 and sched.schedData.getLocal().flags.reschedule) {
+            this.yield();
         }
     }
 
     /// Prevent cpu thread migration
-    pub fn migrateSave() void {
+    pub fn migrateSave(this : *@This()) void {
         kernel.irqSave();
         defer kernel.irqRestore();
 
-        const data = sched.schedData.getLocal();
-        data.current.migrateDepth += 1;
+        this.migrateDepth += 1;
     }
 
     /// Enable cpu thread migration
-    pub fn migrateRestore() void {
+    pub fn migrateRestore(this : *@This()) void {
         kernel.irqSave();
         defer kernel.irqRestore();
 
-        const data = sched.schedData.getLocal();
-        data.current.migrateDepth -= 1;
+        this.migrateDepth -= 1;
+    }
+
+    pub fn yield(this : *@This()) void {
+        std.debug.assert(!kernel.irqEnabled());
+
+        const cdc = &sched.schedData.getLocal().sched[@intFromEnum(this.sched.policy)];
+        cdc.onYield(cdc, this);
+        //sched.schedData.getLocal().sched[@intFromEnum(this.sched.policy)].onYield(this);
+        sched.switchThread();
+    }
+
+    pub fn sleep(this : *@This()) void {
+        this.state = .INTERRUPTABLE;
+
+        sched.schedData.getLocal().sched[@intFromEnum(this.sched.policy)].onSleep(this);
+        sched.switchThread();
+    }
+
+    pub fn wake(this : *@This()) void {
+        sched.schedData.getLocal().sched[@intFromEnum(this.sched.policy)].onWake(this);
+
+        this.state = .RUNNING;
     }
 };
 
@@ -274,7 +293,7 @@ pub fn addUtime() void {
     const utime = startTimeReset();
 
     const cThread = sched.cThread();
-    const uThread : UThread = @fieldParentPtr("base", cThread);
+    const uThread : *UThread = @fieldParentPtr("base", cThread);
 
     cThread.timeLock.writeLock();
     uThread.utime.nsec += utime;

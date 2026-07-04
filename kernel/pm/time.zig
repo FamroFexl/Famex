@@ -120,7 +120,7 @@ const Timer = struct {
     }
 
     pub fn set(this : *@This(), time : Time) void {
-        this.setRaw(@intCast((@as(u128, this.tps) * @as(u128, time.nsec) + 500_000_000) / 1_000_000_000));
+        this.setRaw(this, @intCast((@as(u128, this.tps) * @as(u128, time.nsec) + 500_000_000) / 1_000_000_000));
     }
 
     pub fn get(this : *@This()) Time {
@@ -161,7 +161,7 @@ const Clock = struct {
     }
 
     pub fn get(this : *@This()) Time {
-        return .{.nsec = @intCast((@as(u128, @intCast(this.getRaw())) * 1_000_000_000) / this.tps)};
+        return .{.nsec = @intCast((@as(u128, @intCast(this.getRaw(this))) * 1_000_000_000) / this.tps)};
     }
 };
 
@@ -172,7 +172,7 @@ pub fn getMonoClock() Time {
 
 /// Get unix time (can change)
 pub fn getUnixClock() Time {
-    return getMonoClock().add(.NSEC, unixOffset.load(.acquire));
+    return .Nsec(@intCast(@as(i128, getMonoClock().nsec) + @as(i128, unixOffset.load(.acquire))));
 }
 
 pub fn setUnixClock(time : Time) void {
@@ -191,9 +191,9 @@ pub fn getLocalTimer() Time {
 
 const TimerTree = lib.linux.RBTree(TimerEvent, "link", "expiration", true);
 
-var timerLock = kernel.PerCpuStat(kernel.Spinlock);
-var monoTimers = kernel.PerCpuStat(TimerTree);
-var unixTimers = kernel.PerCpuStat(TimerTree);
+const timerLock = kernel.PerCpuStat(kernel.Spinlock);
+const monoTimers = kernel.PerCpuStat(TimerTree);
+const unixTimers = kernel.PerCpuStat(TimerTree);
 
 /// Set the local timer
 fn timerSet() void {
@@ -205,27 +205,27 @@ fn timerSet() void {
 
     var node : ?*TimerTree.Node = unixTimers.getLocal().first();
     if (node) |n| {
-        kernel.bin.setIfSmaller(u64, &time, n.holder().expiration.nsec - unixOffset.load(.acquire));
+        kernel.bin.setIfSmaller(u64, &time, @intCast(@as(i128, n.holder().expiration) - @as(i128, unixOffset.load(.acquire))));
     }
 
     node = monoTimers.getLocal().first();
     if (node) |n| {
-        kernel.bin.setIfSmaller(u64, &time, n.holder().expiration.nsec);
+        kernel.bin.setIfSmaller(u64, &time, n.holder().expiration);
     }
 
     // No events are waiting. There is no need to set the local timer
     if (node == null)
         return;
 
-    setLocalTimer(time - getMonoClock().nsec);
+    setLocalTimer(.Nsec(time - getMonoClock().nsec));
 }
 
 pub const TimerEvent = struct {
-    expiration : Time,                          // Time the event expires
+    expiration : u64,                          // Time the event expires
     callback : *const fn (*@This()) void,       // Function to call on expiration
     cpuId : u8,                                 // Which cpu it was added to
     tag : Type,                                 // Timer is unix/realtime or monotonic
-    slack : Time,                               // How much can the timer be delayed by for purposes of reshuffling
+    slack : u64,                               // How much can the timer be delayed by for purposes of reshuffling
     link : TimerTree.Node = undefined,
 
     const Type = enum {
@@ -235,7 +235,7 @@ pub const TimerEvent = struct {
 
     pub fn init(this : *@This(), tag : Type, slack : Time, callback : *const fn (*@This()) void) void {
         this.tag = tag;
-        this.slack = slack;
+        this.slack = slack.nsec;
         this.callback = callback;
         this.cpuId = kernel.getCpuId();
         this.link.clear();
@@ -254,7 +254,7 @@ pub const TimerEvent = struct {
 
         // Already expired
         if (this.tag == .UNIX and newExpiration <= getUnixClock().nsec) {
-            this.callback();
+            this.callback(this);
             return;
         }
 
@@ -263,14 +263,16 @@ pub const TimerEvent = struct {
             .UNIX => unixTimers.getLocal(),
         };
 
-        timerLock.lock();
-        defer timerLock.unlock();
+        const spinlock = timerLock.getLocal();
+
+        spinlock.lock();
+        defer spinlock.unlock();
 
         // Delete the node if it exists
         if (!this.link.empty())
             tree.erase(&this.link);
 
-        this.expiration = expiration;
+        this.expiration = expiration.nsec;
 
         // Coalesce timers together within slack time
         const next = tree.findAfter(this.expiration);
@@ -293,11 +295,14 @@ pub const TimerEvent = struct {
             .UNIX => unixTimers.getLocal(),
         };
 
-        timerLock.lock();
+        const spinlock = timerLock.getLocal();
 
-        tree.erase(&this.link);
+        {
+            spinlock.lock();
+            defer spinlock.unlock();
 
-        timerLock.unlock();
+            tree.erase(&this.link);
+        }
 
         this.link.clear();
     }

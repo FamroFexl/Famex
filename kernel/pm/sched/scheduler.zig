@@ -4,11 +4,11 @@ const cpu = @import("arch").cpu;
 
 const kernel = @import("kernel");
 
-pub const Policy = enum {
-    FIFO,       // First in-first out (FIFO) scheduling policy.
-    RR,         // Round robin scheduling policy.
-    OTHER,      // Primary and default scheduling policy (CFS)
-    IDLE,
+pub const Policy = enum(u8) {
+    FIFO = 0,       // First in-first out (FIFO) scheduling policy.
+    RR = 1,         // Round robin scheduling policy.
+    OTHER = 2,      // Primary and default scheduling policy (CFS)
+    IDLE = 3,
 };
 
 pub const Scheduler = struct {
@@ -50,7 +50,7 @@ pub fn cThread() *kernel.pm.process.ThreadBase {
     return schedData.getLocal().current;
 }
 
-fn switchThread() void {
+pub fn switchThread() void {
     std.debug.assert(!kernel.irqEnabled());
 
     const irqSaveDepth = kernel.io.irq.irqSaveDepth.getLocal().*;
@@ -68,7 +68,7 @@ fn switchThread() void {
     // being saved, not loaded
     if (!cThread().flags.loaded) {
         // Add runtime to the thread
-        if (state.inKmode()) {
+        if (kernel.pm.process.inKmode(&state)) {
             kernel.pm.process.addKtime();
         }
         else {
@@ -76,10 +76,10 @@ fn switchThread() void {
         }
 
         // Switch to a new thread
-        schedule(state);
+        schedule(&state);
 
         // TODO Check for signals with the current thread
-        if (!state.inKmode())
+        if (!kernel.pm.process.inKmode(&state))
             kernel.pm.ipc.rcu.enterEqs();
 
         state.load();
@@ -104,7 +104,7 @@ fn loadThread(new : *kernel.ThreadBase, state : *kernel.CpuState) void {
     // Notifies inline saved threads which path to take
     new.flags.loaded = true;
 
-    kernel.mm.paging.switchPageTables(new.owner.addr_space.rootPt);
+    _ = kernel.mm.paging.switchPageTables(new.owner.addr_space.rootPt);
 }
 
 pub fn threadFromSched(node : *kernel.List.Node) *kernel.ThreadBase {
@@ -124,12 +124,11 @@ pub fn schedule(state : *kernel.CpuState) void {
         defer data.spinlock.unlock();
 
         for (0..std.meta.fields(Policy).len) |i| {
-            const sched = data.sched[i];
-            next = sched.pickNext();
+            const sched = &data.sched[i];
 
-            if (sched.pickNext()) |thread| {
+            if (sched.pickNext(sched)) |thread| {
                 next = thread;
-                timeslice = sched.getTimeslice(thread);
+                timeslice = sched.getTimeslice(sched, thread);
             }
         }
     }

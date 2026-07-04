@@ -134,12 +134,12 @@ fn propagate(tree : *@This(), node : *Node, mask : proc.CpuMask) void {
 
         node.spinlock.unlock();
 
-        if (node.parent) {
+        if (node.parent) |_| {
             node.parent.?.spinlock.lock();
-            propagate(tree, node.parent, node.target);
+            propagate(tree, node.parent.?, node.target);
         }
         else {
-            tree.curPeriod.fetchAdd(1, .release);
+            _ = tree.curPeriod.fetchAdd(1, .release);
             tree.sync(node.curPeriod);
         }
     }
@@ -207,7 +207,7 @@ pub fn report(tree : *@This(), cpu_num : anytype) bool {
 
 /// Disable a cpu
 pub fn disable(tree : *@This(), cpu_num : anytype) bool {
-    const node = getNode(tree, cpu_num) orelse return;
+    const node = getNode(tree, cpu_num) orelse return false;
 
     var reported = false;
 

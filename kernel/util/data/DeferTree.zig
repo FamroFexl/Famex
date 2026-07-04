@@ -58,8 +58,8 @@ pub fn push(tree : *@This(), state : *State, callback : fn (*State) void) void {
     state.callback = callback;
     const stack = tree.cpuTree.getPeriod() % 3;
 
-    kernel.ThreadBase.preemptSave();
-    defer kernel.ThreadBase.preemptRestore();
+    kernel.cThread().preemptSave();
+    defer kernel.cThread().preemptRestore();
 
     var stacks = tree.stacks.getLocal().*;
     stacks[stack].push(&state.node);
@@ -67,13 +67,13 @@ pub fn push(tree : *@This(), state : *State, callback : fn (*State) void) void {
 
 // pop == (period + 1) % 3
 fn pop(tree : *@This()) ?*State {
-    const stack = (tree.cpuTree.getPeriod + 1) % 3;
-    var node : util.data.Stack.Node = undefined;
+    const stack = (tree.cpuTree.getPeriod() + 1) % 3;
+    var node : *util.data.Stack.Node = undefined;
 
-    kernel.ThreadBase.preemptSave();
-    defer kernel.ThreadBase.preemptRestore();
+    kernel.ThreadBase.preemptSave(kernel.cThread());
+    defer kernel.ThreadBase.preemptRestore(kernel.cThread());
 
-    const stacks = tree.stacks.getLocal().*;
+    var stacks = tree.stacks.getLocal().*;
     node = stacks[stack].pop() orelse return null;
 
     return @fieldParentPtr("node", node);
@@ -100,7 +100,7 @@ pub fn disable(tree : *@This(), cpu_num : anytype) void {
         while (true) {
             const state = pop(tree) orelse break;
 
-            state.callback();
+            state.callback(state);
         }
     }
 }

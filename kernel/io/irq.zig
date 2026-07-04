@@ -198,7 +198,7 @@ fn threadHandler(data : *IrqData, state : *cpu.CpuState) void {
     schedData.current.preemptDepth -= 1;
 
     if (schedData.flags.reschedule and sched.cThread().preemptDepth == 0) {
-        // schedule(state);
+        sched.schedule(state);
         rcu.reportQs();
     }
 
@@ -209,7 +209,7 @@ fn threadHandler(data : *IrqData, state : *cpu.CpuState) void {
     }
 
     // All threads resume with interrupts enabled,
-    // (except for threads that did a switch_thread(),
+    // (except for threads that did a switchThread(),
     // and they handle their own reentry)
     depth.* = 0;
 

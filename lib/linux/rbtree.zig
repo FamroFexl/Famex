@@ -42,20 +42,20 @@ pub fn RBTree(comptime T : type, comptime nodeField : []const u8, comptime cmpFi
             }
         };
 
-        fn compare(keyPtr : ?*const anyopaque, node : ?*const rb.struct_rb_node) callconv(.c) c_int {
-            const key : *u64 = @ptrCast(@alignCast(keyPtr));
-            const exp1 : T = @fieldParentPtr(nodeField, node.?);
+        fn compare(keyPtr : ?*const anyopaque, node : [*c]const rb.struct_rb_node) callconv(.c) c_int {
+            const key : *const u64 = @ptrCast(@alignCast(keyPtr));
+            const exp1 : *const T = @fieldParentPtr(nodeField, @as(*const Node, @ptrCast(@alignCast(node.?))));
 
             const val = &@field(exp1, cmpField);
 
             return if (key.* < val.*) -1 else if (key.* > val.*) 1 else 0;
         }
 
-        fn less(node : ?*rb.struct_rb_node, node2 : ?*const rb.struct_rb_node) callconv(.c) bool {
-            const exp1 : T = @fieldParentPtr(nodeField, node.?);
-            const exp2 : T = @fieldParentPtr(nodeField, node2.?);
+        fn less(node : [*c]rb.struct_rb_node, node2 : [*c]const rb.struct_rb_node) callconv(.c) u8 {
+            const exp1 : *const T = @fieldParentPtr(nodeField, @as(*const Node, @ptrCast(@alignCast(node.?))));
+            const exp2 : *const T = @fieldParentPtr(nodeField, @as(*const Node, @ptrCast(@alignCast(node2.?))));
 
-            return @field(exp1, cmpField) < @field(exp2, cmpField);
+            return @intFromBool(@field(exp1, cmpField) < @field(exp2, cmpField));
         }
 
         pub fn init(this : *@This()) void {
@@ -68,9 +68,9 @@ pub fn RBTree(comptime T : type, comptime nodeField : []const u8, comptime cmpFi
         }
 
         pub fn first(this : *@This()) ?*Node {
-            const node : ?*rb.struct_rb_node = if (cached) rb.rb_first_cached(&this.root.rb_leftmost) else rb.rb_first(&this.root);
+            const node : ?*rb.struct_rb_node = if (cached) rb.rb_first_cached(&this.root) else rb.rb_first(&this.root);
             if (node) |n| {
-                return .{.node = n};
+                return @ptrCast(n);
             }
             return null;
         }
@@ -84,7 +84,7 @@ pub fn RBTree(comptime T : type, comptime nodeField : []const u8, comptime cmpFi
         }
 
         pub fn erase(this : *@This(), node : *Node) void {
-            if (cached) rb.rb_erase_cached(&node.node, &this.root) else rb.rb_erase(&node.node, &this.root);
+            if (cached) _ = rb.rb_erase_cached(&node.node, &this.root) else rb.rb_erase(&node.node, &this.root);
         }
 
         pub fn replace(this : *@This(), old : *Node, new : *Node) void {
@@ -98,7 +98,7 @@ pub fn RBTree(comptime T : type, comptime nodeField : []const u8, comptime cmpFi
 
         pub fn add(this : *@This(), node : *Node) void {
             if (cached) {
-                rb.rb_add_cached(&node.node, &this.root, less);
+                _ = rb.rb_add_cached(&node.node, &this.root, less);
             }
             else {
                 rb.rb_add(&node.node, &this.root, less);
@@ -142,7 +142,7 @@ pub fn RBTree(comptime T : type, comptime nodeField : []const u8, comptime cmpFi
             const out = rb.rb_find_after(@ptrCast(@alignCast(&stat)), if (cached) &this.root.rb_root else &this.root, compare);
 
             if (out) |o| {
-                return .{.node = @ptrCast(o)};
+                return @ptrCast(o);
             }
 
             return null;

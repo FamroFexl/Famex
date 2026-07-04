@@ -23,7 +23,7 @@ pub fn readLock(this : *@This()) void {
         }
 
         // Change the value if it has not been written to
-        if (this.val.cmpxchgWeak(lock, lock + 1, .acquire, .unordered)) {
+        if (this.val.cmpxchgWeak(lock, lock + 1, .acquire, .monotonic)) {
             break;
         }
     }
@@ -40,13 +40,13 @@ pub fn writeLock(this : *@This()) void {
         const lock = this.val.load(.acquire);
 
         // Spin if being written
-        if (lock & WRITING_BIT) {
+        if (lock & WRITING_BIT == 1) {
             cpu.spinWaitLoop();
             continue;
         }
 
         // Try to set myself to the writer
-        if (this.val.cmpxchgWeak(lock, lock & WRITING_BIT, .acquire, .unordered)) {
+        if (this.val.cmpxchgWeak(lock, lock & WRITING_BIT, .acquire, .monotonic)) |_| {
             break;
         }
     }
