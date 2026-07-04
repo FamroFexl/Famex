@@ -1,3 +1,5 @@
+/// Zig-friendly wrapper around linux MapleTree implementation
+
 const std = @import("std");
 
 const maple = @cImport({@cInclude("maple_tree.h");});

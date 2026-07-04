@@ -40,6 +40,7 @@ pub const Tid = u32;
 pub const ThreadBase = struct {
     owner : *Process,
     state : State,
+    flags : Flags,
 
     context : kernel.CpuState,
     tid : Tid,
@@ -50,12 +51,24 @@ pub const ThreadBase = struct {
     preemptDepth : u8,
     migrateDepth : u8,
 
+    schedLink : kernel.List.Node,
+    sched : SchedData,
+
+    const SchedData = struct {
+        priority : u8,
+    };
+
     const State = enum {
         RUNNING,           // Is running or waiting to start running
         INTERRUPTABLE,     // Interruptable sleep
         UNINTERRUPTIBLE,   // Uninterruptable sleep
         STOPPED,           // Suspended by unblockable signal (SIGSTOP)
         DEAD               // Being cleaned up
+    };
+
+    const Flags = packed struct(u64) {
+        loaded : bool,   // For inline register save/load, used to determine how to proceed
+        __pad : u63,
     };
 
     pub fn preemptSave() void {
@@ -137,6 +150,7 @@ pub const perCpu = struct {
 
 fn getLocalPercpu(comptime T: type, addr : u64) *T {
     // Get local percpu must execute without threat of being transferred to a new cpu
+    // Preempt depth doesn't guarantee non-corruption since interrupts can access percpu vars as well
     std.debug.assert(!perCpu.isSetup or !cpu.irqEnabled() or sched.cThread().preemptDepth > 0);
 
     return @ptrFromInt(@intFromPtr(cpu.getPerCpu()) + addr);
@@ -150,7 +164,7 @@ fn getGlobalPercpu(comptime T: type, cpu_num : anytype, addr : u64) *T {
 /// Use as "const per_cpu = PerCpuStat(u64);" or whatever type you need.
 pub fn PerCpuStat(comptime T: type) type {
     return struct {
-        const data: T linksection(".percpu") = undefined;
+        const data : T linksection(".percpu") = undefined;
 
         pub fn getLocal() *T {
             return getLocalPercpu(T, @intFromPtr(&data) - perCpu.PER_CPU_LINKER_OFFSET.val);
@@ -162,7 +176,8 @@ pub fn PerCpuStat(comptime T: type) type {
     };
 }
 
-/// Dynamic per-cpu allocations that are created at runtime
+/// Dynamic per-cpu allocation that is created at runtime
+/// Use as "field : PerCpuDyn(u64),"
 pub fn PerCpuDyn(comptime T: type) type {
     return struct {
         data : ?*T = null,
@@ -270,7 +285,7 @@ pub fn addUtime() void {
     cThread.owner.timeLock.writeUnlock();
 }
 
-pub export fn inKmode(state : *cpu.CpuState) bool {
+pub export fn inKmode(state : *kernel.CpuState) bool {
     return state.getStack() >= mem.KERNEL_MEMORY.val;
 }
 

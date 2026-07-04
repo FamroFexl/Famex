@@ -59,6 +59,9 @@ pub const RcuPtr = pm.ipc.rcu.RcuPtr;
 pub const Mutex = pm.ipc.Mutex;
 pub const Semaphore = pm.ipc.Semaphore;
 pub const Time = pm.time.Time;
+pub const TimerEvent = pm.time.TimerEvent;
+pub const getUnixClock = pm.time.getUnixClock;
+pub const getMonoClock = pm.time.getMonoClock();
 
 pub const pmalloc = mm.memory.pmalloc;
 pub const pmallocBytes = mm.memory.pmallocBytes;

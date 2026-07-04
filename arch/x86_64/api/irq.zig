@@ -16,15 +16,17 @@ pub fn getIrqType(irqNum : u64) kernel.io.irq.IrqType {
 }
 
 pub fn notifyCpu(cpuId : anytype) void {
-    var icr : apic.IcrReg = .{
+    const icrBase : apic.IcrReg = .{
         .vector = irq.VecNum.IPI,
         .triggerMode = .EDGE,
-        .destMode = .LOGICAL,
+        .destMode = .PHYSICAL,
         .deliveryMode = .FIXED,
         .destShorthand = .NONE,
     };
 
-    apic.setIcrDest(&icr, kernel.Limine.smp_request.response.x86.cpus.x86[cpu.getCpuId()].lapic_id);
+    var icrOut = icrBase;
 
-    apic.set(.icr, icr);
+    apic.setIcrDest(&icrOut, kernel.Limine.smp_request.response.x86.cpus.x86[cpuId].lapic_id);
+
+    apic.set(.icr, icrOut);
 }

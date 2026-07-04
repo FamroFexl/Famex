@@ -97,6 +97,11 @@
           "module": 4
         },
         {
+          "name": "kernel",
+          "owner": 0,
+          "module": 2
+        },
+        {
           "name": "arch",
           "owner": 0,
           "module": 1

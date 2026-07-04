@@ -12,12 +12,40 @@ var unixOffset : std.atomic.Value(i64) = undefined;
 
 /// Stores and mutates time units
 pub const Time = struct {
+    /// Nanoseconds
     nsec : u64,
+
+    const TimeUnit = enum(u8) {
+        SEC = 0,
+        MSEC = 1,
+        USEC = 2,
+        NSEC = 3,
+    };
 
     pub fn create(unit : TimeUnit, val : u64) @This() {
         var time : @This() = undefined;
         time.set(unit, val);
         return time;
+    }
+
+    pub fn zero() @This() {
+        return .{.nsec = 0};
+    }
+
+    pub fn Sec(val : u64) @This() {
+        return create(.SEC, val);
+    }
+
+    pub fn Msec(val : u64) @This() {
+        return create(.MSEC, val);
+    }
+
+    pub fn Usec(val : u64) @This() {
+        return create(.USEC, val);
+    }
+
+    pub fn Nsec(val : u64) @This() {
+        return create(.NSEC, val);
     }
 
     pub fn get(this : @This(), unit : TimeUnit, ceil : bool) u64 {
@@ -51,13 +79,6 @@ pub const Time = struct {
 
         this.nsec = if (underflow[1] == 1) 0 else underflow[0];
     }
-
-    const TimeUnit = enum(u8) {
-        SEC = 0,
-        MSEC = 1,
-        USEC = 2,
-        NSEC = 3,
-    };
 };
 
 const Timer = struct {
@@ -205,12 +226,81 @@ pub const TimerEvent = struct {
     cpuId : u8,                                 // Which cpu it was added to
     tag : Type,                                 // Timer is unix/realtime or monotonic
     slack : Time,                               // How much can the timer be delayed by for purposes of reshuffling
-    link : TimerTree.Node,
+    link : TimerTree.Node = undefined,
 
     const Type = enum {
         MONOTONIC,
         UNIX
     };
+
+    pub fn init(this : *@This(), tag : Type, slack : Time, callback : *const fn (*@This()) void) void {
+        this.tag = tag;
+        this.slack = slack;
+        this.callback = callback;
+        this.cpuId = kernel.getCpuId();
+        this.link.clear();
+    }
+
+    /// Set or reset an initialized timer with relative or absolute time
+    pub fn reset(this : *@This(), expiration : Time, absolute : bool) void {
+
+        const newExpiration =
+            if (absolute) expiration.nsec
+            else
+            switch (this.tag) {
+                .MONOTONIC => expiration.nsec + getMonoClock().nsec,
+                .UNIX => expiration.nsec + getUnixClock().nsec,
+            };
+
+        // Already expired
+        if (this.tag == .UNIX and newExpiration <= getUnixClock().nsec) {
+            this.callback();
+            return;
+        }
+
+        const tree : *TimerTree = switch (this.tag) {
+            .MONOTONIC => monoTimers.getLocal(),
+            .UNIX => unixTimers.getLocal(),
+        };
+
+        timerLock.lock();
+        defer timerLock.unlock();
+
+        // Delete the node if it exists
+        if (!this.link.empty())
+            tree.erase(&this.link);
+
+        this.expiration = expiration;
+
+        // Coalesce timers together within slack time
+        const next = tree.findAfter(this.expiration);
+
+        if (next) |n| {
+            const nextEvent = n.holder();
+            if (this.expiration + this.slack >= nextEvent.expiration)
+                this.expiration = nextEvent.expiration;
+        }
+
+        tree.add(&this.link);
+
+        if (tree.first() == &this.link)
+            timerSet();
+    }
+
+    pub fn remove(this : *@This()) void {
+        const tree : *TimerTree = switch (this.tag) {
+            .MONOTONIC => monoTimers.getLocal(),
+            .UNIX => unixTimers.getLocal(),
+        };
+
+        timerLock.lock();
+
+        tree.erase(&this.link);
+
+        timerLock.unlock();
+
+        this.link.clear();
+    }
 
     /// Timer event handler for IRQs
     pub fn handler() void {
@@ -278,45 +368,6 @@ pub const TimerEvent = struct {
 
         if (nextTime != std.math.maxInt(u64))
             setLocalTimer(nextTime - time);
-    }
-
-    pub fn insert(this : *@This()) void {
-        const tree : *TimerTree = switch (this.tag) {
-            .MONOTONIC => monoTimers.getLocal(),
-            .UNIX => unixTimers.getLocal(),
-        };
-
-        timerLock.lock();
-        defer timerLock.unlock();
-
-        // Coalesce timers together within slack time
-        const next = tree.findAfter(this.expiration);
-
-        if (next) |n| {
-            const nextEvent = n.holder();
-            if (this.expiration + this.slack >= nextEvent.expiration)
-                this.expiration = nextEvent.expiration;
-        }
-
-        tree.add(&this.link);
-
-        if (tree.first() == &this.link)
-            timerSet();
-    }
-
-    pub fn remove(this : *@This()) void {
-        const tree : *TimerTree = switch (this.tag) {
-            .MONOTONIC => monoTimers.getLocal(),
-            .UNIX => unixTimers.getLocal(),
-        };
-
-        timerLock.lock();
-
-        tree.erase(&this.link);
-
-        timerLock.unlock();
-
-        this.link.clear();
     }
 };
 

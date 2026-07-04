@@ -1,0 +1,93 @@
+const kernel = @import("kernel");
+
+const scheduler = @import("scheduler.zig");
+const Fifo = @import("Fifo.zig");
+
+fifo : Fifo,
+
+pub fn getScheduler() scheduler.Scheduler {
+    const new = kernel.pmalloc(@This());
+    new.fifo.spinlock.init();
+    new.spinlock.init();
+    for (&new.fifo.priority) |*prio| {
+        prio.init();
+    }
+
+    return .{
+        .policy = scheduler.Policy.RR,
+        .data = new,
+        .enqueue = enqueue,
+        .dequeue = dequeue,
+        .onSleep = onSleep,
+        .onWake = onWake,
+        .onYield = onYield,
+        .onPreempt = onPreempt,
+        .pickNext = pickNext,
+        .getTimeslice = getTimeslice,
+        .setPriority = setPriority,
+    };
+}
+
+fn getRR(data : *anyopaque) *@This() {
+    return kernel.bin.castPtr(*@This(), data);
+}
+
+fn enqueue(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) void {
+    const this = getRR(sched.data);
+
+    this.fifo.enqueue(thread);
+}
+
+fn dequeue(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) void {
+    const this = getRR(sched.data);
+
+    this.fifo.dequeue(thread);
+}
+
+fn onSleep(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) void {
+    const this = getRR(sched.data);
+
+    this.fifo.onSleep(thread);
+}
+
+fn onWake(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) void {
+    const this = getRR(sched.data);
+
+    this.fifo.onWake(thread);
+}
+
+fn onYield(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) void {
+    const this = getRR(sched.data);
+
+    this.fifo.onYield(thread);
+}
+
+fn onPreempt(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) void {
+    const this = getRR(sched.data);
+
+    const priority = thread.sched.priority;
+
+    this.spinlock.lock();
+    defer this.spinlock.unlock();
+
+    this.priority[priority].insertFront(thread.schedLink);
+}
+
+fn pickNext(sched : *scheduler.Scheduler) ?*kernel.ThreadBase {
+    const this = getRR(sched.data);
+
+    this.fifo.pickNext();
+}
+
+fn getTimeslice(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) ?kernel.Time {
+    _ = sched;
+    _ = thread;
+    return kernel.config.ROUND_ROBIN_TIMESLICE;
+}
+
+fn setPriority(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase, newPriority : anytype) void {
+    const this = getRR(sched.data);
+
+    this.fifo.setPriority(thread, newPriority);
+}
+

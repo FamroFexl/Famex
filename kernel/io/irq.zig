@@ -4,12 +4,13 @@ const kernel = @import("kernel");
 const DeferTree = kernel.util.data.DeferTree;
 const process = kernel.pm.process;
 const sched = kernel.pm.sched.scheduler;
+const rcu = kernel.pm.ipc.rcu;
+
 const exception = @import("exception.zig");
 
 const arch = @import("arch");
 const irq = arch.irq;
 const cpu = arch.cpu;
-const rcu = kernel.pm.ipc.rcu;
 
 pub const IrqType = enum {
     DEVICE,         // Device IRQ
@@ -30,7 +31,7 @@ const inIrqTime = kernel.PerCpuStat(u64);
 const nestDepth = kernel.PerCpuStat(u8);
 
 /// Depth of IRQ disable requests
-const irqSaveDepth = kernel.PerCpuStat(u64);
+pub const irqSaveDepth = kernel.PerCpuStat(u64);
 
 pub fn irqSave() void {
     cpu.irqDisable();
@@ -154,7 +155,8 @@ pub const SmpRequest = struct {
 };
 
 fn deviceHandler(irqNum : u64, state : *cpu.CpuState) void {
-
+    _ = irqNum;
+    _ = state;
 }
 
 /// Operations to perform on nested interrupts
@@ -170,7 +172,7 @@ fn nestedHandler(data : *IrqData, state : *cpu.CpuState) void {
 
 /// Operations to perform on a first-level interrupt
 fn threadHandler(data : *IrqData, state : *cpu.CpuState) void {
-    if (!process.inKmode(&sched.cThread().context)) {
+    if (!process.inKmode(sched.cThread().context)) {
         rcu.exitEqs();
         process.addUtime();
     }
@@ -182,10 +184,10 @@ fn threadHandler(data : *IrqData, state : *cpu.CpuState) void {
     const depth = irqSaveDepth.getLocal();
 
     // Interrupts are NEVER enabled in IRQ context implicitly
-    // so irq_save and irq_restore should never enable them.
+    // so irqSave and irqRestore should never enable them.
     depth.* += 1;
 
-    // Operations in the IRQ may use preempt_save and preempt_restore,
+    // Operations in the IRQ may use preemptSave and preemptRestore,
     // and we don't want them triggering any processes if preemption
     // becomes enabled. Preemption is effectively disabled for the
     // duration of an interrupt.

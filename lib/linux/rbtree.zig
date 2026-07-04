@@ -1,3 +1,5 @@
+/// Zig-friendly wrapper around linux RBTree implementation
+
 const rb = @cImport({@cInclude("rbtree.h");});
 
 const rbtree = @This();
