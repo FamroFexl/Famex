@@ -46,7 +46,7 @@ pub fn writeLock(this : *@This()) void {
         }
 
         // Try to set myself to the writer
-        if (this.val.cmpxchgWeak(lock, lock & WRITING_BIT, .acquire, .monotonic)) |_| {
+        if (this.val.cmpxchgWeak(lock, lock & WRITING_BIT, .acquire, .monotonic) == null) {
             break;
         }
     }

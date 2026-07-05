@@ -46,7 +46,14 @@ pub const VecNum = enum(u8) {
 /// vec_num: what needs to be done depending on interrupt vector type
 ///
 pub export fn interruptVectorHandler(state : *reg.CpuState, err : u64, vec_num : u64) void {
-    _ = state;
     _ = err;
-    _ = vec_num;
+
+    const data : kernel.io.irq.IrqData = .{
+        .irqNum = vec_num,
+    };
+
+    kernel.io.irq.handler(&data, state);
+
+    if (vec_num >= @intFromEnum(VecNum.UINT_START))
+        apic.set(.eoi, 0);
 }

@@ -87,7 +87,7 @@ pub fn report(tree : *@This(), cpu_num : anytype) void {
         while (true) {
             const state = pop(tree) orelse break;
 
-            state.callback();
+            state.callback(state);
         }
     }
 }

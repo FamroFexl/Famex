@@ -56,6 +56,7 @@ pub fn build(b: *std.Build) !void {
         .root_module = arch_module,
         .use_lld = true,
         .use_llvm = true,
+        .linkage = .static,
     });
 
 

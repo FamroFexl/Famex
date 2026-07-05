@@ -12,7 +12,7 @@ dummy : Node,
 
 pub fn init(this : *@This()) void {
     this.dummy.next = null;
-    this.head.next = &this.dummy;
+    this.head = &this.dummy;
     this.tail.store(&this.dummy, .unordered);
 }
 
@@ -26,9 +26,8 @@ pub fn push(this : *@This(), node : *Node) void {
 
 pub fn pop(this : *@This()) ?*Node {
     const head = this.head;
-    var next = head.next;
 
-    if (next) |n| {
+    if (head.next) |n| {
         this.head = n;
         return n;
     }
@@ -38,16 +37,12 @@ pub fn pop(this : *@This()) ?*Node {
     }
 
     while (true) {
-        next = head.next;
-
-        if (next == null) {
+        const next = head.next orelse {
             cpu.spinWaitLoop();
             continue;
-        }
+        };
 
-        break;
+        this.head = next;
+        return next;
     }
-
-    this.head = next;
-    return next;
 }

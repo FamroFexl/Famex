@@ -4,4 +4,10 @@ const xarray = @cImport({@cInclude("xarray.h");});
 
 val : xarray.struct_xarray,
 
-pub const NodeSize = @sizeOf(xarray.struct_xa_node);
+pub fn setup() void {
+    xarray.xarray_init();
+}
+
+pub const Node = struct {
+    val : xarray.struct_xa_node,
+};

@@ -10,31 +10,29 @@ const cpu = @import("arch").cpu;
 val : std.atomic.Value(bool),
 
 pub fn init(spinlock : *@This()) void {
-    spinlock.val.store(false, .release);
+    spinlock.val.store(false, .unordered);
 }
 
 pub fn tryLock(spinlock : *@This()) bool {
     kernel.irqSave();
-    const locked = !spinlock.val.rmw(.Xchg, true, .acquire);
-    if (locked) {
+    _ = spinlock.val.cmpxchgStrong(false, true, .acquire, .monotonic) orelse {
         locks.lockAdd(bin.castPtr(*anyopaque, spinlock));
-    }
-    else {
-        kernel.irqRestore();
-    }
+        return true;
+    };
 
-    return locked;
+    kernel.irqRestore();
+    return false;
 }
 
 pub fn lock(spinlock : *@This()) void {
     kernel.irqSave();
 
-    if (!spinlock.val.rmw(.Xchg, true, .acquire)) {
+    _ = spinlock.val.cmpxchgStrong(false, true, .acquire, .monotonic) orelse {
         locks.lockAdd(bin.castPtr(*anyopaque, spinlock));
         return;
-    }
+    };
 
-    while (!spinlock.val.rmw(.Xchg, true, .acquire)) {
+    while (spinlock.val.cmpxchgWeak(false, true, .acquire, .monotonic) != null) {
         cpu.spinWaitLoop();
     }
 
@@ -42,6 +40,8 @@ pub fn lock(spinlock : *@This()) void {
 }
 
 pub fn unlock(spinlock : *@This()) void {
+    std.debug.assert(!kernel.irqEnabled());
+
     spinlock.val.store(false, .release);
 
     locks.lockRemove(bin.castPtr(*anyopaque, spinlock));

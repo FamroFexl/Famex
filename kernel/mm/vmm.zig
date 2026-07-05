@@ -14,7 +14,7 @@ pub const VmArea = struct {
     // file_offset
 
     const AreaType = enum {
-
+        VMALLOC,
     };
 
     const Flags = packed struct {
@@ -25,6 +25,7 @@ pub const VmArea = struct {
         reserved : bool,
     };
 };
+
 pub const VmSpace = struct {
     spinlock : kernel.Spinlock,
     cpuMask : kernel.CpuMask,
@@ -50,7 +51,5 @@ pub fn setup() void {
     kernel.print("  Filling top kernel page table entries\n", .{});
     paging.setupRootPt(vmSpace.rootPt);
 
-    kernel.print("  Setting up Maple Tree\n", .{});
-    MapleTree.setup();
     vmSpace.tree.init(.{.allocRange = true});
 }

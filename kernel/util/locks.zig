@@ -44,7 +44,6 @@ pub fn lockRemove(lock : *anyopaque) void {
 
 pub fn setup() void {
     for (0..cpu.FEATURES.NUM_CPU_CORES) |i| {
-        const data = lock_data.getGlobal(i);
-        data.cur_lock = 0;
+        lock_data.getGlobal(i).cur_lock = 0;
     }
 }

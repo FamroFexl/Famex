@@ -12,7 +12,7 @@ pub fn module(b : *std.Build, options : *const std.Build.Module.CreateOptions) *
             "maple_tree.c",
             "rbtree.c",
             "xarray.c",
-        }
+        },
     });
 
     linuxModule.addIncludePath(b.path(cwd ++ "include/"));

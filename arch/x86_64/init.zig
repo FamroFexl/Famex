@@ -1,5 +1,4 @@
 const kernel = @import("kernel");
-const mm = kernel.mm;
 const log = kernel.util.log;
 const print = log.print;
 const bin = kernel.util.binary;
@@ -17,7 +16,6 @@ const timers = @import("timers.zig");
 const reg = @import("registers.zig");
 const irq = @import("irq.zig");
 const apic = @import("apic.zig");
-const PatTypes = reg.PatTypes;
 
 pub var paging_mode_request = limine.LiminePagingModeRequest {
     .mode = limine.LIMINE_PAGING_MODE_X86_64_4LVL,
@@ -150,7 +148,7 @@ fn setupGdt() void {
     print("arch: Setting up Global Descriptor Table (GDT)\n", .{});
 
     const gdtSize = @sizeOf(reg.Gdtr.Layout) + api.cpu.FEATURES.NUM_CPU_CORES * @sizeOf(reg.TssDesc);
-    const gdt= bin.castPtr(*reg.Gdtr.Layout, mm.memory.pmallocBytes(gdtSize));
+    const gdt= bin.castPtr(*reg.Gdtr.Layout, kernel.pmallocBytes(gdtSize));
     gdt.kmode_code = .{
         .seg_type = .SEG_CODE_ER,
         .priv_level = 0,
@@ -182,7 +180,7 @@ fn setupGdt() void {
     // Create per-core tss
     for (0..api.cpu.FEATURES.NUM_CPU_CORES) |i| {
         const tss_desc : *reg.TssDesc align(8) = &gdt.getTss()[i];
-        const new_tss = mm.memory.pmalloc(reg.Tss);
+        const new_tss = kernel.pmalloc(reg.Tss);
         const tss = @intFromPtr(new_tss);
         tss_desc.* = .{
             .word1 = .{
@@ -199,11 +197,11 @@ fn setupGdt() void {
             var ist_stack : u64 = undefined;
             // IST1 is used for general interrupts
             if (j == 0) {
-                ist_stack = @intFromPtr(mm.memory.pmallocBytes(kernel.config.IRQ_STACK_SIZE)) + kernel.config.IRQ_STACK_SIZE;
+                ist_stack = @intFromPtr(kernel.pmallocBytes(kernel.config.IRQ_STACK_SIZE)) + kernel.config.IRQ_STACK_SIZE;
             }
             // IST2 to IST7 Used for special interrupts (double faults, etc)
             else {
-                ist_stack = @intFromPtr(mm.memory.pmallocBytes(types.SIZE_4KB)) + types.SIZE_4KB;
+                ist_stack = @intFromPtr(kernel.pmallocBytes(types.SIZE_4KB)) + types.SIZE_4KB;
             }
 
             // Interrupt stacks should be 16-byte aligned (SysV ABI)
@@ -219,7 +217,7 @@ fn setupGdt() void {
 fn setupIdt() void {
     print("arch: Setting up Interrupt Descriptor Table (IDT)\n", .{});
 
-    const idt = mm.memory.pmalloc(reg.Idtr.Layout);
+    const idt = kernel.pmalloc(reg.Idtr.Layout);
 
     for (0..256) |i| {
         const func = irq.irqStubTable[i];
@@ -289,7 +287,7 @@ fn smpCpuInit(smp_info : *limine.LimineMpInfoX86) void {
 
     reg.Tss.set(@intCast(@sizeOf(reg.Gdtr.Layout) + cpuId * @sizeOf(reg.TssDesc)));
 
-    api.cpu.setPerCpu(@ptrFromInt(mm.memory.PER_CPU_DATA.val + mm.memory.PER_CPU_DATA_SIZE * cpuId));
+    api.cpu.setPerCpu(@ptrFromInt(kernel.mm.memory.PER_CPU_DATA.val + kernel.mm.memory.PER_CPU_DATA_SIZE * cpuId));
 
     reg.Pat.set(PAT);
 
@@ -339,11 +337,9 @@ pub export fn init() void {
     api.cpu.FEATURES.VIRT_ADDR_BITS = @intCast(cpu.leaf_0x88.virt_addr_bits);
     api.cpu.FEATURES.PAGE_TABLE_LEVELS = 4;
 
-    //api.cpu.FEATURES.CACHELINE_SIZE = @intCast(cpu.leaf_0x1.clflush_size * 8);
-
     api.cpu.FEATURES.NUM_CPU_CORES = smp_request.response.x86.cpu_count;
 
-    mm.memory.setup();
+    kernel.mm.memory.setup();
 
     setupFp();
 

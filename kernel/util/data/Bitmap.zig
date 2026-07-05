@@ -8,18 +8,17 @@ const std = @import("std");
 num_bits : usize,
 addr : [*]u64,
 
-/// Init a bitmap with an amount of bits
-pub fn init(bmap : *@This(), addr : *anyopaque, num_bits : u64) void {
-    bmap.num_bits = num_bits;
-    bmap.addr = bin.castPtr([*]u64, addr);
-}
-
 /// Create a bitmap with an amount of bits
 pub fn create(addr : *anyopaque, num_bits : u64) @This() {
     return .{
         .addr = bin.castPtr([*]u64, addr),
         .num_bits = num_bits,
     };
+}
+
+/// Init a bitmap with an amount of bits
+pub fn init(bmap : *@This(), addr : *anyopaque, num_bits : u64) void {
+    bmap.* = .create(addr, num_bits);
 }
 
 pub fn clear(bmap : *@This(), index : anytype, num : anytype) void {

@@ -6,11 +6,11 @@ const process = kernel.pm.process;
 const sched = kernel.pm.sched.scheduler;
 const rcu = kernel.pm.ipc.rcu;
 
-const exception = @import("exception.zig");
-
 const arch = @import("arch");
 const irq = arch.irq;
 const cpu = arch.cpu;
+
+const exception = @import("exception.zig");
 
 pub const IrqType = enum {
     DEVICE,         // Device IRQ
@@ -51,7 +51,7 @@ pub fn irqRestore() void {
 }
 
 pub fn inIrq() bool {
-    return IrqData.nestDepth.getLocal().* > 0;
+    return nestDepth.getLocal().* > 0;
 }
 
 pub const SmpRequest = struct {
@@ -63,12 +63,12 @@ pub const SmpRequest = struct {
     mask : kernel.CpuMask,  // Mask of all Cpus that received this request
 
     /// Used for non-contentious deferred frees of SmpRequest and SmpLink types
-    pub const tree : *DeferTree = undefined;
+    pub var TREE : *DeferTree = undefined;
 
     /// Queue of per-cpu pending SMP requests
     const queue = kernel.PerCpuStat(kernel.util.data.MpscQueue);
 
-    const CallInfo = struct {
+    pub const CallInfo = struct {
         func : *const fn(*@This()) void,
         args : [6]usize = std.mem.zeroes([6]usize),
     };
@@ -89,7 +89,7 @@ pub const SmpRequest = struct {
 
     /// SMP call for cpus in mask. Async determines if the caller waits until all CPUs have completed.
     /// NOTE: The free function must free the SmpRequest.
-    pub fn create(mask : kernel.CpuMask, async : bool, data : SmpRequest.CallInfo, freeFn : *const fn (*DeferTree.State) void) void {
+    pub fn create(mask : kernel.CpuMask, async : bool, freeFn : ?*const fn (*DeferTree.State) void, data : SmpRequest.CallInfo) void {
         const request = kernel.pmalloc(SmpRequest);
 
         request.data = data;
@@ -112,7 +112,7 @@ pub const SmpRequest = struct {
             link.payload = request;
 
             // Automatically free link nodes when the request is freed
-            tree.push(&link.free, linkFree);
+            TREE.push(&link.free, linkFree);
 
             // Add to remote cpu's queue
             queue.getLocal().push(&link.link);
@@ -124,12 +124,14 @@ pub const SmpRequest = struct {
         if (localCall)
             data.func();
 
+        const freeFunc = freeFn orelse free;
+
         if (async) {
-            tree.push(&request.state, freeFn);
+            TREE.push(&request.state, freeFunc);
         }
         else {
-            tree.wait();
-            freeFn(&request.state);
+            TREE.wait();
+            freeFunc(&request.state);
         }
     }
 
@@ -142,15 +144,15 @@ pub const SmpRequest = struct {
 
             if (node) |n| {
                 const link : *Link = @fieldParentPtr("link", n);
-                link.payload.data.func();
+                link.payload.data.func(&link.payload.data);
             }
             else {
                 break;
             }
         }
 
-        // Report that we have completed a smp handling cycle so SmpRequests and Links can be defer freed
-        tree.report(kernel.getCpuId());
+        // Report that we have completed an smp handling cycle so SmpRequests and Links can be defer freed
+        TREE.report(kernel.getCpuId());
     }
 };
 
@@ -160,19 +162,19 @@ fn deviceHandler(irqNum : u64, state : *cpu.CpuState) void {
 }
 
 /// Operations to perform on nested interrupts
-fn nestedHandler(data : *IrqData, state : *cpu.CpuState) void {
+fn nestedHandler(data : *const IrqData, state : *cpu.CpuState) void {
     switch (irq.getIrqType(data.irqNum)) {
         .LOCAL_TIMER => kernel.pm.time.TimerEvent.handler(),
         .IPI => SmpRequest.handler(),
-        .EXCEPTION => exception.handler(data),
+        .EXCEPTION => exception.handler(data, state),
         .DEVICE => deviceHandler(data.irqNum, state),
         .SPURIOUS => return,
     }
 }
 
 /// Operations to perform on a first-level interrupt
-fn threadHandler(data : *IrqData, state : *cpu.CpuState) void {
-    if (!process.inKmode(sched.cThread().context)) {
+fn threadHandler(data : *const IrqData, state : *cpu.CpuState) void {
+    if (!process.inKmode(&sched.cThread().context)) {
         rcu.exitEqs();
         process.addUtime();
     }
@@ -204,7 +206,7 @@ fn threadHandler(data : *IrqData, state : *cpu.CpuState) void {
 
     // TODO Check for signals with the current thread
 
-    if (!process.inKmode(sched.cThread().context)) {
+    if (!process.inKmode(&sched.cThread().context)) {
         rcu.enterEqs();
     }
 
@@ -217,7 +219,7 @@ fn threadHandler(data : *IrqData, state : *cpu.CpuState) void {
     inIrqTime.getLocal().* += process.startTimeReset();
 }
 
-pub fn handler(data : *IrqData, state : *cpu.CpuState) void {
+pub fn handler(data : *const IrqData, state : *cpu.CpuState) void {
     std.debug.assert(!cpu.irqEnabled());
 
     const depth = nestDepth.getLocal();
@@ -235,7 +237,7 @@ pub fn handler(data : *IrqData, state : *cpu.CpuState) void {
 }
 
 pub fn setup() void {
-    SmpRequest.tree = DeferTree.create(kernel.cpuMaskFull());
+    SmpRequest.TREE = DeferTree.create(kernel.cpuMaskFull());
 
     for (0..cpu.FEATURES.NUM_CPU_CORES) |i| {
         SmpRequest.queue.getGlobal(i).init();

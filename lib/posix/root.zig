@@ -1,0 +1,1 @@
+pub const errno = @cImport({@cInclude("errno.h");});

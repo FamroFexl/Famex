@@ -71,18 +71,18 @@ pub const CachedMmapEntry = struct {
 };
 
 fn sanitizeMmap() u64 {
-    print("  Limine Memory Map:\n", .{});
-    print("  {s:<18} {s:<18} {s:<8} Type\n  ", .{"Start", "End", "Size"});
-    log.printChar('-', 60);
-    print("\n", .{});
+    //print("  Limine Memory Map:\n", .{});
+    //print("  {s:<18} {s:<18} {s:<8} Type\n  ", .{"Start", "End", "Size"});
+    //log.printChar('-', 60);
+    //print("\n", .{});
 
-    for(0..kernel.Limine.mmap_request.response.*.entry_count) |i| {
-        const entry = &kernel.Limine.mmap_request.response.*.entries[i].*;
+    // for(0..kernel.Limine.mmap_request.response.*.entry_count) |i| {
+        // const entry = &kernel.Limine.mmap_request.response.*.entries[i].*;
 
-        print("  0x{X:<18} 0x{X:<18} ", .{entry.base, entry.base + entry.length});
-        log.printSize(entry.length, 10);
-        print(" {s:<8}\n", .{memtypeToString(entry.type)});
-    }
+        // print("  0x{X:<18} 0x{X:<18} ", .{entry.base, entry.base + entry.length});
+        // log.printSize(entry.length, 10);
+        // print(" {s:<8}\n", .{memtypeToString(entry.type)});
+    // }
 
     var num_usable : u64 = 0;
 
@@ -126,7 +126,7 @@ fn sanitizeMmap() u64 {
         }
     }
 
-    print("\n  Sanitized Memory Map:\n", .{});
+    print("  Sanitized Memory Map:\n", .{});
     print("  {s:<18} {s:<18} {s:<8} Type\n  ", .{"Start", "End", "Size"});
     log.printChar('-', 60);
     print("\n", .{});

@@ -152,7 +152,7 @@ pub fn getPeriod(tree : *@This()) u64 {
     return tree.curPeriod.load(.acquire);
 }
 
-fn getNode(tree : *@This(), cpu_num : u8) ?*Node {
+fn getNode(tree : *@This(), cpu_num : anytype) ?*Node {
     if (tree.mask & bin.setBit(cpu_num) == 0) return null;
 
     const node = @popCount(tree.mask & bin.setBits(cpu_num)) / tree.maxContention;
@@ -224,7 +224,7 @@ pub fn disable(tree : *@This(), cpu_num : anytype) bool {
 
 /// Enable a cpu
 pub fn enable(tree : *@This(), cpu_num : anytype) void {
-    const node = getNode(tree, cpu) orelse return;
+    const node = getNode(tree, cpu_num) orelse return;
 
     node.spinlock.lock();
     defer node.spinlock.unlock();

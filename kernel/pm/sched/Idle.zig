@@ -5,7 +5,7 @@ const scheduler = @import("scheduler.zig");
 pub fn getScheduler() scheduler.Scheduler {
     return .{
         .policy = scheduler.Policy.FIFO,
-        .data = @ptrFromInt(0),
+        .data = undefined,
         .enqueue = enqueue,
         .dequeue = dequeue,
         .onSleep = onSleep,
@@ -55,7 +55,7 @@ fn onPreempt(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) void {
 
 fn pickNext(sched : *scheduler.Scheduler) ?*kernel.ThreadBase {
     _ = sched;
-    return scheduler.schedData.getLocal().idle;
+    return &scheduler.schedData.getLocal().idle.base;
 }
 
 fn getTimeslice(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) ?kernel.Time {

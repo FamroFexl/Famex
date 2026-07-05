@@ -121,14 +121,34 @@ pub const MaState = struct {
     }
 
     pub fn init(state : *@This(), tree : *MapleTree, addr : u64) void {
-        state = std.mem.zeroes(maple.struct_ma_state);
-        state = .{.val = .{
-            .tree = tree,
-            .index = addr,
-            .last = addr,
-            .max = std.math.maxInt(c_ulong),
-            .status = maple.ma_start,
-            .node = null,
-        }};
+        state = .create(tree, addr, addr);
+    }
+
+    pub fn lock(state : *@This()) void {
+        maple.mas_lock(&state.val);
+    }
+
+    pub fn unlock(state : *@This()) void {
+        maple.mas_unlock(&state.val);
+    }
+
+    pub fn setRange(state : *@This(), start : anytype, end : anytype) void {
+        maple.mas_set_range(&state.val, start, end);
+    }
+
+    pub fn emptyArea(state : *@This(), start : anytype, end : anytype, size : anytype) void {
+        _ = maple.mas_empty_area(&state.val, start, end, size);
+    }
+
+    pub fn store(state : *@This(), entry : ?*anyopaque) void {
+        _ = maple.mas_store(&state.val, entry);
+    }
+
+    pub fn erase(state : *@This()) void {
+        _ = maple.mas_erase(&state.val);
+    }
+
+    pub fn find(state : *@This(), max : anytype) ?*anyopaque {
+        return maple.mas_find(&state.val, max);
     }
 };

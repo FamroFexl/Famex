@@ -5,6 +5,8 @@ pub const acpica = @import("acpica");
 
 pub const linux = @import("linux");
 
+pub const posix = @import("posix");
+
 pub const cpuid_db = @import("include/cpuid_db.zig");
 
 const std = @import("std");
@@ -65,7 +67,7 @@ export fn maple_pool_create(size : u64, alignment : u16) *anyopaque {
 }
 
 fn clear(node : *anyopaque) void {
-    kernel.memset(node, linux.XArray.NodeSize, 0);
+    kernel.memset(node, @sizeOf(linux.XArray.Node), 0);
 }
 
 export fn xa_pool_create(size : u64, alignment : u16) *anyopaque {

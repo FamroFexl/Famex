@@ -8,7 +8,7 @@ fifo : Fifo,
 pub fn getScheduler() scheduler.Scheduler {
     const new = kernel.pmalloc(@This());
     new.fifo.spinlock.init();
-    new.spinlock.init();
+    new.fifo.spinlock.init();
     for (&new.fifo.priority) |*prio| {
         prio.init();
     }
@@ -33,33 +33,23 @@ fn getRR(data : *anyopaque) *@This() {
 }
 
 fn enqueue(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) void {
-    const this = getRR(sched.data);
-
-    this.fifo.enqueue(thread);
+    Fifo.enqueue(sched, thread);
 }
 
 fn dequeue(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) void {
-    const this = getRR(sched.data);
-
-    this.fifo.dequeue(thread);
+    Fifo.dequeue(sched, thread);
 }
 
 fn onSleep(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) void {
-    const this = getRR(sched.data);
-
-    this.fifo.onSleep(thread);
+    Fifo.onSleep(sched, thread);
 }
 
 fn onWake(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) void {
-    const this = getRR(sched.data);
-
-    this.fifo.onWake(thread);
+    Fifo.onWake(sched, thread);
 }
 
 fn onYield(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) void {
-    const this = getRR(sched.data);
-
-    this.fifo.onYield(thread);
+    Fifo.onYield(sched, thread);
 }
 
 fn onPreempt(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) void {
@@ -67,16 +57,14 @@ fn onPreempt(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) void {
 
     const priority = thread.sched.priority;
 
-    this.spinlock.lock();
-    defer this.spinlock.unlock();
+    this.fifo.spinlock.lock();
+    defer this.fifo.spinlock.unlock();
 
-    this.priority[priority].insertFront(thread.schedLink);
+    this.fifo.priority[priority].insertFront(&thread.schedLink);
 }
 
 fn pickNext(sched : *scheduler.Scheduler) ?*kernel.ThreadBase {
-    const this = getRR(sched.data);
-
-    this.fifo.pickNext();
+    return Fifo.pickNext(sched);
 }
 
 fn getTimeslice(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) ?kernel.Time {
@@ -86,8 +74,6 @@ fn getTimeslice(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) ?kern
 }
 
 fn setPriority(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase, newPriority : anytype) void {
-    const this = getRR(sched.data);
-
-    this.fifo.setPriority(thread, newPriority);
+    Fifo.setPriority(sched, thread, newPriority);
 }
 

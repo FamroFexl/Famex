@@ -2,11 +2,6 @@ const std = @import("std");
 
 pub const Node = @This();
 
-const ListError = error {
-    NodeNotInList,
-    IndexDoesNotExist
-};
-
 prev : *Node,
 next : *Node,
 
@@ -70,7 +65,7 @@ pub fn contains(list : *@This(), node : *Node) bool {
     return false;
 }
 
-pub fn indexOf(list : *@This(), node : *Node) !usize {
+pub fn indexOf(list : *@This(), node : *Node) ?usize {
     var next = list.next;
     var i = 0;
     while (next != list.prev) : (next = next.next) {
@@ -79,10 +74,10 @@ pub fn indexOf(list : *@This(), node : *Node) !usize {
         i += 1;
     }
 
-    return ListError.NodeNotInList;
+    return null;
 }
 
-pub fn at(list : *@This(), index : usize) !*Node {
+pub fn at(list : *@This(), index : usize) ?*Node {
     var next = list.next;
     var i = 0;
     while (next != list.prev) : (next = next.next) {
@@ -90,7 +85,7 @@ pub fn at(list : *@This(), index : usize) !*Node {
         i += 1;
     }
 
-    return ListError.IndexDoesNotExist;
+    return null;
 }
 
 pub fn size(list : *@This()) usize {

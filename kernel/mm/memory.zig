@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const lib = @import("lib");
+
 const kernel = @import("kernel");
 const print = kernel.util.log.print;
 const bin = kernel.util.binary;
@@ -119,6 +121,94 @@ pub fn pfree(comptime T: type, addr : *T) void {
     pfreeBytes(addr);
 }
 
+pub fn vmallocBytes(size : usize) *anyopaque {
+    const aligned = bin.alignUp(size, types.SIZE_4KB);
+
+    const area = pmalloc(vmm.VmArea);
+    area.areaType = .VMALLOC;
+    area.flags = .{
+        .read = true,
+        .write = true,
+        .exec = true,
+    };
+
+    const vmSpace = &kernel.kernelProcess.addr_space;
+
+    var mas = lib.linux.MapleTree.MaState.create(&vmSpace.tree, 0, 0);
+    mas.lock();
+
+    mas.emptyArea(vmSpace.start, vmSpace.end, aligned);
+
+    area.start = mas.val.index;
+    area.end = area.start + aligned;
+
+    mas.setRange(area.start, area.end - 1);
+    mas.store(area);
+
+    mas.unlock();
+
+    // Page mapping
+    var pfeState = paging.PfeState.create(.MAP, vmSpace, area.start, area.end, .LEVEL_4KB);
+
+    vmSpace.spinlock.lock();
+    defer vmSpace.spinlock.unlock();
+
+    while (true) {
+        const pfe = pfeState.mapNext() orelse break;
+        pfe.* = paging.PFE_DEFAULTS[0];
+        pfe.setGlobal(0, true);
+        pfe.setEntry(0, buddy.allocPage4k());
+    }
+
+    return @ptrFromInt(area.start);
+}
+
+pub fn vmalloc(comptime T : type) *T {
+    std.debug.assert(@alignOf(T) <= types.SIZE_4KB);
+
+    return @ptrCast(@alignCast(vmallocBytes(@sizeOf(T))));
+}
+
+pub fn vfreeBytes(addr : *anyopaque) void {
+    const vmSpace = &kernel.kernelProcess.addr_space;
+    var mas = lib.linux.MapleTree.MaState.create(&vmSpace.tree, @intFromPtr(addr), @intFromPtr(addr));
+
+    mas.lock();
+
+    const area = bin.castPtr(*vmm.VmArea, mas.find(@intFromPtr(addr)) orelse {
+        @panic("Double free of vfree detected!");
+    });
+
+    mas.setRange(area.start, area.end - 1);
+    mas.erase();
+    mas.unlock();
+
+    const pfeState = paging.PfeState.create(.UNMAP, vmSpace, area.start, area.end, .LEVEL_4KB);
+
+    {
+        vmSpace.spinlock.lock();
+        defer vmSpace.spinlock.unlock();
+
+        while (true) {
+            const pfe = pfeState.unmapNext(false) orelse break;
+            const entry = pfe.getEntry(0);
+            buddy.freePage4k(entry);
+        }
+    }
+
+    // Flush TLB
+    kernel.SmpRequest.create(kernel.cpuMaskFull(), true, null, .{
+        .func = paging.flushPages,
+        .args = .{area.start, area.end},
+    });
+
+    pfree(vmm.VmArea, area);
+}
+
+pub fn vfree(comptime T : type, addr : *T) void {
+    pfreeBytes(addr);
+}
+
 pub fn setup() void {
     print("\nmm: Setting up Memory Management\n", .{});
 
@@ -152,8 +242,15 @@ pub fn setup() void {
 
     pmm.setup();
 
+    lib.linux.MapleTree.setup();
+
+    lib.linux.XArray.setup();
+
     vmm.setup();
 
-    print("mm: Setting up Read-Copy-Update\n", .{});
+    kernel.io.irq.setup();
+
+    kernel.pm.time.setup();
+
     kernel.pm.ipc.rcu.setup();
 }

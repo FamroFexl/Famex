@@ -36,8 +36,12 @@ pub fn syncFree(state : *RcuAsync, callback : fn (*RcuAsync) void) void {
     callback(state);
 }
 
-fn pmallocFree(comptime T : type, ptr : *anyopaque) void {
-    kernel.pfree(T, ptr);
+fn pmallocFree(comptime T : type, addr : *anyopaque) void {
+    kernel.pfree(T, addr);
+}
+
+fn vmallocFree(comptime T : type, addr : *anyopaque) void {
+    kernel.vfree(T, addr);
 }
 
 fn slubAllocFree(ptr : *anyopaque) void {
@@ -50,7 +54,7 @@ fn buddyAllocFree(ptr : *anyopaque) void {
 
 const AllocType = enum {
     PMALLOC,
-    //VMALLOC,
+    VMALLOC,
     SLUB_ALLOC,
     BUDDY_ALLOC,
 };
@@ -77,6 +81,7 @@ fn RcuFree(comptime T : type, comptime alloc : AllocType) type {
         fn free(ptr : *anyopaque) void {
             switch (alloc) {
                 .PMALLOC => pmallocFree(T, ptr),
+                .VMALLOC => vmallocFree(T, ptr),
                 .BUDDY_ALLOC => buddyAllocFree(ptr),
                 .SLUB_ALLOC => slubAllocFree(ptr),
             }
@@ -153,5 +158,7 @@ pub fn exitEqs() void {
 }
 
 pub fn setup() void {
+    kernel.print("mm: Setting up Read-Copy-Update\n", .{});
+
     TREE = DeferTree.create(proc.cpuMaskFull());
 }

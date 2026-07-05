@@ -63,14 +63,14 @@ pub fn RBTree(comptime T : type, comptime nodeField : []const u8, comptime cmpFi
         }
 
         pub fn empty(this : *@This()) bool {
-            const tree : rb.struct_rb_root = if (cached) &this.root.rb_root else &this.root;
+            const tree : *rb.struct_rb_root = if (cached) &this.root.rb_root else &this.root;
             return tree.rb_node == null;
         }
 
         pub fn first(this : *@This()) ?*Node {
             const node : ?*rb.struct_rb_node = if (cached) rb.rb_first_cached(&this.root) else rb.rb_first(&this.root);
             if (node) |n| {
-                return @ptrCast(n);
+                return @fieldParentPtr("node", n);
             }
             return null;
         }
@@ -78,7 +78,7 @@ pub fn RBTree(comptime T : type, comptime nodeField : []const u8, comptime cmpFi
         pub fn last(this : *@This()) ?*Node {
             const node : ?*rb.struct_rb_node = if (cached) rb.rb_last(&this.root.rb_root) else rb.rb_last(&this.root);
             if (node) |n| {
-                return .{.node = n};
+                return @fieldParentPtr("node", n);
             }
             return null;
         }
@@ -106,10 +106,10 @@ pub fn RBTree(comptime T : type, comptime nodeField : []const u8, comptime cmpFi
         }
 
         pub fn findAdd(this : *@This(), node : *Node) ?*Node {
-            const out = rb.rb_find_add(&node.node, if (cached) &this.root.rb_root else &this.root, compare);
+            const out : ?*rb.struct_rb_node = rb.rb_find_add(&node.node, if (cached) &this.root.rb_root else &this.root, compare);
 
             if (out) |o| {
-                return .{.node = @ptrCast(o)};
+                return @fieldParentPtr("node", o);
             }
 
             return null;
@@ -117,10 +117,10 @@ pub fn RBTree(comptime T : type, comptime nodeField : []const u8, comptime cmpFi
 
         pub fn find(this : *@This(), key : anytype) ?*Node {
             const stat : u64 = key;
-            const out = rb.rb_find(@ptrCast(@alignCast(&stat)), if (cached) &this.root.rb_root else &this.root, compare);
+            const out : ?*rb.struct_rb_node = rb.rb_find(@ptrCast(@alignCast(&stat)), if (cached) &this.root.rb_root else &this.root, compare);
 
             if (out) |o| {
-                return .{.node = @ptrCast(o)};
+                return @fieldParentPtr("node", o);
             }
 
             return null;
@@ -128,10 +128,10 @@ pub fn RBTree(comptime T : type, comptime nodeField : []const u8, comptime cmpFi
 
         pub fn findFirst(this : *@This(), key : anytype) ?*Node {
             const stat : u64 = key;
-            const out = rb.rb_find_first(@ptrCast(@alignCast(&stat)), if (cached) &this.root.rb_root else &this.root, compare);
+            const out : ?*rb.struct_rb_node = rb.rb_find_first(@ptrCast(@alignCast(&stat)), if (cached) &this.root.rb_root else &this.root, compare);
 
             if (out) |o| {
-                return .{.node = @ptrCast(o)};
+                return @fieldParentPtr("node", o);
             }
 
             return null;
@@ -139,10 +139,10 @@ pub fn RBTree(comptime T : type, comptime nodeField : []const u8, comptime cmpFi
 
         pub fn findAfter(this : *@This(), key : anytype) ?*Node {
             const stat : u64 = key;
-            const out = rb.rb_find_after(@ptrCast(@alignCast(&stat)), if (cached) &this.root.rb_root else &this.root, compare);
+            const out : ?*rb.struct_rb_node = rb.rb_find_after(@ptrCast(@alignCast(&stat)), if (cached) &this.root.rb_root else &this.root, compare);
 
             if (out) |o| {
-                return @ptrCast(o);
+                return @fieldParentPtr("node", o);
             }
 
             return null;
@@ -151,10 +151,10 @@ pub fn RBTree(comptime T : type, comptime nodeField : []const u8, comptime cmpFi
         pub fn nextMatch(this : *@This(), node : *Node, key : anytype) ?*Node {
             _ = this;
             const stat : u64 = key;
-            const out = rb.rb_next_match(@ptrCast(@alignCast(&stat)), &node.node, compare);
+            const out : ?*rb.struct_rb_node = rb.rb_next_match(@ptrCast(@alignCast(&stat)), &node.node, compare);
 
             if (out) |o| {
-                return .{.node = @ptrCast(o)};
+                return @fieldParentPtr("node", o);
             }
 
             return null;

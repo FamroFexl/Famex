@@ -195,38 +195,13 @@ const timerLock = kernel.PerCpuStat(kernel.Spinlock);
 const monoTimers = kernel.PerCpuStat(TimerTree);
 const unixTimers = kernel.PerCpuStat(TimerTree);
 
-/// Set the local timer
-fn timerSet() void {
-    var time : u64 = std.math.maxInt(u64);
-
-    const spinlock = timerLock.getLocal();
-    spinlock.lock();
-    defer spinlock.unlock();
-
-    var node : ?*TimerTree.Node = unixTimers.getLocal().first();
-    if (node) |n| {
-        kernel.bin.setIfSmaller(u64, &time, @intCast(@as(i128, n.holder().expiration) - @as(i128, unixOffset.load(.acquire))));
-    }
-
-    node = monoTimers.getLocal().first();
-    if (node) |n| {
-        kernel.bin.setIfSmaller(u64, &time, n.holder().expiration);
-    }
-
-    // No events are waiting. There is no need to set the local timer
-    if (node == null)
-        return;
-
-    setLocalTimer(.Nsec(time - getMonoClock().nsec));
-}
-
 pub const TimerEvent = struct {
     expiration : u64,                          // Time the event expires
     callback : *const fn (*@This()) void,       // Function to call on expiration
-    cpuId : u8,                                 // Which cpu it was added to
+    cpuId : u8 = undefined,                     // Which cpu it was added to
     tag : Type,                                 // Timer is unix/realtime or monotonic
     slack : u64,                               // How much can the timer be delayed by for purposes of reshuffling
-    link : TimerTree.Node = undefined,
+    link : TimerTree.Node = .{},
 
     const Type = enum {
         MONOTONIC,
@@ -237,23 +212,29 @@ pub const TimerEvent = struct {
         this.tag = tag;
         this.slack = slack.nsec;
         this.callback = callback;
-        this.cpuId = kernel.getCpuId();
-        this.link.clear();
+    }
+
+    pub fn create(tag : Type, slack : Time, callback : *const fn (*@This()) void) @This() {
+        return .{
+            .tag = tag,
+            .slack = slack,
+            .callback = callback,
+        };
     }
 
     /// Set or reset an initialized timer with relative or absolute time
     pub fn reset(this : *@This(), expiration : Time, absolute : bool) void {
+        this.cpuId = kernel.getCpuId();
 
-        const newExpiration =
-            if (absolute) expiration.nsec
-            else
-            switch (this.tag) {
-                .MONOTONIC => expiration.nsec + getMonoClock().nsec,
-                .UNIX => expiration.nsec + getUnixClock().nsec,
-            };
+        const curTime = switch (this.tag) {
+            .MONOTONIC => getMonoClock().nsec,
+            .UNIX => getUnixClock().nsec,
+        };
+
+        const newExpiration = expiration.nsec + if (absolute) 0 else curTime;
 
         // Already expired
-        if (this.tag == .UNIX and newExpiration <= getUnixClock().nsec) {
+        if (absolute and newExpiration <= curTime) {
             this.callback(this);
             return;
         }
@@ -264,9 +245,7 @@ pub const TimerEvent = struct {
         };
 
         const spinlock = timerLock.getLocal();
-
         spinlock.lock();
-        defer spinlock.unlock();
 
         // Delete the node if it exists
         if (!this.link.empty())
@@ -285,8 +264,29 @@ pub const TimerEvent = struct {
 
         tree.add(&this.link);
 
-        if (tree.first() == &this.link)
-            timerSet();
+        if (tree.first() != &this.link) {
+            spinlock.unlock();
+            return;
+        }
+
+        var time : u64 = std.math.maxInt(u64);
+        var node : ?*TimerTree.Node = unixTimers.getLocal().first();
+        if (node) |n| {
+            time = @intCast(@as(i128, n.holder().expiration) - @as(i128, unixOffset.load(.acquire)));
+        }
+
+        node = monoTimers.getLocal().first();
+        if (node) |n| {
+            kernel.bin.setIfSmaller(u64, &time, n.holder().expiration);
+        }
+
+        spinlock.unlock();
+
+        // No events are waiting. There is no need to set the local timer
+        if (node == null)
+            return;
+
+        setLocalTimer(.Nsec(time - getMonoClock().nsec));
     }
 
     pub fn remove(this : *@This()) void {
@@ -328,7 +328,7 @@ pub const TimerEvent = struct {
             const node = mTimers.first() orelse break;
             const event : *TimerEvent = @fieldParentPtr("link", node);
 
-            if (event.expiration > time) {
+            if (event.expiration > time.nsec) {
                 nextTime = event.expiration;
                 break;
             }
@@ -344,9 +344,9 @@ pub const TimerEvent = struct {
             const node = uTimers.first() orelse break;
             const event : *TimerEvent = @fieldParentPtr("link", node);
 
-            const expiration = event.expiration - offset;
+            const expiration : u64 = @intCast(@as(i128, event.expiration) - @as(i128, offset));
 
-            if (expiration > time) {
+            if (expiration > time.nsec) {
                 if (nextTime > expiration)
                     nextTime = expiration;
                 break;
@@ -362,17 +362,17 @@ pub const TimerEvent = struct {
 
         // Execute all callbacks outside the spinlock
         while (true) {
-            const node = temp.pop() orelse break;
+            const node : *TimerTree.Node = @ptrCast(temp.pop() orelse break);
             const event : *TimerEvent = @fieldParentPtr("link", node);
 
-            event.callback();
+            event.callback(event);
 
             const rbNode : *TimerTree.Node = @ptrCast(node);
             rbNode.clear();
         }
 
         if (nextTime != std.math.maxInt(u64))
-            setLocalTimer(nextTime - time);
+            setLocalTimer(.Nsec(nextTime - time.nsec));
     }
 };
 

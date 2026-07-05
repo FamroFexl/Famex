@@ -6,7 +6,7 @@ const Fifo = @import("Fifo.zig");
 pub fn getScheduler() scheduler.Scheduler {
     return .{
         .policy = scheduler.Policy.OTHER,
-        .data = @ptrFromInt(0),
+        .data = undefined,
         .enqueue = enqueue,
         .dequeue = dequeue,
         .onSleep = onSleep,

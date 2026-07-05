@@ -24,24 +24,24 @@ export fn AcpiOsGetRootPointer() acpica.ACPI_PHYSICAL_ADDRESS {
 export fn AcpiOsPredefinedOverride(initVal : ?*const acpica.ACPI_PREDEFINED_NAMES, newVal : ?*acpica.ACPI_STRING) acpica.ACPI_STATUS {
     _ = initVal;
 
-    if (newVal == null) return acpica.AE_BAD_PARAMETER;
+    //if (newVal == null) return acpica.AE_BAD_PARAMETER;
     newVal.?.* = null;
     return acpica.AE_OK;
 }
-
-export fn AcpiOsTableOverride(existingTable : *acpica.ACPI_TABLE_HEADER, newTable : ?**acpica.ACPI_TABLE_HEADER) acpica.ACPI_STATUS {
+export fn AcpiOsTableOverride(existingTable : *acpica.ACPI_TABLE_HEADER, newTable : ?*?*acpica.ACPI_TABLE_HEADER) acpica.ACPI_STATUS {
     _ = existingTable;
 
-    if (newTable == null) return acpica.AE_BAD_PARAMETER;
+    //if (newTable == null) return acpica.AE_BAD_PARAMETER;
 
-    newTable.?.* = bin.castPtr(*acpica.ACPI_TABLE_HEADER, @ptrFromInt(32));
+    newTable.?.* = null;
     return acpica.AE_OK;
 }
 
-export fn AcpiOsPhysicalTableOverride(existingTable : ?*acpica.ACPI_TABLE_HEADER, newAddress : ?*acpica.ACPI_PHYSICAL_ADDRESS, newTableLength : ?*u32) acpica.ACPI_STATUS {
-    if (newAddress == null or newTableLength == null) return acpica.AE_BAD_PARAMETER;
 
+export fn AcpiOsPhysicalTableOverride(existingTable : ?*acpica.ACPI_TABLE_HEADER, newAddress : ?*acpica.ACPI_PHYSICAL_ADDRESS, newTableLength : ?*u32) acpica.ACPI_STATUS {
     _ = existingTable;
+    //if (newAddress == null or newTableLength == null) return acpica.AE_BAD_PARAMETER;
+
     newAddress.?.* = 0;
     newTableLength.?.* = 0;
     return acpica.AE_OK;
@@ -189,17 +189,19 @@ export fn AcpiOsGetPhysicalAddress(logicalAddress : ?*anyopaque, physicalAddress
 }
 
 export fn AcpiOsPrintf(format : [*:0]const u8, ...) void {
-    //var ap = @cVaStart();
-    //defer @cVaEnd(&ap);
-
-    //const ao : u64 = @cVaArg(&ap, c_ulonglong);
-
-    //kernel.log.print("0x{X} ", .{ao});
-    const slice = std.mem.span(format);
-    kernel.log.printDirect(slice);
+    _ = format;
+    // var ap = @cVaStart();
+    // defer @cVaEnd(&ap);
+    //
+    // const ao : u64 = @cVaArg(&ap, c_ulonglong);
+    //
+    // kernel.log.print("0x{X} ", .{ao});
+    // const slice = std.mem.span(format);
+    // kernel.log.printDirect(slice);
 }
 
 export fn AcpiOsVprintf(format : [*:0]const u8, args: ?*anyopaque) void {
+    //kernel.log.print("{s}", .{format});
     _ = format;
     _ = args;
 }
@@ -342,15 +344,13 @@ pub fn setupSubsys() void {
 pub fn setupTables() void {
     print("init: Initializing ACPI Tables\n", .{});
     const tables = mem.pmallocBytes(@sizeOf(acpica.ACPI_TABLE_DESC) * 16);
-    print("ptr {}\n", .{tables});
     _ = acpica.AcpiInitializeTables(@ptrCast(@alignCast(tables)), 16, 1);
-    print("after\n", .{});
 
-    print("  ACPI Tables: ", .{});
+    print("  Tables: ", .{});
     for (0..10) |i| {
-        const table : [*c][*c]acpica.ACPI_TABLE_HEADER = null;
-        const status = acpica.AcpiGetTableByIndex(@intCast(i), table);
+        var table : ?*acpica.ACPI_TABLE_HEADER = null;
+        const status = acpica.AcpiGetTableByIndex(@intCast(i), &table);
         if (status == acpica.AE_BAD_PARAMETER) break;
-        print("{s:4}", .{table.?.*.*.Signature});
+        print("{s:4} ", .{table.?.Signature});
     }
 }

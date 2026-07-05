@@ -241,7 +241,6 @@ AcpiTbInitTableDescriptor (
     UINT8                   Flags,
     ACPI_TABLE_HEADER       *Table)
 {
-
     /*
      * Initialize the table descriptor. Set the pointer to NULL for external
      * tables, since the table is not fully mapped at this time.

@@ -40,7 +40,9 @@ pub const Tid = u32;
 pub const ThreadBase = struct {
     owner : *Process,
     state : State,
-    flags : Flags,
+    flags : packed struct {
+        loaded : bool,   // For inline register save/load, used to determine how to proceed
+    },
 
     context : kernel.CpuState,
     tid : Tid,
@@ -65,11 +67,6 @@ pub const ThreadBase = struct {
         UNINTERRUPTIBLE,   // Uninterruptable sleep
         STOPPED,           // Suspended by unblockable signal (SIGSTOP)
         DEAD               // Being cleaned up
-    };
-
-    const Flags = packed struct(u64) {
-        loaded : bool,   // For inline register save/load, used to determine how to proceed
-        __pad : u63,
     };
 
     pub fn preemptSave(this : *@This()) void {
@@ -135,7 +132,9 @@ pub const KThread = struct {
 
 pub const UThread = struct {
     base : ThreadBase,
-
+    flags : packed struct {
+        inSyscall : bool,
+    },
     utime : kernel.Time,
 };
 
@@ -180,7 +179,7 @@ fn getGlobalPercpu(comptime T: type, cpu_num : anytype, addr : u64) *T {
 }
 
 /// Static per-cpu allocation that is resolved at comptime
-/// Use as "const per_cpu = PerCpuStat(u64);" or whatever type you need.
+/// Use as "const per_cpu = PerCpuStat(u64);"
 pub fn PerCpuStat(comptime T: type) type {
     return struct {
         const data : T linksection(".percpu") = undefined;
@@ -309,5 +308,5 @@ pub export fn inKmode(state : *kernel.CpuState) bool {
 }
 
 pub fn setup() void {
-
+    kernel.pm.sched.scheduler.setup();
 }

@@ -7,9 +7,9 @@ const irq = arch.irq;
 
 pub fn getIrqType(irqNum : u64) kernel.io.irq.IrqType {
     return switch (irqNum) {
-        irq.VecNum.IPI => .IPI,
-        irq.VecNum.LOCAL_TIMER => .LOCAL_TIMER,
-        irq.VecNum.SIVR => .SPURIOUS,
+        @intFromEnum(irq.VecNum.IPI) => .IPI,
+        @intFromEnum(irq.VecNum.LOCAL_TIMER) => .LOCAL_TIMER,
+        @intFromEnum(irq.VecNum.SIVR) => .SPURIOUS,
         0...31 => .EXCEPTION,
         else => .DEVICE,
     };
@@ -17,7 +17,7 @@ pub fn getIrqType(irqNum : u64) kernel.io.irq.IrqType {
 
 pub fn notifyCpu(cpuId : anytype) void {
     const icrBase : apic.IcrReg = .{
-        .vector = irq.VecNum.IPI,
+        .vector = @intFromEnum(irq.VecNum.IPI),
         .triggerMode = .EDGE,
         .destMode = .PHYSICAL,
         .deliveryMode = .FIXED,

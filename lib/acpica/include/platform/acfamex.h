@@ -13,6 +13,9 @@
 
 #define ACPI_MISALIGNMENT_NOT_SUPPORTED
 
+// Zig doesn't like the null pointer defined offset
+#define ACPI_OFFSET(d, f) ((ACPI_SIZE)__builtin_offsetof(d, f))
+
 /**
 #define ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsInitialize
 #define ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsTerminate
