@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const kernel = @import("kernel");
+const cast = kernel.cast;
 const config = kernel.config;
 const bin = kernel.util.binary;
 const types = kernel.util.types;
@@ -300,7 +301,7 @@ fn mapKernelImage(kernel_root_pt : *paging.Ptable) void {
     log.apanic(kernel.Limine.executable_address_request.response.*.virtual_base != memory.KERNEL_IMAGE.val,
         "mm: Limine kernel base doesn't match the expected base!\n", .{});
 
-    const elf_hdr = bin.castPtr(*elf.ElfHdr, kernel.Limine.executable_file_request.response.*.executable_file.address);
+    const elf_hdr = cast.toPtr(*elf.ElfHdr, kernel.Limine.executable_file_request.response.*.executable_file.address);
     log.apanic(!elf_hdr.isElf(), "mm: Kernel ELF file wasn't found! Cannot remap kernel image!\n", .{});
     for(0..elf_hdr.ph_num) |i| {
         const phdr = elf_hdr.getPhdrByIndex(i).?;
@@ -350,7 +351,7 @@ fn mapModules(kernel_root_pt : *paging.Ptable) void {
 fn mapPercpu(kernel_root_pt : *paging.Ptable) void {
     print("  Mapping per-cpu static region\n", .{});
 
-    const elf_hdr = bin.castPtr(*elf.ElfHdr, kernel.Limine.executable_file_request.response.*.executable_file.address);
+    const elf_hdr = cast.toPtr(*elf.ElfHdr, kernel.Limine.executable_file_request.response.*.executable_file.address);
     const shdr = elf_hdr.getShdrByName(".percpu").?;
     const size = bin.alignUp(shdr.size, types.SIZE_4KB);
 

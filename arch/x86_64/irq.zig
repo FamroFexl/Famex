@@ -48,6 +48,8 @@ pub const VecNum = enum(u8) {
 pub export fn interruptVectorHandler(state : *reg.CpuState, err : u64, vec_num : u64) void {
     _ = err;
 
+    kernel.print("VecNum {}\n", .{vec_num});
+
     const data : kernel.io.irq.IrqData = .{
         .irqNum = vec_num,
     };

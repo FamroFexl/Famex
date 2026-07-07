@@ -11,6 +11,7 @@ pub const cpuid_db = @import("include/cpuid_db.zig");
 
 const std = @import("std");
 const kernel = @import("kernel");
+const cast = kernel.cast;
 
 export fn __rcu_set(ptr : *?*anyopaque, val : ?*anyopaque) ?*anyopaque {
     return @atomicRmw(?*anyopaque, ptr, .Xchg, val, .release);
@@ -21,7 +22,7 @@ export fn __rcu_get(ptr : *?*anyopaque) ?*anyopaque {
 }
 
 export fn slub_alloc(pool : *anyopaque) *anyopaque {
-    const slubPool = kernel.bin.castPtr(*kernel.SlubPool, pool);
+    const slubPool = cast.toPtr(*kernel.SlubPool, pool);
     return slubPool.alloc();
 }
 
@@ -30,12 +31,12 @@ export fn slub_free(addr : *anyopaque) void {
 }
 
 export fn spin_lock(lock : *anyopaque) void {
-    const spinlock = kernel.bin.castPtr(*kernel.Spinlock, lock);
+    const spinlock = cast.toPtr(*kernel.Spinlock, lock);
     spinlock.lock();
 }
 
 export fn spin_unlock(lock : *anyopaque) void {
-    const spinlock = kernel.bin.castPtr(*kernel.Spinlock, lock);
+    const spinlock = cast.toPtr(*kernel.Spinlock, lock);
     spinlock.unlock();
 }
 
@@ -50,7 +51,7 @@ fn slubFree(free : *kernel.RcuAsync) void {
 }
 
 export fn slub_rcu_async_free(free : *anyopaque) void {
-    const rcuFree = kernel.bin.castPtr(*kernel.RcuAsync, free);
+    const rcuFree = cast.toPtr(*kernel.RcuAsync, free);
     kernel.pm.ipc.rcu.asyncFree(rcuFree, slubFree);
 }
 

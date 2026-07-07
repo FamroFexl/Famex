@@ -1,4 +1,5 @@
 const kernel = @import("kernel");
+const cast = kernel.cast;
 const bin = kernel.util.binary;
 const log = kernel.util.log;
 const mem = kernel.mm.memory;
@@ -11,7 +12,7 @@ addr : [*]u64,
 /// Create a bitmap with an amount of bits
 pub fn create(addr : *anyopaque, num_bits : u64) @This() {
     return .{
-        .addr = bin.castPtr([*]u64, addr),
+        .addr = cast.toPtr([*]u64, addr),
         .num_bits = num_bits,
     };
 }

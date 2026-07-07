@@ -95,6 +95,52 @@ pub const leaf_0x1_0 = packed struct(u128) {
     pbe: u1, // Pending Break Enable
 };
 
+pub const leaf_0x6_0 = packed struct(u128) {
+    digital_temp: u1, // Digital temperature sensor
+    turbo_boost: u1, // Intel Turbo Boost
+    lapic_timer_always_on: u1, // Always-Running APIC Timer (not affected by p-state)
+    reserved_0: u1, // Reserved
+    power_limit_event: u1, // Power Limit Notification (PLN) event
+    ecmd: u1, // Clock modulation duty cycle extension
+    package_thermal: u1, // Package thermal management
+    hwp_base_regs: u1, // HWP (Hardware P-states) base registers are supported
+    hwp_notify: u1, // HWP notification (IA32_HWP_INTERRUPT MSR)
+    hwp_activity_window: u1, // HWP activity window (IA32_HWP_REQUEST[bits 41:32]) supported
+    hwp_energy_perf_pr: u1, // HWP Energy Performance Preference
+    hwp_package_req: u1, // HWP Package Level Request
+    reserved_1: u1, // Reserved
+    hdc_base_regs: u1, // HDC base registers are supported
+    turbo_boost_3_0: u1, // Intel Turbo Boost Max 3.0
+    hwp_capabilities: u1, // HWP Highest Performance change
+    hwp_peci_override: u1, // HWP PECI override
+    hwp_flexible: u1, // Flexible HWP
+    hwp_fast: u1, // IA32_HWP_REQUEST MSR fast access mode
+    hw_feedback: u1, // HW_FEEDBACK MSRs supported
+    hwp_ignore_idle: u1, // Ignoring idle logical CPU HWP req is supported
+    reserved_2: u2, // Reserved
+    thread_director: u1, // Intel thread director support
+    therm_interrupt_bit25: u1, // IA32_THERM_INTERRUPT MSR bit 25 is supported
+    reserved_3: u7, // Reserved
+
+    n_therm_thresholds: u4, // Digital thermometer thresholds
+    reserved_4: u28, // Reserved
+
+    aperf_mperf: u1, // MPERF/APERF MSRs (effective frequency interface)
+    reserved_5: u2, // Reserved
+    energy_perf_bias: u1, // IA32_ENERGY_PERF_BIAS MSR support
+    reserved_6: u4, // Reserved
+    thrd_director_nclasses: u8, // Number of classes, Intel thread director
+    reserved_7: u16, // Reserved
+
+    perfcap_reporting: u1, // Performance capability reporting
+    encap_reporting: u1, // Energy efficiency capability reporting
+    reserved_8: u6, // Reserved
+    feedback_sz: u4, // Feedback interface structure size, in 4K pages
+    reserved_9: u4, // Reserved
+    this_lcpu_hwfdbk_idx: u16, // This logical CPU hardware feedback interface index
+
+};
+
 pub const leaf_0xd_0 = packed struct(u128) {
     xcr0_x87: u1, // XCR0.X87 (bit 0) supported
     xcr0_sse: u1, // XCR0.SEE (bit 1) supported
@@ -121,6 +167,16 @@ pub const leaf_0xd_0 = packed struct(u128) {
     u32: u30, // Reserved
     xcr0_lwp: u1, // AMD XCR0.LWP (bit 62) supported (Light-weight Profiling)
     reserved_4: u1, // Reserved
+};
+
+pub const leaf_0x15_0 = packed struct(u128) {
+    tsc_denominator			: u32, // Denominator of the TSC/'core crystal clock' ratio
+
+    tsc_numerator			: u32, // Numerator of the TSC/'core crystal clock' ratio
+
+    cpu_crystal_hz			: u32, // Core crystal clock nominal frequency, in Hz
+
+    reserved_0              : u32,
 };
 
 /// Leaf 0x80000001

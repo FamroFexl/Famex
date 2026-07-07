@@ -1,4 +1,5 @@
 const kernel = @import("kernel");
+const cast = kernel.cast;
 
 const scheduler = @import("scheduler.zig");
 
@@ -28,7 +29,7 @@ pub fn getScheduler() scheduler.Scheduler {
 }
 
 pub fn getFifo(data : *anyopaque) *@This() {
-    return kernel.bin.castPtr(*@This(), data);
+    return cast.toPtr(*@This(), data);
 }
 
 pub fn enqueue(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) void {

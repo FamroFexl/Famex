@@ -1,0 +1,2 @@
+ACPI_OFFSET is redefined to #define ACPI_OFFSET(d, f) ((ACPI_SIZE)__builtin_offsetof(d, f)) since zig doesn't like offset from &0 field calculations
+struct acpi_generic_address has ACPI_PACKED so it is correctly parsed

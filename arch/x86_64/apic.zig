@@ -1,15 +1,29 @@
 const std = @import("std");
 
 const kernel = @import("kernel");
+const cast = kernel.cast;
 const log = kernel.util.log;
 const mem = kernel.mm.memory;
 
 const regs = @import("registers.zig");
 const irq = @import("irq.zig");
 const timers = @import("timers.zig");
+const cpu = @import("cpu.zig");
+
+const acpica = @import("lib").acpica;
 
 var apicRegMap : mem.Vaddr = undefined;
 var X2_APIC : bool = false;
+
+var ioApics : kernel.List = undefined;
+
+// Used in case there are multiple I/O APICs available for use
+pub const IoApicEntry = struct {
+    id : u8,    // I/O APIC ID
+    irqBase: u32,   // Global IRQ base
+    addr : kernel.Paddr,    // I/O APIC physical address
+    link : kernel.List.Node,
+};
 
 pub const LapicVerReg = packed struct(u32) {
     version : u8,           // Version numbers of Local APIC (0x0) 82489DX discreet APIC (0x10-0x15) Integrated APIC
@@ -163,6 +177,8 @@ pub const SvrReg = packed struct(u64) {
     __pad2      : u51 = 0,
 };
 
+const apicRegMapSize = 0x1000;
+
 const ApicReg = enum {
     lid,        // Local APIC ID Register
     lvr,        // Local APIC Version Register
@@ -257,7 +273,7 @@ fn getApicMsr(msr : u32, out : [*]u32, num : usize) void {
     const offset = getApicMsrOffset(msr);
 
     for (0..num) |i| {
-        out[i] = regs.getMsr(offset + i);
+        out[i] = @intCast(regs.getMsr(offset + @as(u32, @intCast(i))));
     }
 }
 
@@ -271,9 +287,9 @@ fn setApicMsr(msr : u32, out : [*]const u32, num: usize) void {
 
 fn apicGetReg(comptime T : type, offset : anytype) T {
     const num = @sizeOf(T)/4;
-    const out : [num]u32 = undefined;
+    var out : [num]u32 = undefined;
     if (X2_APIC) {
-        getApicMsr(offset, &out, num);
+        getApicMsr(offset, out[0..].ptr, num);
     }
     else {
         assign16To4(@ptrFromInt(getApicOffset(offset)), &out, num);
@@ -286,7 +302,7 @@ fn apicSetReg(comptime T : type, offset : anytype, val : T) void {
     const num = @sizeOf(T)/4;
     const in : [num]u32 = @bitCast(val);
     if (X2_APIC) {
-        setApicMsr(offset, &in, num);
+        setApicMsr(offset, in[0..].ptr, num);
     }
     else {
         // Because ICR is the only 64-bit register, and because setting the lower 32 bits triggers
@@ -335,7 +351,7 @@ fn setupTimer() void {
     lvtTimer.vector = @intFromEnum(irq.VecNum.LOCAL_TIMER);
     lvtTimer.mask = 0;
     lvtTimer.deliveryMode = .FIXED;
-    lvtTimer.timerMode = if (timers.TSC_DEADLINE and timers.TSC_INVARIANT) .DEADLINE else .ONE_SHOT;
+    lvtTimer.timerMode = if (cpu.leaf_0x87.constant_tsc == 1 and cpu.leaf_0x1.tsc_deadline_timer == 1) .DEADLINE else .ONE_SHOT;
     set(.lvtTimer, lvtTimer);
 }
 
@@ -368,4 +384,103 @@ pub fn setupCore() void {
 
 pub fn setup() void {
     log.print("\narch: Setting up Advanced Programmable Interrupt Controller (APIC)\n", .{});
+
+    // Disable legacy PIC
+
+    var madt : *acpica.ACPI_TABLE_MADT = undefined;
+
+    if (acpica.ACPI_FAILURE(acpica.AcpiGetTable(@constCast(@ptrCast(acpica.ACPI_SIG_MADT)), 0, @ptrCast(&madt))) > 0) {
+        @panic("Failed to get ACPI MADT Table!");
+    }
+
+    // Use Default APIC address
+    X2_APIC = regs.ApicBase.get().x2apic;
+
+    log.print("  Local APIC is {s}\n", .{if (X2_APIC) "x2APIC" else "xAPIC"});
+
+    // Default is 0xFEE00000
+    var apicPhys : kernel.Paddr = .asPhys(madt.Address);
+
+    var x2ApicAvailable = false;
+
+    ioApics.init();
+
+    var entry : *u8 = @ptrFromInt(cast.toInt(madt) + @sizeOf(acpica.ACPI_TABLE_MADT));
+    const end : *u8 = @ptrFromInt(cast.toInt(madt) + madt.Header.Length);
+    while (cast.toInt(entry) < cast.toInt(end)) {
+        const hdr = cast.toPtr(*acpica.ACPI_SUBTABLE_HEADER, entry);
+        switch (hdr.Type) {
+            acpica.ACPI_MADT_TYPE_INTERRUPT_OVERRIDE => {
+                const override = cast.toPtr(*align(1) acpica.ACPI_MADT_INTERRUPT_OVERRIDE, entry);
+                kernel.print("  InitFlags: {}, Bus: {}, GlobalIRQ: {}, SourceIRQ: {}\n", .{override.IntiFlags, override.Bus, override.GlobalIrq, override.SourceIrq});
+            },
+            acpica.ACPI_MADT_TYPE_LOCAL_APIC_OVERRIDE => {
+                const override = cast.toPtr(*align(1) acpica.ACPI_MADT_LOCAL_APIC_OVERRIDE, entry);
+                apicPhys = .asPhys(override.Address);
+            },
+            acpica.ACPI_MADT_TYPE_LOCAL_APIC => {
+                if (!X2_APIC) {
+                    const lapic= cast.toPtr(*align(1) acpica.ACPI_MADT_LOCAL_APIC, entry);
+                    kernel.print("  LAPIC: PID: {}, LAPIC_ID: {}, Flags: {}\n", .{lapic.ProcessorId, lapic.Id, lapic.LapicFlags});
+                }
+            },
+            acpica.ACPI_MADT_TYPE_LOCAL_APIC_NMI => {
+                if (!X2_APIC) {
+                    const nmi = cast.toPtr(*align(1) acpica.ACPI_MADT_LOCAL_APIC_NMI, entry);
+                    kernel.print("  LAPIC_NMI: ACPI PID: {}, InitFlags: {}, Lint: {}\n", .{nmi.ProcessorId, nmi.IntiFlags, nmi.Lint});
+                }
+            },
+            acpica.ACPI_MADT_TYPE_LOCAL_X2APIC => {
+                if (!X2_APIC) {
+                    x2ApicAvailable = true;
+                    break;
+                }
+
+                const x2apic = cast.toPtr(*align(1) acpica.ACPI_MADT_LOCAL_X2APIC, entry);
+                kernel.print("  LAPIC_X2APIC: UID: {}, LAPIC_ID: {}, Flags: {}\n", .{x2apic.Uid, x2apic.LocalApicId, x2apic.LapicFlags});
+            },
+            acpica.ACPI_MADT_TYPE_LOCAL_X2APIC_NMI => {
+                if (!X2_APIC) {
+                    x2ApicAvailable = true;
+                    break;
+                }
+
+                const x2apic = cast.toPtr(*align(1) acpica.ACPI_MADT_LOCAL_X2APIC_NMI, entry);
+                kernel.print("  LAPIC_X2APIC_NMI: UID: {}, InitFlags: {}, Lint: {}\n", .{x2apic.Uid, x2apic.IntiFlags, x2apic.Lint});
+
+            },
+            acpica.ACPI_MADT_TYPE_IO_APIC => {
+                const ioApic = cast.toPtr(*align(1) acpica.ACPI_MADT_IO_APIC, entry);
+                kernel.print("  IO_APIC_ID: {}, Phys Addr: 0x{X}, GlobalIRQ: {}\n", .{ioApic.Id, ioApic.Address, ioApic.GlobalIrqBase});
+                const ioEntry = kernel.pmalloc(IoApicEntry);
+                ioEntry.id = ioApic.Id;
+                ioEntry.addr = .asPhys(ioApic.Address);
+                ioEntry.irqBase = ioApic.GlobalIrqBase;
+
+                ioApics.insertFront(&ioEntry.link);
+            },
+            acpica.ACPI_MADT_TYPE_NMI_SOURCE => {
+                const nmi = cast.toPtr(*align(1) acpica.ACPI_MADT_NMI_SOURCE, entry);
+                _ = nmi;
+            },
+            else => {
+                kernel.print("Other: {}\n", .{hdr.Type});
+            },
+        }
+        entry = @ptrFromInt(@intFromPtr(entry) + hdr.Length);
+
+        if (hdr.Length == 0) {
+            kernel.print("  APIC MADT Table header was malformed!\n", .{});
+            break;
+        }
+    }
+
+    if (x2ApicAvailable)
+        kernel.print("  X2APIC is available but X2APIC isn't enabled!\n", .{});
+
+    // Map APIC
+    if (!X2_APIC) {
+        kernel.print("  APIC Register Map found at 0x{X}\n", .{apicPhys.val});
+        apicRegMap = kernel.mm.paging.mmioMap(apicPhys, apicRegMapSize, .UNCACHED);
+    }
 }

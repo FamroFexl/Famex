@@ -63,6 +63,8 @@ pub const TimerEvent = pm.time.TimerEvent;
 pub const getUnixClock = pm.time.getUnixClock;
 pub const getMonoClock = pm.time.getMonoClock();
 
+pub const cast = util.cast;
+
 pub const pmalloc = mm.memory.pmalloc;
 pub const pmallocBytes = mm.memory.pmallocBytes;
 pub const pfree = mm.memory.pfree;

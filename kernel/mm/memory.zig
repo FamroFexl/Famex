@@ -3,6 +3,7 @@ const std = @import("std");
 const lib = @import("lib");
 
 const kernel = @import("kernel");
+const cast = kernel.cast;
 const print = kernel.util.log.print;
 const bin = kernel.util.binary;
 const types = kernel.util.types;
@@ -175,7 +176,7 @@ pub fn vfreeBytes(addr : *anyopaque) void {
 
     mas.lock();
 
-    const area = bin.castPtr(*vmm.VmArea, mas.find(@intFromPtr(addr)) orelse {
+    const area = cast.toPtr(*vmm.VmArea, mas.find(@intFromPtr(addr)) orelse {
         @panic("Double free of vfree detected!");
     });
 

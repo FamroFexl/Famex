@@ -236,7 +236,7 @@ typedef struct acpi_table_header
  *
  ******************************************************************************/
 
-typedef struct acpi_generic_address
+typedef struct FAMEX_PACKED acpi_generic_address
 {
     UINT8                   SpaceId;                /* Address space where struct or register exists */
     UINT8                   BitWidth;               /* Size in bits of given register */

@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const kernel = @import("kernel");
+const cast = kernel.cast;
 const types = kernel.util.types;
 const bin = kernel.util.binary;
 
@@ -8,6 +9,8 @@ const memory = @import("memory.zig");
 const vmm = @import("vmm.zig");
 const pmm = @import("pmm.zig");
 const buddy = @import("buddyAlloc.zig");
+
+const lib = @import("lib");
 
 const arch = @import("arch");
 pub const Pte = arch.paging.Pte;
@@ -156,12 +159,12 @@ fn pteInit(state : *PfeState, level : anytype, alloc : bool) ?*Pte {
                 pte.?.* = PTE_DEFAULTS[level];
                 pte.?.setEntry(level, page);
 
-                state.walk[level - 1] = bin.castPtr(*Ptable, page.toVirt().ptr());
+                state.walk[level - 1] = cast.toPtr(*Ptable, page.toVirt().ptr());
 
                 pte = pteInit(state, level - 1, alloc);
             },
             .TABLE => {
-                state.walk[level - 1] = bin.castPtr(*Ptable, pte.?.getEntry(level).toVirt().ptr());
+                state.walk[level - 1] = cast.toPtr(*Ptable, pte.?.getEntry(level).toVirt().ptr());
                 pte = pteInit(state, level - 1, alloc);
             },
             .PFE => continue,
@@ -227,7 +230,7 @@ fn pteNext(state : *PfeState, level : anytype, alloc : bool) ?*Pte {
             .PFE => continue,
         }
 
-        const table = bin.castPtr(*Ptable, page.toVirt().ptr());
+        const table = cast.toPtr(*Ptable, page.toVirt().ptr());
         state.walk[level - 1] = table;
 
         return &table.pte[entry];
@@ -350,6 +353,47 @@ pub const PfeState = struct {
         return pteUnmapNext(state, prior_unmapped);
     }
 };
+
+pub fn mmioMap(start : memory.Paddr, size : usize, cache : PteCache) memory.Vaddr {
+    var pstart : memory.Paddr = .asPhys(bin.alignDown(start.val, types.SIZE_4KB));
+
+    const vstart = pstart.toVirt();
+    const sizeAligned = bin.alignUp(size, types.SIZE_4KB);
+    const vend : memory.Vaddr = .asVirt(vstart.val + sizeAligned);
+
+    const area = kernel.pmalloc(vmm.VmArea);
+    area.start = vstart;
+    area.end = vend;
+    area.flags.reserved = true;
+
+    var mas = lib.linux.MapleTree.MaState.create(&kernel.kernelProcess.addr_space.tree, vstart.val, vstart.val);
+    mas.lock();
+
+    if (mas.findRange(vend.val - 1) != null) {
+        @panic("mm: MMIO mapping found an existing entry");
+    }
+
+    mas.val.index = vstart.val;
+    mas.val.last = vend.val - 1;
+    mas.store(area);
+
+    mas.unlock();
+
+    var pfeState = PfeState.create(.MAP, &kernel.kernelProcess.addr_space, vstart, .asVirt(vstart.val + sizeAligned), .LEVEL_4KB);
+
+    kernel.kernelProcess.addr_space.spinlock.lock();
+    defer kernel.kernelProcess.addr_space.spinlock.unlock();
+
+    while (true) {
+        const pfe = pfeState.mapNext() orelse break;
+        pfe.* = PFE_DEFAULTS[0];
+        pfe.setCache(0, cache);
+        pfe.setEntry(0, pstart);
+        pstart.val += types.SIZE_4KB;
+    }
+
+    return vstart;
+}
 
 pub fn printPtables(root_pt : *Ptable, level : anytype, min : anytype) void {
     outer: for (0..PTE_ENTRIES) |i| {

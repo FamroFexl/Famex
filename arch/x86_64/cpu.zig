@@ -1,4 +1,4 @@
-const cpuid_db = @import("lib").cpuid_db;
+pub const cpuid_db = @import("lib").cpuid_db;
 const kernel = @import("kernel");
 const proc = kernel.pm.process;
 

@@ -3,6 +3,7 @@
 const cpu = @import("arch").cpu;
 
 const kernel = @import("kernel");
+const cast = kernel.cast;
 const proc = kernel.pm.process;
 const slub = kernel.mm.slubAlloc;
 const mem = kernel.mm.memory;
@@ -46,7 +47,7 @@ fn getNthSetCpu(mask : proc.CpuMask, cpu_num : anytype) u8 {
 const DEBUG_NODE = false;
 
 fn createNodeRec(tree : *@This(), parent : ?*Node, count : u8, curNode : *u8, curMask : proc.CpuMask, depth : u8) void {
-    const node = bin.castPtr(*Node, slub.cacheline_pool.alloc());
+    const node = cast.toPtr(*Node, slub.cacheline_pool.alloc());
     node.parent = parent;
     node.spinlock.init();
     node.curPeriod = 0;
@@ -168,7 +169,7 @@ pub fn create(mask : proc.CpuMask, sync : ?fn (u64) void) *@This() {
 
     const numNodes = bin.alignUpNum(cpuCount, maxContention) / maxContention;
 
-    const tree = bin.castPtr(*@This(), mem.pmallocBytes(@sizeOf(@This()) + numNodes * @sizeOf(*Node)));
+    const tree = cast.toPtr(*@This(), mem.pmallocBytes(@sizeOf(@This()) + numNodes * @sizeOf(*Node)));
 
     tree.mask = mask;
     tree.sync = if (sync == null) syncNull else sync;

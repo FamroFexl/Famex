@@ -1,4 +1,5 @@
 const kernel = @import("kernel");
+const cast = kernel.cast;
 const util = kernel.util;
 const log = util.log;
 const bin = util.binary;
@@ -150,7 +151,7 @@ pub const SlubPool = struct {
     }
 
     pub fn create(size : usize, alignment : u16, obj_init : ?fn (*anyopaque) void) *SlubPool {
-        const pool : *SlubPool = bin.castPtr(*SlubPool, slub_pool_pool.alloc());
+        const pool : *SlubPool = cast.toPtr(*SlubPool, slub_pool_pool.alloc());
         pool.init(size, alignment, obj_init);
 
         return pool;
@@ -193,7 +194,7 @@ pub const SlubPool = struct {
     pub fn getPool(addr : *anyopaque) *SlubPool {
         const vaddr : mem.Vaddr = .{.val = @intFromPtr(@as(*u64, @ptrCast(@alignCast(addr))))};
         const order = vaddr.toInfo().getData().order;
-        const slab : *Slab = bin.castPtr(*Slab, @ptrFromInt(bin.alignDown(vaddr.val, buddy.orderToSize(order))));
+        const slab : *Slab = cast.toPtr(*Slab, @ptrFromInt(bin.alignDown(vaddr.val, buddy.orderToSize(order))));
         return slab.pool;
     }
 
@@ -389,7 +390,7 @@ pub fn slubPoolPmalloc(size : u64) void {
     if (pool != null and pool.?.object_size == aligned_8)
         return;
 
-    const new_pool = bin.castPtr(*SlubPool, slub_pool_pool.alloc());
+    const new_pool = cast.toPtr(*SlubPool, slub_pool_pool.alloc());
     new_pool.__init(aligned_8, 8, order, count, null);
 
     // Initialize pool in object array

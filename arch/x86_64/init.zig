@@ -1,4 +1,5 @@
 const kernel = @import("kernel");
+const cast = kernel.cast;
 const log = kernel.util.log;
 const print = log.print;
 const bin = kernel.util.binary;
@@ -61,11 +62,7 @@ fn ensureFeatures() void {
 
     const intel : bool = cpu.VENDOR == cpu.CpuVendor.INTEL;
 
-    timers.TSC_INVARIANT = cpu.leaf_0x87.constant_tsc == 1;
-
     if(intel) {
-        timers.TSC_DEADLINE = cpu.leaf_0x1.tsc_deadline_timer == 1;
-
         // We support Nehalem-Clarksfield and later Intel CPUs (because of VT-d support)
         // (we may support Westmere and later only for guaranteed huge page and PCID support)
         if (cpu.leaf_0x1.base_family_id < 0x06 and cpu.leaf_0x1.base_model < 0x1A) {
@@ -148,7 +145,7 @@ fn setupGdt() void {
     print("arch: Setting up Global Descriptor Table (GDT)\n", .{});
 
     const gdtSize = @sizeOf(reg.Gdtr.Layout) + api.cpu.FEATURES.NUM_CPU_CORES * @sizeOf(reg.TssDesc);
-    const gdt= bin.castPtr(*reg.Gdtr.Layout, kernel.pmallocBytes(gdtSize));
+    const gdt= cast.toPtr(*reg.Gdtr.Layout, kernel.pmallocBytes(gdtSize));
     gdt.kmode_code = .{
         .seg_type = .SEG_CODE_ER,
         .priv_level = 0,
@@ -351,5 +348,9 @@ pub export fn init() void {
 
     acpi.setupTables();
 
-    //apic.setup();
+    apic.setup();
+
+    apic.setupCore();
+
+    timers.setup();
 }

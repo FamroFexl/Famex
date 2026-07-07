@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const kernel = @import("kernel");
+const cast = kernel.cast;
 const mem = kernel.mm.memory;
 const bin = kernel.util.binary;
 const print = kernel.util.log.print;
@@ -60,12 +61,12 @@ export fn AcpiOsCreateLock(outHandle : ?*acpica.ACPI_SPINLOCK) acpica.ACPI_STATU
 
 export fn AcpiOsDeleteLock(inHandle : acpica.ACPI_SPINLOCK) void {
     const handle = inHandle orelse return;
-    const spinlock = bin.castPtr(*kernel.util.Spinlock, handle);
+    const spinlock = cast.toPtr(*kernel.util.Spinlock, handle);
     mem.pfree(kernel.util.Spinlock, spinlock);
 }
 
 export fn AcpiOsAcquireLock(inHandle : acpica.ACPI_SPINLOCK) acpica.ACPI_CPU_FLAGS {
-    const spinlock = bin.castPtr(*kernel.util.Spinlock, inHandle.?);
+    const spinlock = cast.toPtr(*kernel.util.Spinlock, inHandle.?);
     spinlock.lock();
     return 0;
 }
@@ -73,7 +74,7 @@ export fn AcpiOsAcquireLock(inHandle : acpica.ACPI_SPINLOCK) acpica.ACPI_CPU_FLA
 export fn AcpiOsReleaseLock(inHandle : acpica.ACPI_SPINLOCK, flags : acpica.ACPI_CPU_FLAGS) void {
     const handle = inHandle orelse return;
     _ = flags;
-    const spinlock = bin.castPtr(*kernel.util.Spinlock, handle);
+    const spinlock = cast.toPtr(*kernel.util.Spinlock, handle);
     spinlock.unlock();
 }
 
@@ -90,7 +91,7 @@ export fn AcpiOsCreateMutex(outHandle : ?*acpica.ACPI_MUTEX) acpica.ACPI_STATUS 
 
 export fn AcpiOsDeleteMutex(inHandle : acpica.ACPI_MUTEX) void {
     const handle = inHandle orelse return;
-    const mutex = bin.castPtr(*kernel.pm.ipc.Mutex, handle);
+    const mutex = cast.toPtr(*kernel.pm.ipc.Mutex, handle);
     mem.pfree(kernel.pm.ipc.Mutex, mutex);
 }
 
@@ -99,7 +100,7 @@ export fn AcpiOsAcquireMutex(inHandle : acpica.ACPI_MUTEX, timeout : u16) acpica
     if (!ACPI_INITIALIZED) return acpica.AE_OK;
 
     const handle = inHandle orelse return acpica.AE_BAD_PARAMETER;
-    const mutex = bin.castPtr(*kernel.pm.ipc.Mutex, handle);
+    const mutex = cast.toPtr(*kernel.pm.ipc.Mutex, handle);
     mutex.acquire();
 
     return acpica.AE_OK;
@@ -109,7 +110,7 @@ export fn AcpiOsReleaseMutex(inHandle : acpica.ACPI_MUTEX) acpica.ACPI_STATUS {
     if (!ACPI_INITIALIZED) return acpica.AE_OK;
 
     const handle = inHandle orelse return acpica.AE_BAD_PARAMETER;
-    const mutex = bin.castPtr(*kernel.pm.ipc.Mutex, handle);
+    const mutex = cast.toPtr(*kernel.pm.ipc.Mutex, handle);
     mutex.release();
 
     return acpica.AE_OK;
@@ -129,7 +130,7 @@ export fn AcpiOsCreateSemaphore(maxUnits : u32, initialUnits : u32, outHandle : 
 
 export fn AcpiOsDeleteSemaphore(inHandle : acpica.ACPI_SEMAPHORE) acpica.ACPI_STATUS {
     const handle = inHandle orelse return acpica.AE_BAD_PARAMETER;
-    const semaphore = bin.castPtr(*kernel.pm.ipc.Semaphore, handle);
+    const semaphore = cast.toPtr(*kernel.pm.ipc.Semaphore, handle);
     mem.pfree(kernel.pm.ipc.Semaphore, semaphore);
 
     return acpica.AE_OK;
@@ -142,7 +143,7 @@ export fn AcpiOsWaitSemaphore(inHandle : acpica.ACPI_SEMAPHORE, units : u32, tim
 
     const handle = inHandle orelse return acpica.AE_BAD_PARAMETER;
 
-    const semaphore = bin.castPtr(*kernel.pm.ipc.Semaphore, handle);
+    const semaphore = cast.toPtr(*kernel.pm.ipc.Semaphore, handle);
     semaphore.acquire();
 
     return acpica.AE_OK;
@@ -153,7 +154,7 @@ export fn AcpiOsSignalSemaphore(inHandle : acpica.ACPI_SEMAPHORE, units : u32) a
     if (!ACPI_INITIALIZED) return acpica.AE_OK;
 
     const handle = inHandle orelse return acpica.AE_BAD_PARAMETER;
-    const semaphore = bin.castPtr(*kernel.pm.ipc.Semaphore, handle);
+    const semaphore = cast.toPtr(*kernel.pm.ipc.Semaphore, handle);
 
     semaphore.release();
 
@@ -344,13 +345,18 @@ pub fn setupSubsys() void {
 pub fn setupTables() void {
     print("init: Initializing ACPI Tables\n", .{});
     const tables = mem.pmallocBytes(@sizeOf(acpica.ACPI_TABLE_DESC) * 16);
-    _ = acpica.AcpiInitializeTables(@ptrCast(@alignCast(tables)), 16, 1);
+    if(acpica.AcpiInitializeTables(@ptrCast(@alignCast(tables)), 16, 1) != acpica.AE_OK) {
+        @panic("Couldn't initialize ACPI Tables!");
+    }
 
     print("  Tables: ", .{});
-    for (0..10) |i| {
+    var i : usize = 0;
+    while (true) : (i+=1) {
         var table : ?*acpica.ACPI_TABLE_HEADER = null;
-        const status = acpica.AcpiGetTableByIndex(@intCast(i), &table);
-        if (status == acpica.AE_BAD_PARAMETER) break;
+        if(acpica.ACPI_FAILURE(acpica.AcpiGetTableByIndex(@intCast(i), &table)) > 0) {
+            break;
+        }
+
         print("{s:4} ", .{table.?.Signature});
     }
 }

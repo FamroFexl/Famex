@@ -108,7 +108,7 @@ pub const MaState = struct {
 
     pub fn create(tree : *MapleTree, first : u64, end : u64) MaState {
         return .{.val = .{
-            .tree = tree.val,
+            .tree = &tree.val,
             .index = first,
             .last = end,
             .node = null,
@@ -125,11 +125,11 @@ pub const MaState = struct {
     }
 
     pub fn lock(state : *@This()) void {
-        maple.mas_lock(&state.val);
+        maple.spin_lock(&state.val.tree.*.unnamed_0.ma_lock);
     }
 
     pub fn unlock(state : *@This()) void {
-        maple.mas_unlock(&state.val);
+        maple.spin_unlock(&state.val.tree.*.unnamed_0.ma_lock);
     }
 
     pub fn setRange(state : *@This(), start : anytype, end : anytype) void {
@@ -150,5 +150,9 @@ pub const MaState = struct {
 
     pub fn find(state : *@This(), max : anytype) ?*anyopaque {
         return maple.mas_find(&state.val, max);
+    }
+
+    pub fn findRange(state : *@This(), max : anytype) ?*anyopaque {
+        return maple.mas_find_range(&state.val, max);
     }
 };

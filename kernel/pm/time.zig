@@ -1,13 +1,14 @@
 const std = @import("std");
 
 const kernel = @import("kernel");
+const cast = kernel.cast;
 const lib = @import("lib");
 
-pub var CALIBRATION_CLOCK : Clock = undefined;
-pub var SYSTEM_CLOCK : Clock = undefined;
-pub var LOCAL_TIMER : Timer = undefined;
+pub var CALIBRATION_CLOCK : *Clock = undefined;
+pub var SYSTEM_CLOCK : *Clock = undefined;
+pub var LOCAL_TIMER : *Timer = undefined;
 
-/// Unix time offset from monotonic
+/// Unix time offset from monotonic in nanoseconds
 var unixOffset : std.atomic.Value(i64) = undefined;
 
 /// Stores and mutates time units
@@ -81,36 +82,106 @@ pub const Time = struct {
     }
 };
 
-const Timer = struct {
-    var TIMERS : kernel.List = undefined;
+pub const daysInMonth : [12]u8 = .{31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+
+pub fn isLeapYear(year : anytype) bool {
+    return (year % 4 == 0 and year % 100 != 0) or year % 400 == 0;
+}
+
+pub fn dayOfYear(day : anytype, month : anytype, year : anytype) u16 {
+    var dayOut : u16 = day - 1;
+    for (0..month) |i| {
+        dayOut += daysInMonth[i];
+    }
+
+    // Leap day
+    if (isLeapYear(year) and month > 2) {
+        dayOut += 1;
+    }
+
+    return dayOut;
+}
+
+pub fn daysFromEpoch(year : anytype) u64 {
+    if (year < 1970) @panic("Cannot calculate epoch! Year is less than 1970!");
+
+    var days : u64 = 0;
+    for (1970..@intCast(year)) |i| {
+        days += if (isLeapYear(i)) 366 else 365;
+    }
+
+    return days;
+}
+
+pub fn validTimespec(tm : lib.posix.times.tm) bool {
+    if (tm.tm_sec < 0 or tm.tm_sec > 60 or
+        tm.tm_min < 0 or tm.tm_min > 59 or
+        tm.tm_hour < 0 or tm.tm_hour > 23 or
+        tm.tm_wday < 0 or tm.tm_wday > 6 or
+        tm.tm_yday < 0 or tm.tm_yday > 365 or
+        tm.tm_gmtoff < 0 or tm.tm_gmtoff > 50400 or
+        tm.tm_isdst < 0
+    )
+        return false;
+    return true;
+}
+
+pub fn defaultTimespec() lib.posix.times.tm {
+    // Default Time: 1970-01-01T00:00:00
+    return .{
+        .tm_year = 70,
+    };
+}
+
+pub fn timeToUnix(tm : lib.posix.times.tm) Time {
+    var seconds : u64 = 0;
+    seconds += cast.toInt(tm.tm_sec);
+    seconds += cast.toInt(tm.tm_min * 60);
+    seconds += cast.toInt(tm.tm_hour * 3600);
+    seconds += 86400 * (daysFromEpoch(cast.toInt(tm.tm_year) + 1900) + cast.toInt(tm.tm_yday));
+
+    return .Sec(@intCast(seconds));
+}
+
+pub fn unixToTime(time : Time) lib.posix.times.tm {
+    const seconds = time.get(.SEC, false);
+    _ = seconds;
+
+    return defaultTimespec();
+}
+
+pub const Timer = struct {
+    pub var TIMERS : kernel.List = undefined;
 
     tps : u64,     // Ticks per second
     getRaw : *const fn (*@This()) u64,
     setRaw : *const fn (*@This(), u64) void,
     max : u64,      // Max value the timer can store
     name : [8]u8,
+    local : bool = false,   // Is local timer
     link : kernel.List.Node,
 
     pub fn calibrate(this : *@This(), duration : Time) void {
         const start = this.max;
 
         const calStart = CALIBRATION_CLOCK.get();
-        this.set(start);
 
-        while (CALIBRATION_CLOCK.get() < calStart + duration.nsec) {}
+        this.setRaw(this, start);
 
-        const end = this.get();
+        while (CALIBRATION_CLOCK.get().nsec < calStart.nsec + duration.nsec) {}
 
-        this.set(.{.nsec = 0});
+        const end = this.getRaw(this);
 
-        this.tps = (1_000_000_000 * (start - end)) / duration;
+        this.setRaw(this, 0);
+
+        this.tps = (1_000_000_000 * (start - end)) / duration.nsec;
     }
 
-    pub fn byName(name : []const u8) ?*Timer {
+    pub fn byName(name : []const u8) ?*@This() {
         var next = TIMERS.next;
         while (next != &TIMERS) {
-            const timer : *Timer = @fieldParentPtr("link", next);
-            if (std.mem.eql(u8, name, timer.name)) {
+            const timer : *@This() = @fieldParentPtr("link", next);
+            if (std.mem.eql(u8, name, timer.name[0..name.len])) {
                 return timer;
             }
             next = next.next;
@@ -120,38 +191,43 @@ const Timer = struct {
     }
 
     pub fn set(this : *@This(), time : Time) void {
-        this.setRaw(this, @intCast((@as(u128, this.tps) * @as(u128, time.nsec) + 500_000_000) / 1_000_000_000));
+        const ticks = cast.u64(cast.u128(this.tps) * cast.u128(time.nsec) + 500_000_000) / 1_000_000_000;
+
+        if (ticks > this.max)
+            @panic("Timer set to longer than max can store!");
+        this.setRaw(this, ticks);
     }
 
     pub fn get(this : *@This()) Time {
-        return .{.nsec = @as(u64, (@as(u128, @intCast(this.getRaw())) * 1_000_000_000) / this.tps)};
+        return .Nsec(cast.u64(cast.u128(this.getRaw(this)) * 1_000_000_000) / this.tps);
     }
 };
 
-const Clock = struct {
-    var CLOCKS : kernel.List = undefined;
+pub const Clock = struct {
+    pub var CLOCKS : kernel.List = undefined;
 
     tps : u64,  // Ticks per second
     getRaw : *const fn(*@This()) u64,
+    setRaw : *const fn (*@This(), u64) void,
     name : [8]u8,
     link : kernel.List.Node,
 
     pub fn calibrate(this : *@This(), duration : Time) void {
         const calStart = CALIBRATION_CLOCK.get();
-        const start = this.get();
+        const start = this.getRaw(this);
 
-        while (CALIBRATION_CLOCK.get() < calStart + duration.nsec) {}
+        while (CALIBRATION_CLOCK.get().nsec < calStart.nsec + duration.nsec) {}
 
-        const end = this.get();
+        const end = this.getRaw(this);
 
-        this.tps = (1_000_000_000 * (start - end)) / duration;
+        this.tps = (1_000_000_000 * (start - end)) / duration.nsec;
     }
 
-    pub fn byName(name : []const u8) ?*Timer {
+    pub fn byName(name : []const u8) ?*@This() {
         var next = CLOCKS.next;
         while (next != &CLOCKS) {
-            const timer : *Timer = @fieldParentPtr("link", next);
-            if (std.mem.eql(u8, name, timer.name)) {
+            const timer : *@This() = @fieldParentPtr("link", next);
+            if (std.mem.eql(u8, name, timer.name[0..name.len])) {
                 return timer;
             }
             next = next.next;
@@ -161,7 +237,7 @@ const Clock = struct {
     }
 
     pub fn get(this : *@This()) Time {
-        return .{.nsec = @intCast((@as(u128, @intCast(this.getRaw(this))) * 1_000_000_000) / this.tps)};
+        return .Nsec(cast.u64(cast.u128(this.getRaw(this) * 1_000_000_000) / this.tps));
     }
 };
 
@@ -172,13 +248,13 @@ pub fn getMonoClock() Time {
 
 /// Get unix time (can change)
 pub fn getUnixClock() Time {
-    return .Nsec(@intCast(@as(i128, getMonoClock().nsec) + @as(i128, unixOffset.load(.acquire))));
+    return .Nsec(cast.u64(cast.i128(getMonoClock().nsec) + cast.i128(unixOffset.load(.acquire))));
 }
 
 pub fn setUnixClock(time : Time) void {
     const monoTime = getMonoClock();
-    const offset : i64 = if (time.nsec > monoTime.nsec) -(@as(i64, @intCast(monoTime.nsec - time.nsec))) else @as(i64, @intCast(time.nsec - monoTime.nsec));
-    unixOffset.store(offset, .acquire);
+    const offset : i64 = if (time.nsec < monoTime.nsec) -cast.i64(monoTime.nsec - time.nsec) else cast.i64(time.nsec - monoTime.nsec);
+    unixOffset.store(offset, .release);
 }
 
 pub fn setLocalTimer(time : Time) void {
@@ -344,7 +420,7 @@ pub const TimerEvent = struct {
             const node = uTimers.first() orelse break;
             const event : *TimerEvent = @fieldParentPtr("link", node);
 
-            const expiration : u64 = @intCast(@as(i128, event.expiration) - @as(i128, offset));
+            const expiration = cast.u64(cast.i128(event.expiration) - cast.i128(offset));
 
             if (expiration > time.nsec) {
                 if (nextTime > expiration)
@@ -362,7 +438,7 @@ pub const TimerEvent = struct {
 
         // Execute all callbacks outside the spinlock
         while (true) {
-            const node : *TimerTree.Node = @ptrCast(temp.pop() orelse break);
+            const node = cast.toPtr(*TimerTree.Node, temp.pop() orelse break);
             const event : *TimerEvent = @fieldParentPtr("link", node);
 
             event.callback(event);
