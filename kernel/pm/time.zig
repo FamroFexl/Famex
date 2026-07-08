@@ -4,6 +4,7 @@ const kernel = @import("kernel");
 const cast = kernel.cast;
 const lib = @import("lib");
 
+/// Used to calibrate clocks and timers
 pub var CALIBRATION_CLOCK : *Clock = undefined;
 pub var SYSTEM_CLOCK : *Clock = undefined;
 pub var LOCAL_TIMER : *Timer = undefined;
@@ -130,6 +131,7 @@ pub fn defaultTimespec() lib.posix.times.tm {
     // Default Time: 1970-01-01T00:00:00
     return .{
         .tm_year = 70,
+        .tm_mon = 1,
     };
 }
 

@@ -279,36 +279,39 @@ fn setCmos(cmos : *Cmos) void {
     }
 }
 
+/// Fast RTC read through try-expect
+inline fn tryCopy(cmos : [*]u8) bool {
+    ports.out(Cmos.PORT_OUT, cast.u8(@offsetOf(Cmos, "regA")));
+    const regA : Cmos.RegA = @bitCast(ports.in(Cmos.PORT_IN, u8));
+    if (regA.uip) return false;
+
+    for (0..@offsetOf(Cmos, "regA")) |i| {
+        ports.out(Cmos.PORT_OUT, cast.u8(i));
+        cmos[i] = ports.in(Cmos.PORT_IN, u8);
+    }
+
+    return true;
+}
+
 /// Copy the RTC CMOS region
 fn copyRtc() Cmos {
     var cmos : Cmos = undefined;
+    var cmos2 : Cmos = undefined;
 
-    ports.out(Cmos.PORT_OUT, cast.u8(@offsetOf(Cmos, "regB")));
-    var regB : Cmos.RegB = @bitCast(ports.in(Cmos.PORT_IN, u8));
+    const cmosU8 : [*]u8 = @ptrCast(&cmos);
+    const cmos2U8 : [*]u8 = @ptrCast(&cmos2);
 
-    // 24-hour format only
-    regB.fmt = 1;
-
-    ports.out(Cmos.PORT_OUT, cast.u8(@offsetOf(Cmos, "regB")));
-    ports.out(Cmos.PORT_IN, cast.bit(u8, regB));
-
-    // Wait for RTC to start updating
     while (true) {
-        ports.out(Cmos.PORT_OUT, cast.u8(@offsetOf(Cmos, "regA")));
-        const regA : Cmos.RegA = @bitCast(ports.in(Cmos.PORT_IN, u8));
-        if (regA.uip) break;
+        if (!tryCopy(cmosU8)) continue;
+
+        if (!tryCopy(cmos2U8)) continue;
+
+        if (std.mem.eql(u8, cmosU8[0..@offsetOf(Cmos, "regA")], cmos2U8[0..@offsetOf(Cmos, "regA")]))
+            break;
     }
 
-    // Wait for RTC to stop updating
-    while (true) {
-        ports.out(Cmos.PORT_OUT, cast.u8(@offsetOf(Cmos, "regA")));
-        const regA : Cmos.RegA = @bitCast(ports.in(Cmos.PORT_IN, u8));
-        if (!regA.uip) break;
-    }
-
-    // Copy CMOS when it isn't updating
-    for (0..@offsetOf(Cmos, "rom")) |i| {
-        const cmosU8 : [*]u8 = @ptrCast(&cmos);
+    // Copy remaining registers
+    for (@offsetOf(Cmos, "regA")..@offsetOf(Cmos, "regD")) |i| {
         ports.out(Cmos.PORT_OUT, cast.u8(i));
         cmosU8[i] = ports.in(Cmos.PORT_IN, u8);
     }
@@ -430,7 +433,9 @@ fn rtcSet(clock : *time.Clock, count : u64) void {
 fn setupRtc() void {
     var fadt : *acpica.ACPI_TABLE_FADT = undefined;
     if (acpica.ACPI_SUCCESS(acpica.AcpiGetTable(@constCast(@ptrCast(acpica.ACPI_SIG_FADT)), 0, @ptrCast(&fadt)))) {
-        rtcCenturyReg = fadt.Century;
+        if (fadt.Century > 0) {
+            rtcCenturyReg = fadt.Century;
+        }
     }
 
     rtcMap = cast.toPtr(*Cmos, &copyRtc());
@@ -444,6 +449,15 @@ fn setupRtc() void {
     clock.setRaw = rtcSet;
 
     @memcpy(clock.name[0..3], "RTC");
+
+    ports.out(Cmos.PORT_OUT, cast.u8(@offsetOf(Cmos, "regB")));
+    var regB : Cmos.RegB = @bitCast(ports.in(Cmos.PORT_IN, u8));
+
+    // 24-hour format only
+    regB.fmt = 1;
+
+    ports.out(Cmos.PORT_OUT, cast.u8(@offsetOf(Cmos, "regB")));
+    ports.out(Cmos.PORT_IN, cast.bit(u8, regB));
 }
 
 pub fn setup() void {
@@ -478,6 +492,4 @@ pub fn setup() void {
     if (time.Clock.byName("RTC")) |rtc| {
         time.setUnixClock(rtc.get());
     }
-
-    kernel.print("{} {}", .{time.getUnixClock().get(.SEC, false), time.getMonoClock().get(.SEC, false)});
 }
