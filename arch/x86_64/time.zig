@@ -228,7 +228,7 @@ fn getLapic(timer : *time.Timer) u64 {
 
 fn setLapic(timer : *time.Timer, count : u64) void {
     _ = timer;
-    apic.set(.timerCc, @intCast(count));
+    apic.set(.timerIc, @intCast(count));
 }
 
 fn setupLat() void {
@@ -439,7 +439,11 @@ fn setupRtc() void {
     }
 
     rtcMap = cast.toPtr(*Cmos, &copyRtc());
+
+    // 24-hour format only
     rtcMap.regB.fmt = 1;
+
+    ports.out(Cmos.PORT_IN, cast.bit(u8, rtcMap.regB));
 
     const clock = kernel.pmalloc(time.Clock);
     time.Clock.CLOCKS.insertFront(&clock.link);
@@ -449,15 +453,6 @@ fn setupRtc() void {
     clock.setRaw = rtcSet;
 
     @memcpy(clock.name[0..3], "RTC");
-
-    ports.out(Cmos.PORT_OUT, cast.u8(@offsetOf(Cmos, "regB")));
-    var regB : Cmos.RegB = @bitCast(ports.in(Cmos.PORT_IN, u8));
-
-    // 24-hour format only
-    regB.fmt = 1;
-
-    ports.out(Cmos.PORT_OUT, cast.u8(@offsetOf(Cmos, "regB")));
-    ports.out(Cmos.PORT_IN, cast.bit(u8, regB));
 }
 
 pub fn setup() void {

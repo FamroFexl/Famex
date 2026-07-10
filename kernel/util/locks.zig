@@ -11,7 +11,7 @@ const LockData = struct {
 };
 
 const lock_data = switch (builtin.mode) {
-    .Debug => proc.PerCpuStat(LockData),
+    .Debug => proc.PerCpuStat(LockData, opaque {}),
     else => void,
 };
 

@@ -138,12 +138,12 @@ pub fn vmallocBytes(size : usize) *anyopaque {
     var mas = lib.linux.MapleTree.MaState.create(&vmSpace.tree, 0, 0);
     mas.lock();
 
-    mas.emptyArea(vmSpace.start, vmSpace.end, aligned);
+    mas.emptyArea(vmSpace.start.val, vmSpace.end.val, aligned);
 
-    area.start = mas.val.index;
-    area.end = area.start + aligned;
+    area.start = .asVirt(mas.val.index);
+    area.end = .asVirt(area.start.val + aligned);
 
-    mas.setRange(area.start, area.end - 1);
+    mas.setRange(area.start.val, area.end.val - 1);
     mas.store(area);
 
     mas.unlock();
@@ -161,7 +161,7 @@ pub fn vmallocBytes(size : usize) *anyopaque {
         pfe.setEntry(0, buddy.allocPage4k());
     }
 
-    return @ptrFromInt(area.start);
+    return @ptrFromInt(area.start.val);
 }
 
 pub fn vmalloc(comptime T : type) *T {

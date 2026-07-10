@@ -18,11 +18,11 @@ pub const VmArea = struct {
     };
 
     const Flags = packed struct {
-        read : bool,
-        write : bool,
-        exec : bool,
-        shared : bool,
-        reserved : bool,
+        read : bool = true,
+        write : bool = true,
+        exec : bool = true,
+        shared : bool = false,
+        reserved : bool = false,
     };
 };
 
@@ -43,7 +43,7 @@ pub fn setup() void {
 
     kernel.print("  Initializing kernel vm space\n", .{});
     const vmSpace = &kernel.kernelProcess.addr_space;
-    vmSpace.start = .asVirt(mem.KERNEL_ALLOC.val);
+    vmSpace.start = mem.KERNEL_ALLOC;
     vmSpace.end = .asVirt(mem.KERNEL_ALLOC.val +  mem.KERNEL_ALLOC_SIZE);
     vmSpace.spinlock.init();
     vmSpace.cpuMask = kernel.cpuMaskFull();

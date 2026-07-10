@@ -145,7 +145,7 @@ FUNC setMsr
 FUNC_END setMsr
 
 FUNC getGdtr
-    sgdt [rax]
+    sgdt [rdi]
     ret
 FUNC_END getGdtr
 
@@ -167,7 +167,7 @@ FUNC setGdtr
 FUNC_END setGdtr
 
 FUNC getIdtr
-    sidt [rax]
+    sidt [rdi]
     ret
 FUNC_END getIdtr
 

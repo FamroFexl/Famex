@@ -33,7 +33,7 @@ const LocalPagePool = struct {
     pages : util.data.Stack,
 };
 
-const localPagePool = process.PerCpuStat(LocalPagePool);
+const localPagePool = process.PerCpuStat(LocalPagePool, opaque {});
 
 pub fn orderToSize(order : anytype) usize {
     return @as(u64, types.SIZE_4KB) << @intCast(order);

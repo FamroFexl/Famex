@@ -128,7 +128,7 @@ fn sanitizeMmap() u64 {
     }
 
     print("  Sanitized Memory Map:\n", .{});
-    print("  {s:<18} {s:<18} {s:<8} Type\n  ", .{"Start", "End", "Size"});
+    print("  {s:<18} {s:<18} {s:<10} Type\n  ", .{"Start", "End", "Size"});
     log.printChar('-', 60);
     print("\n", .{});
 
@@ -137,7 +137,7 @@ fn sanitizeMmap() u64 {
         if(entry.length == 0)
             continue;
 
-        print("  0x{X:<18} 0x{X:<18} ", .{entry.base, entry.base + entry.length});
+        print("  0x{X:<16} 0x{X:<16} ", .{entry.base, entry.base + entry.length});
         log.printSize(entry.length, 10);
         print(" {s:<8}\n", .{memtypeToString(entry.type)});
     }
@@ -431,6 +431,11 @@ pub fn setup() void {
 
     print("\nmm: Setting up new page tables:\n", .{});
     switchToNewPtables();
+
+    // We don't want irqs enabling before they should
+    for (0..cpu.FEATURES.NUM_CPU_CORES) |i| {
+        kernel.io.irq.irqSaveDepth.getGlobal(i).* = 500;
+    }
 
     // Temporary way to set the cpu data of the bootstrap processor
     for (0..kernel.Limine.smp_request.response.x86.cpu_count) |i| {

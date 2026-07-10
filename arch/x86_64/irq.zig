@@ -47,14 +47,19 @@ pub const VecNum = enum(u8) {
 ///
 pub export fn interruptVectorHandler(state : *reg.CpuState, err : u64, vec_num : u64) void {
     _ = err;
+    _ = state;
 
     kernel.print("VecNum {}\n", .{vec_num});
 
-    const data : kernel.io.irq.IrqData = .{
-        .irqNum = vec_num,
-    };
+    //while (true) {}
 
-    kernel.io.irq.handler(&data, state);
+    kernel.pm.time.setLocalTimer(.Sec(1));
+
+    // const data : kernel.io.irq.IrqData = .{
+    //     .irqNum = vec_num,
+    // };
+    //
+    // kernel.io.irq.handler(&data, state);
 
     if (vec_num >= @intFromEnum(VecNum.UINT_START))
         apic.set(.eoi, 0);

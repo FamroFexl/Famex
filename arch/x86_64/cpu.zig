@@ -12,7 +12,7 @@ pub var FP_INIT : api.cpu.FpuState = undefined;
 /// Use XSave if true, FXSave if false
 pub var XSAVE_ON : bool = false;
 
-pub const cpuId = proc.PerCpuStat(u8);
+pub const cpuId = proc.PerCpuStat(u8, opaque {});
 
 ///  AMD:     "AuthenticAMD"
 const signature_AMD_ebx : u32 =  0x68747541;

@@ -25,13 +25,13 @@ pub const IrqData = struct {
 };
 
 /// Tracks time spent in IRQs
-const inIrqTime = kernel.PerCpuStat(u64);
+const inIrqTime = kernel.PerCpuStat(u64, opaque {});
 
 /// Depth of IRQ nesting we are in
-const nestDepth = kernel.PerCpuStat(u8);
+const nestDepth = kernel.PerCpuStat(u8, opaque {});
 
 /// Depth of IRQ disable requests
-pub const irqSaveDepth = kernel.PerCpuStat(u64);
+pub const irqSaveDepth = kernel.PerCpuStat(u64, opaque {});
 
 pub fn irqSave() void {
     cpu.irqDisable();
@@ -46,6 +46,7 @@ pub fn irqRestore() void {
     depth.* -= 1;
 
     if (depth.* == 0) {
+        kernel.print("irq enabled!\n", .{});
         cpu.irqEnable();
     }
 }
@@ -66,7 +67,7 @@ pub const SmpRequest = struct {
     pub var TREE : *DeferTree = undefined;
 
     /// Queue of per-cpu pending SMP requests
-    const queue = kernel.PerCpuStat(kernel.util.data.MpscQueue);
+    const queue = kernel.PerCpuStat(kernel.util.data.MpscQueue, opaque {});
 
     pub const CallInfo = struct {
         func : *const fn(*@This()) void,
@@ -239,6 +240,18 @@ pub fn handler(data : *const IrqData, state : *cpu.CpuState) void {
 pub fn setup() void {
     SmpRequest.TREE = DeferTree.create(kernel.cpuMaskFull());
 
+    const first = inIrqTime.getLocal();
+    const ptr = kernel.cast.toPtr([*]u64, first);
+    const second = irqSaveDepth.getLocal();
+
+    kernel.print("{p} {p}\n", .{first, second});
+    kernel.print("{} {} {} {}\n", .{(ptr - 1)[0], ptr[0], ptr[1], ptr[2]});
+    kernel.print("{} {}\n", .{first.*, second.*});
+    first.* += 1;
+    kernel.print("{} {}\n", .{first.*, second.*});
+    kernel.print("{} {} {} {}\n", .{(ptr - 1)[0], ptr[0], ptr[1], ptr[2]});
+
+    kernel.print("alloc rcu update {}\n", .{kernel.io.irq.irqSaveDepth.getLocal().*});
     for (0..cpu.FEATURES.NUM_CPU_CORES) |i| {
         SmpRequest.queue.getGlobal(i).init();
         inIrqTime.getGlobal(i).* = 0;

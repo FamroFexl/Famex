@@ -145,6 +145,7 @@ pub fn timeToUnix(tm : lib.posix.times.tm) Time {
     return .Sec(@intCast(seconds));
 }
 
+// TODO implement when we need to set RTC
 pub fn unixToTime(time : Time) lib.posix.times.tm {
     const seconds = time.get(.SEC, false);
     _ = seconds;
@@ -170,7 +171,7 @@ pub const Timer = struct {
 
         this.setRaw(this, start);
 
-        while (CALIBRATION_CLOCK.get().nsec < calStart.nsec + duration.nsec) {}
+        while (CALIBRATION_CLOCK.get().nsec - calStart.nsec < duration.nsec) {}
 
         const end = this.getRaw(this);
 
@@ -193,7 +194,7 @@ pub const Timer = struct {
     }
 
     pub fn set(this : *@This(), time : Time) void {
-        const ticks = cast.u64(cast.u128(this.tps) * cast.u128(time.nsec) + 500_000_000) / 1_000_000_000;
+        const ticks = cast.u64((cast.u128(this.tps) * cast.u128(time.nsec) + 500_000_000) / 1_000_000_000);
 
         if (ticks > this.max)
             @panic("Timer set to longer than max can store!");
@@ -218,7 +219,7 @@ pub const Clock = struct {
         const calStart = CALIBRATION_CLOCK.get();
         const start = this.getRaw(this);
 
-        while (CALIBRATION_CLOCK.get().nsec < calStart.nsec + duration.nsec) {}
+        while (CALIBRATION_CLOCK.get().nsec - calStart.nsec < duration.nsec) {}
 
         const end = this.getRaw(this);
 
@@ -269,9 +270,9 @@ pub fn getLocalTimer() Time {
 
 const TimerTree = lib.linux.RBTree(TimerEvent, "link", "expiration", true);
 
-const timerLock = kernel.PerCpuStat(kernel.Spinlock);
-const monoTimers = kernel.PerCpuStat(TimerTree);
-const unixTimers = kernel.PerCpuStat(TimerTree);
+const timerLock = kernel.PerCpuStat(kernel.Spinlock, opaque {});
+const monoTimers = kernel.PerCpuStat(TimerTree, opaque {});
+const unixTimers = kernel.PerCpuStat(TimerTree, opaque {});
 
 pub const TimerEvent = struct {
     expiration : u64,                          // Time the event expires

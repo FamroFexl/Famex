@@ -179,10 +179,12 @@ fn getGlobalPercpu(comptime T: type, cpu_num : anytype, addr : u64) *T {
 }
 
 /// Static per-cpu allocation that is resolved at comptime
-/// Use as "const per_cpu = PerCpuStat(u64);"
-pub fn PerCpuStat(comptime T: type) type {
+/// Use as "const per_cpu = PerCpuStat(u64, opaque {});"
+pub fn PerCpuStat(comptime T: type, comptime tag : type) type {
     return struct {
-        const data : T linksection(".percpu") = undefined;
+        // Used to prevent type coalescing, which would make two PerCpuStat with the same T the same type
+        const distinct = tag;
+        var data : T linksection(".percpu") = undefined;
 
         pub fn getLocal() *T {
             return getLocalPercpu(T, @intFromPtr(&data) - perCpu.PER_CPU_LINKER_OFFSET.val);
@@ -195,7 +197,7 @@ pub fn PerCpuStat(comptime T: type) type {
 }
 
 /// Dynamic per-cpu allocation that is created at runtime
-/// Use as "field : PerCpuDyn(u64),"
+/// Use as "field : PerCpuDyn(u64, opaque {}),"
 pub fn PerCpuDyn(comptime T: type) type {
     return struct {
         data : ?*T = null,
@@ -262,7 +264,7 @@ pub fn PerCpuDyn(comptime T: type) type {
     };
 }
 
-pub const startTime = PerCpuStat(u64);
+pub const startTime = PerCpuStat(u64, opaque {});
 
 pub fn startTimeReset() u64 {
     const mono = time.getMonoClock();

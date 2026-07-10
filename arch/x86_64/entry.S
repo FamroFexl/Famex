@@ -44,6 +44,7 @@
  *
  * On exit, only irq_frame can remain
  */
+ // TODO update to support nested interrupts on ist stack entry
 FUNC irqEntry
     // Stack: irq_frame, irq_num
 

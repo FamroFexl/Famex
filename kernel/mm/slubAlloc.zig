@@ -230,7 +230,7 @@ pub const SlubPool = struct {
                     pool.spinlock.unlock();
                 }
                 else {
-                        pool.spinlock.unlock();
+                    pool.spinlock.unlock();
                     slab = pool.allocSlab();
                 }
 

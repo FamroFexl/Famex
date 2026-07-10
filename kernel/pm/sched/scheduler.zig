@@ -44,7 +44,7 @@ fn rescheduleTimer(event : *kernel.TimerEvent) void {
     schedData.getLocal().flags.reschedule = true;
 }
 
-pub const schedData = kernel.pm.process.PerCpuStat(SchedData);
+pub const schedData = kernel.pm.process.PerCpuStat(SchedData, opaque {});
 
 pub fn cThread() *kernel.pm.process.ThreadBase {
     return schedData.getLocal().current;

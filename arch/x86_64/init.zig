@@ -13,7 +13,7 @@ const limine = lib.limine;
 const api = @import("arch_api");
 
 const cpu = @import("cpu.zig");
-const timers = @import("timers.zig");
+const time = @import("time.zig");
 const reg = @import("registers.zig");
 const irq = @import("irq.zig");
 const apic = @import("apic.zig");
@@ -145,7 +145,7 @@ fn setupGdt() void {
     print("arch: Setting up Global Descriptor Table (GDT)\n", .{});
 
     const gdtSize = @sizeOf(reg.Gdtr.Layout) + api.cpu.FEATURES.NUM_CPU_CORES * @sizeOf(reg.TssDesc);
-    const gdt= cast.toPtr(*reg.Gdtr.Layout, kernel.pmallocBytes(gdtSize));
+    const gdt = cast.toPtr(*reg.Gdtr.Layout, kernel.pmallocBytes(gdtSize));
     gdt.kmode_code = .{
         .seg_type = .SEG_CODE_ER,
         .priv_level = 0,
@@ -176,18 +176,17 @@ fn setupGdt() void {
 
     // Create per-core tss
     for (0..api.cpu.FEATURES.NUM_CPU_CORES) |i| {
-        const tss_desc : *reg.TssDesc align(8) = &gdt.getTss()[i];
-        const new_tss = kernel.pmalloc(reg.Tss);
+        //const tss_desc : *reg.TssDesc = &gdt.getTss()[i];
+        const tss_desc : *align(1) reg.TssDesc = @ptrFromInt(@intFromPtr(gdt) + 40 + i * 16);
+        const new_tss = cast.toPtr(*align(1) reg.Tss, kernel.pmallocBytes(@bitSizeOf(reg.Tss)/8));
         const tss = @intFromPtr(new_tss);
+
         tss_desc.* = .{
-            .word1 = .{
-                .address1 = @intCast(bin.getBits(24, 0, tss)),
-                .address2 = @intCast(bin.getBits(8, 24, tss)),
-            },
-            .word2 = .{
-                .address3 = @intCast(bin.getBits(32, 32, tss))
-            }
+            .address1 = @intCast(bin.getBits(24, 0, tss)),
+            .address2 = @intCast(bin.getBits(48, 24, tss)),
         };
+
+        const ist = cast.toPtr([*]align(1) u64, tss + @offsetOf(reg.Tss, "ist1"));
 
         // Assign interrupt stacks (stacks are at top of memory allocation)
         for (0..7) |j| {
@@ -202,7 +201,7 @@ fn setupGdt() void {
             }
 
             // Interrupt stacks should be 16-byte aligned (SysV ABI)
-            new_tss.ist[j] = bin.alignDown(ist_stack, 16);
+            ist[j] = bin.alignDown(ist_stack, 16);
         }
     }
 
@@ -338,6 +337,8 @@ pub export fn init() void {
 
     kernel.mm.memory.setup();
 
+    print("after\n", .{});
+
     setupFp();
 
     setupGdt();
@@ -352,5 +353,13 @@ pub export fn init() void {
 
     apic.setupCore();
 
-    timers.setup();
+    time.setup();
+
+    //print("before", .{});
+    kernel.pm.time.setLocalTimer(.Sec(1));
+    //kernel.pm.process.setup();
+    //
+    while(true) {
+       // kernel.print("irq enabled {}\n", .{@import("arch_api").cpu.irqEnabled()});
+    }
 }

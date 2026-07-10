@@ -60,12 +60,12 @@ pub const FpuState = struct {
 
 /// Get the current CPU flags
 pub fn getCurFlags() u64 {
-    return reg.Rflags.get();
+    return @bitCast(reg.Rflags.get());
 }
 
 /// Set the current CPU flags
 pub fn setCurFlags(flags : u64) void {
-    reg.Rflags.set(flags);
+    reg.Rflags.set(@bitCast(flags));
 }
 
 /// Get the per-CPU pointer

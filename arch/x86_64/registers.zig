@@ -299,30 +299,21 @@ pub const SegDesc = packed struct(u64) {
     };
 };
 
-pub const TssDesc = struct {
-    word1 : packed struct(u64) {
-        seg_limit1      : u16 = @sizeOf(Tss) - 1,
-        address1        : u24,
-        seg_type        : SysSegType = .TSS_AVAILABLE,
-        __zero1         : u1 = 0,
-        desc_priv_lvl   : u2 = 0,   // Descriptor Privilege Level
-        seg_present     : bool = true,     // Segment present flag
-        seg_limit2      : u4 = 0,
-        __pad1          : bool = false,     // Unused flag for other use
-        __zero2         : u2 = 0,
-        granularity     : bool = true,
-        address2        : u8,
-    },
-    word2 : packed struct(u64) {
-        address3        : u32,
-        __rsvd1         : u8 = 0,
-        __zero3         : u5 = 0,
-        __rsvd2         : u19 = 0,
-    },
-
-    comptime {
-        std.debug.assert(@alignOf(@This()) == 8);
-    }
+pub const TssDesc = packed struct {
+    seg_limit1      : u16 = @sizeOf(Tss) - 1,
+    address1        : u24,
+    seg_type        : SysSegType = .TSS_AVAILABLE,
+    __zero1         : u1 = 0,
+    desc_priv_lvl   : u2 = 0,   // Descriptor Privilege Level
+    seg_present     : bool = true,     // Segment present flag
+    seg_limit2      : u4 = 0,
+    __pad1          : bool = false,     // Unused flag for other use
+    __zero2         : u2 = 0,
+    granularity     : bool = false,
+    address2        : u48,
+    __rsvd1         : u8 = 0,
+    __zero3         : u5 = 0,
+    __rsvd2         : u19 = 0,
 };
 
 pub const Gdtr = packed struct(u80) {
@@ -393,16 +384,25 @@ pub const Idtr = packed struct(u80) {
     pub const set = setIdtr;
 };
 
-pub const Tss = struct {
+pub const Tss = packed struct(u832) {
     __rsvd1     : u32 = 0,
-    rsp         : [3]u64,   // Stack pointers for privilege levels 0-2
+    rsp0        : u64,      // Stack pointers for privilege levels 0-2
+    rsp1        : u64,
+    rsp2        : u64,
     __rsvd2     : u64 = 0,
-    ist         : [7]u64,   // Interrupt Stack Table (IST) pointers (ist[0] is ist1)
-    __rsvd3     : u16 = 0,
-    __rsvd4     : u64 = 0,
+    ist1        : u64,      // Interrupt Stack Table (IST) pointers (ist[0] is ist1)
+    ist2        : u64,
+    ist3        : u64,
+    ist4        : u64,
+    ist5        : u64,
+    ist6        : u64,
+    ist7        : u64,
+    __rsvd3     : u64 = 0,
+    __rsvd4     : u16 = 0,
     iom_base    : u16 = std.math.maxInt(u16),   // 16-bit offset to the I/O permission bit map from the TSS base (disabled)
 
-    comptime { std.debug.assert(@sizeOf(@This()) == 104); }
+    comptime { std.debug.assert(@offsetOf(Tss, "rsp0") == 4);}
+    //comptime { //std.debug.assert(@sizeOf(@This()) == 104); }
 
     extern fn getTss() callconv(.c) u16;
     pub const get = getTss;
@@ -474,7 +474,7 @@ pub const Msr = enum(u32) {
     THERM_INTERRUPT = 411,      // Enable or disable different processor temperature interrupts
     THERM_STATUS,               // Processor thermals status (read only)
     ENERGY_PERF_BIA = 432,      // Energy policy
-    X2APIC_MSR_BASE = 800,
+    X2APIC_MSR_BASE = 2048,
 };
 
 pub const ApicBase = CreateMsr(27, packed struct(u64) {

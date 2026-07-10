@@ -7,7 +7,7 @@ const mem = kernel.mm.memory;
 
 const regs = @import("registers.zig");
 const irq = @import("irq.zig");
-const timers = @import("timers.zig");
+const time = @import("time.zig");
 const cpu = @import("cpu.zig");
 
 const acpica = @import("lib").acpica;
@@ -254,7 +254,7 @@ fn getApicOffset(offset : anytype) u64 {
 }
 
 fn getApicMsrOffset(offset : anytype) u32 {
-    return @intFromEnum(regs.Msr.X2APIC_MSR_BASE) + offset/16;
+    return @intFromEnum(regs.Msr.X2APIC_MSR_BASE) + offset/4;
 }
 
 fn assign4To16(in : [*]const u32, out : [*]u32, num : usize) void {
