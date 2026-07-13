@@ -13,8 +13,8 @@ pub fn acquire(mutex : *@This()) void {
     const lock = mutex.spinlock.tryLock();
 
     if (!lock) {
-        //mutex.queue.push()
-        //sleepThread()
+        mutex.queue.push(&kernel.cThread().sleepLink);
+        kernel.cThread().sleep();
     }
 }
 
@@ -22,7 +22,7 @@ pub fn release(mutex : *@This()) void {
     mutex.spinlock.unlock();
 
     const node = mutex.queue.pop() orelse return;
-    _ = node;
 
-    //wakeThread()
+    const thread : *kernel.Thread = @fieldParentPtr("sleepLink", node);
+    thread.wake();
 }

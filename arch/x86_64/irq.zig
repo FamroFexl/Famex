@@ -9,6 +9,8 @@ const apic = @import("apic.zig");
 
 pub extern const irqStubTable : [256]u64;
 
+pub extern fn syscallEntry() callconv(.c) void;
+
 // Interrupt Descriptor Table exeception/interrupt vectors (local APIC internal)
 pub const VecNum = enum(u8) {
     DIVIDE_ERROR        = 0,    // Divide error (fault)
@@ -51,7 +53,7 @@ pub export fn interruptVectorHandler(state : *reg.CpuState, err : u64, vec_num :
 
     kernel.print("VecNum {}\n", .{vec_num});
 
-    //while (true) {}
+    while (true) {}
 
     kernel.pm.time.setLocalTimer(.Sec(1));
 

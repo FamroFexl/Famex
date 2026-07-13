@@ -115,7 +115,7 @@ fn setupRegionOrders() void {
 pub fn __allocPage(order : u8) error{OrderEmpty}!mem.Paddr {    // No pages could be found in the order or in the ones above it
     util.locks.lockHeld(&orders_lock);
 
-    log.apanic(order > MAX_BUDDY_ORDER, "Requested a buddy order larger than we have!\n", .{});
+    std.debug.assert(order <= MAX_BUDDY_ORDER);
 
     var order_index : u8 = std.math.maxInt(u8);
 

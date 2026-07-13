@@ -26,7 +26,7 @@ pub const CpuState = struct {
     r14 : u64,
     r15 : u64,
 
-    rflags : u64,   // Flags register
+    rflags : Rflags,   // Flags register
     rip : u64,      // Instruction pointer
 
     fs_base : u64,  // User FS.Base
@@ -79,7 +79,7 @@ pub const CpuState = struct {
             3 => &state.rcx,
             4 => &state.r8,
             5 => &state.r9,
-            else => unreachable,
+            else => @panic("CpuState argument number doesn't exist!"),
         };
     }
 
@@ -94,6 +94,14 @@ pub const CpuState = struct {
             2 => &state.r10,
             else => getArg(state, arg),
         };
+    }
+
+    pub fn inKmode(state : *@This()) bool {
+        return if (is_kernel) @import("kernel").pm.process.inKmode(state) else false;
+    }
+
+    pub fn init(state : *@This()) void {
+        if (is_kernel) state.* = @import("arch").cpu.CPU_STATE_INIT;
     }
 };
 

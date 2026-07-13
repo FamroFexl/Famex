@@ -14,47 +14,59 @@ const cpu = @import("arch").cpu;
 
 const std = @import("std");
 
+pub const Pid = u64;
+
 pub const Process = struct {
+    parent : ?*@This(),
     addr_space : vmm.VmSpace,
     state : State,
 
-    timeLock : kernel.RwLock,
-    times : PTimes,
+    timeLock : kernel.RwLock = .create(),
+    createTime : kernel.Time,           // Process creation time
+    termUTime : kernel.Time = .zero(),  // User-mode time of all terminated child processes
+    termKTime : kernel.Time = .zero(),  // Kernel-mode time of all terminated child processes
+
+    pid : Pid = undefined,
+
+    threads : util.data.List,
+    children : util.data.List,
 
     const State = enum {
         RUNNING,       // The process is running
         STOPPED,       // The process has been stopped (all threads THRD_STOPPED)
         ZOMBIE,        // The process is waiting to be reaped
     };
-
-    const PTimes = struct {
-        ktime : kernel.Time = .{.nsec = 0},    // User-mode time of process
-        utime : kernel.Time = .{.nsec = 0},    // Kernel-mode time of process
-        cuTime : kernel.Time = .{.nsec = 0},   // User-mode time of all terminated child processes
-        ckTime : kernel.Time = .{.nsec = 0},   // Kernel-mode time of all terminated child processes
-    };
 };
 
 pub const Tid = u32;
 
-pub const ThreadBase = struct {
-    owner : *Process,
-    state : State,
+pub const Thread = struct {
+    owner : *Process = undefined,
+    state : State = undefined,
     flags : packed struct {
-        loaded : bool,   // For inline register save/load, used to determine how to proceed
-    },
+        loaded : bool = undefined,   // For inline register save/load, used to determine how to proceed
+    } = undefined,
 
-    context : kernel.CpuState,
-    tid : Tid,
+    context : kernel.CpuState = undefined,
+    tid : Tid = undefined,
 
-    timeLock : kernel.RwLock,
-    ktime : kernel.Time,
+    timeLock : kernel.RwLock = .create(),
+    ktime : kernel.Time = .zero(),
 
-    preemptDepth : u8,
-    migrateDepth : u8,
+    preemptDepth : u8 = 0,
+    migrateDepth : u8 = 0,
 
-    schedLink : kernel.List.Node,
-    sched : SchedData,
+    /// Kernel stack data
+    stack : Stack = undefined,
+
+    schedLink : kernel.List.Node = undefined,
+    sched : SchedData = undefined,
+
+    /// Semaphore and mutex sleep link
+    sleepLink : util.data.Queue.Node = undefined,
+
+    /// Process thread link
+    link : kernel.List.Node = undefined,
 
     const SchedData = struct {
         policy : sched.Policy,
@@ -67,6 +79,12 @@ pub const ThreadBase = struct {
         UNINTERRUPTIBLE,   // Uninterruptable sleep
         STOPPED,           // Suspended by unblockable signal (SIGSTOP)
         DEAD               // Being cleaned up
+    };
+
+    /// Thread stack structure
+    pub const Stack = struct {
+        start : *anyopaque,
+        size : usize,
     };
 
     pub fn preemptSave(this : *@This()) void {
@@ -103,39 +121,52 @@ pub const ThreadBase = struct {
         this.migrateDepth -= 1;
     }
 
-    pub fn yield(this : *@This()) void {
+    pub fn yield(this : *@This()) void { kernel.noIrq();
         std.debug.assert(!kernel.irqEnabled());
 
-        const cdc = &sched.schedData.getLocal().sched[@intFromEnum(this.sched.policy)];
-        cdc.onYield(cdc, this);
-        //sched.schedData.getLocal().sched[@intFromEnum(this.sched.policy)].onYield(this);
+        const scheduler = &sched.schedData.getLocal().sched[@intFromEnum(this.sched.policy)];
+        scheduler.onYield(scheduler, this);
         sched.switchThread();
     }
 
-    pub fn sleep(this : *@This()) void {
+    pub fn sleep(this : *@This()) void { kernel.noIrq();
         this.state = .INTERRUPTABLE;
 
-        sched.schedData.getLocal().sched[@intFromEnum(this.sched.policy)].onSleep(this);
+        const scheduler = &sched.schedData.getLocal().sched[@intFromEnum(this.sched.policy)];
+        scheduler.onSleep(scheduler, this);
         sched.switchThread();
     }
 
-    pub fn wake(this : *@This()) void {
-        sched.schedData.getLocal().sched[@intFromEnum(this.sched.policy)].onWake(this);
+    pub fn wake(this : *@This()) void { kernel.noIrq();
+        const scheduler = &sched.schedData.getLocal().sched[@intFromEnum(this.sched.policy)];
+        scheduler.onWake(scheduler, this);
 
         this.state = .RUNNING;
+    }
+
+    pub fn container(this: *@This()) union(enum) {
+        kThread : *KThread,
+        uThread : *UThread,
+    } {
+        return if (this.owner == &kernelProcess)
+            .{ .kThread = @fieldParentPtr("base", this), }
+        else
+            .{ .uThread = @fieldParentPtr("base", this), };
     }
 };
 
 pub const KThread = struct {
-    base : ThreadBase,
+    base : Thread,
 };
 
 pub const UThread = struct {
-    base : ThreadBase,
+    base : Thread,
     flags : packed struct {
-        inSyscall : bool,
+        inSyscall : bool = undefined,
     },
     utime : kernel.Time,
+
+    fpuContext : kernel.FpuState,
 };
 
 pub var kernelProcess : Process = undefined;
@@ -178,6 +209,20 @@ fn getGlobalPercpu(comptime T: type, cpu_num : anytype, addr : u64) *T {
     return @ptrFromInt(mem.PER_CPU_DATA.val + mem.PER_CPU_DATA_SIZE * cpu_num + addr);
 }
 
+/// Occupies the start of the per-cpu region, for offset-based
+/// stack pointer access, etc
+pub const perCpuStart = struct {
+    var data : kernel.io.asmLayout.PerCpuStart linksection(".percpu.start") = undefined;
+
+    pub fn getLocal() *kernel.io.asmLayout.PerCpuStart {
+        return getLocalPercpu(kernel.io.asmLayout.PerCpuStart, @intFromPtr(&data) - perCpu.PER_CPU_LINKER_OFFSET.val);
+    }
+
+    pub fn getGlobal(cpu_num : anytype) *kernel.io.asmLayout.PerCpuStart {
+        return getGlobalPercpu(kernel.io.asmLayout.PerCpuStart, cpu_num, @intFromPtr(&data) - perCpu.PER_CPU_LINKER_OFFSET.val);
+    }
+};
+
 /// Static per-cpu allocation that is resolved at comptime
 /// Use as "const per_cpu = PerCpuStat(u64, opaque {});"
 pub fn PerCpuStat(comptime T: type, comptime tag : type) type {
@@ -197,7 +242,7 @@ pub fn PerCpuStat(comptime T: type, comptime tag : type) type {
 }
 
 /// Dynamic per-cpu allocation that is created at runtime
-/// Use as "field : PerCpuDyn(u64, opaque {}),"
+/// Use as "field : PerCpuDyn(u64),"
 pub fn PerCpuDyn(comptime T: type) type {
     return struct {
         data : ?*T = null,
@@ -225,7 +270,6 @@ pub fn PerCpuDyn(comptime T: type) type {
                     const percpu = @intFromPtr(getGlobalPercpu(*anyopaque, i, 0)) + perCpu.PER_CPU_STARTING_OFFSET.val;
 
                     var state = paging.PfeState.create(.MAP, &kernelProcess.addr_space, .{.val = percpu + perCpu.cur_offset.val}, .{.val = percpu + last}, .LEVEL_4KB);
-
                     while (true) {
                         const pte = state.mapNext() orelse break;
                         pte.* = pfe;
@@ -284,10 +328,6 @@ pub fn addKtime() void {
     cThread.timeLock.writeLock();
     cThread.ktime.nsec += ktime;
     cThread.timeLock.writeUnlock();
-
-    cThread.owner.timeLock.writeLock();
-    cThread.owner.times.ktime.nsec += ktime;
-    cThread.owner.timeLock.writeUnlock();
 }
 
 pub fn addUtime() void {
@@ -299,16 +339,26 @@ pub fn addUtime() void {
     cThread.timeLock.writeLock();
     uThread.utime.nsec += utime;
     cThread.timeLock.writeUnlock();
-
-    cThread.owner.timeLock.writeLock();
-    cThread.owner.times.utime.nsec += utime;
-    cThread.owner.timeLock.writeUnlock();
 }
 
 pub export fn inKmode(state : *kernel.CpuState) bool {
     return state.getStack() >= mem.KERNEL_MEMORY.val;
 }
 
+fn setupKernelProc() void {
+    kernelProcess.pid = 0;
+    kernelProcess.state = .RUNNING;
+    kernelProcess.createTime = time.getUnixClock();
+    kernelProcess.parent = null;
+    kernelProcess.threads.init();
+    kernelProcess.children.init();
+    kernelProcess.timeLock.init();
+}
+
 pub fn setup() void {
+    kernel.print("pm: Setting up Processing\n", .{});
+
     kernel.pm.sched.scheduler.setup();
+
+    setupKernelProc();
 }

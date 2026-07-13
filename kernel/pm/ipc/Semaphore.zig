@@ -18,9 +18,9 @@ pub fn acquire(semaphore : *@This()) void {
     semaphore.spinlock.lock();
 
     if (semaphore.curCount == semaphore.maxCount) {
-        //semaphore.queue.push()
+        semaphore.queue.push(&kernel.cThread().sleepLink);
         semaphore.spinlock.unlock();
-        //sleepThread()
+        kernel.cThread().sleep();
     }
     else {
         semaphore.curCount += 1;
@@ -37,8 +37,9 @@ pub fn release(semaphore : *@This()) void {
         semaphore.spinlock.unlock();
         return;
     };
-    _ = node;
 
     semaphore.spinlock.unlock();
-    //wakeThread()
+
+    const thread : *kernel.Thread = @fieldParentPtr("sleepLink", node);
+    thread.wake();
 }

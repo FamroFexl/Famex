@@ -39,20 +39,21 @@ pub fn irqSave() void {
     irqSaveDepth.getLocal().* += 1;
 }
 
-pub fn irqRestore() void {
-    std.debug.assert(!cpu.irqEnabled());
-
+pub fn irqRestore() void { noIrq();
     const depth = irqSaveDepth.getLocal();
     depth.* -= 1;
 
     if (depth.* == 0) {
-        kernel.print("irq enabled!\n", .{});
         cpu.irqEnable();
     }
 }
 
 pub fn inIrq() bool {
     return nestDepth.getLocal().* > 0;
+}
+
+pub fn noIrq() void {
+    std.debug.assert(!cpu.irqEnabled());
 }
 
 pub const SmpRequest = struct {
@@ -175,7 +176,7 @@ fn nestedHandler(data : *const IrqData, state : *cpu.CpuState) void {
 
 /// Operations to perform on a first-level interrupt
 fn threadHandler(data : *const IrqData, state : *cpu.CpuState) void {
-    if (!process.inKmode(&sched.cThread().context)) {
+    if (!sched.cThread().context.inKmode()) {
         rcu.exitEqs();
         process.addUtime();
     }
@@ -207,7 +208,7 @@ fn threadHandler(data : *const IrqData, state : *cpu.CpuState) void {
 
     // TODO Check for signals with the current thread
 
-    if (!process.inKmode(&sched.cThread().context)) {
+    if (!sched.cThread().context.inKmode()) {
         rcu.enterEqs();
     }
 
@@ -220,9 +221,7 @@ fn threadHandler(data : *const IrqData, state : *cpu.CpuState) void {
     inIrqTime.getLocal().* += process.startTimeReset();
 }
 
-pub fn handler(data : *const IrqData, state : *cpu.CpuState) void {
-    std.debug.assert(!cpu.irqEnabled());
-
+pub fn handler(data : *const IrqData, state : *cpu.CpuState) void { noIrq();
     const depth = nestDepth.getLocal();
 
     depth.* += 1;
@@ -240,18 +239,6 @@ pub fn handler(data : *const IrqData, state : *cpu.CpuState) void {
 pub fn setup() void {
     SmpRequest.TREE = DeferTree.create(kernel.cpuMaskFull());
 
-    const first = inIrqTime.getLocal();
-    const ptr = kernel.cast.toPtr([*]u64, first);
-    const second = irqSaveDepth.getLocal();
-
-    kernel.print("{p} {p}\n", .{first, second});
-    kernel.print("{} {} {} {}\n", .{(ptr - 1)[0], ptr[0], ptr[1], ptr[2]});
-    kernel.print("{} {}\n", .{first.*, second.*});
-    first.* += 1;
-    kernel.print("{} {}\n", .{first.*, second.*});
-    kernel.print("{} {} {} {}\n", .{(ptr - 1)[0], ptr[0], ptr[1], ptr[2]});
-
-    kernel.print("alloc rcu update {}\n", .{kernel.io.irq.irqSaveDepth.getLocal().*});
     for (0..cpu.FEATURES.NUM_CPU_CORES) |i| {
         SmpRequest.queue.getGlobal(i).init();
         inIrqTime.getGlobal(i).* = 0;

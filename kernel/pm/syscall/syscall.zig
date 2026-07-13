@@ -1,12 +1,10 @@
 const kernel = @import("kernel");
+const cast = kernel.cast;
 
 const lib = @import("lib");
+const errno = lib.posix.errno;
 
 const cpu = @import("arch").cpu;
-
-pub const Syscall = enum {
-
-};
 
 // Handle a specified syscall
 pub export fn syscallHandler(state : *cpu.CpuState) void {
@@ -23,14 +21,7 @@ pub export fn syscallHandler(state : *cpu.CpuState) void {
 
     const sysNum = state.getRet().*;
 
-    if (sysNum >= @typeInfo(Syscall).@"enum".fields.len) {
-        state.getRet().* = @bitCast(-@as(i64, lib.posix.errno.ENOSYS));
-        kernel.irqDisable();
-        return;
-    }
-
-    // const ret : i64 = syscalls[sysNum](state);
-    // state.getRet().* = ret;
+    state.getRet().* = @bitCast(syscall(sysNum, state));
 
     kernel.irqDisable();
 
@@ -39,4 +30,11 @@ pub export fn syscallHandler(state : *cpu.CpuState) void {
     kernel.pm.process.addKtime();
 
     kernel.pm.ipc.rcu.enterEqs();
+}
+
+fn syscall(sysNum : u64, state : *cpu.CpuState) i64 {
+    _ = state;
+    return switch (sysNum) {
+        else => -errno.ENOSYS,
+    };
 }

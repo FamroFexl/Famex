@@ -33,27 +33,27 @@ fn getRR(data : *anyopaque) *@This() {
     return cast.toPtr(*@This(), data);
 }
 
-fn enqueue(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) void {
+fn enqueue(sched : *scheduler.Scheduler, thread : *kernel.Thread) void {
     Fifo.enqueue(sched, thread);
 }
 
-fn dequeue(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) void {
+fn dequeue(sched : *scheduler.Scheduler, thread : *kernel.Thread) void {
     Fifo.dequeue(sched, thread);
 }
 
-fn onSleep(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) void {
+fn onSleep(sched : *scheduler.Scheduler, thread : *kernel.Thread) void {
     Fifo.onSleep(sched, thread);
 }
 
-fn onWake(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) void {
+fn onWake(sched : *scheduler.Scheduler, thread : *kernel.Thread) void {
     Fifo.onWake(sched, thread);
 }
 
-fn onYield(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) void {
+fn onYield(sched : *scheduler.Scheduler, thread : *kernel.Thread) void {
     Fifo.onYield(sched, thread);
 }
 
-fn onPreempt(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) void {
+fn onPreempt(sched : *scheduler.Scheduler, thread : *kernel.Thread) void {
     const this = getRR(sched.data);
 
     const priority = thread.sched.priority;
@@ -64,17 +64,17 @@ fn onPreempt(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) void {
     this.fifo.priority[priority].insertFront(&thread.schedLink);
 }
 
-fn pickNext(sched : *scheduler.Scheduler) ?*kernel.ThreadBase {
+fn pickNext(sched : *scheduler.Scheduler) ?*kernel.Thread {
     return Fifo.pickNext(sched);
 }
 
-fn getTimeslice(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase) ?kernel.Time {
+fn getTimeslice(sched : *scheduler.Scheduler, thread : *kernel.Thread) ?kernel.Time {
     _ = sched;
     _ = thread;
     return kernel.config.ROUND_ROBIN_TIMESLICE;
 }
 
-fn setPriority(sched : *scheduler.Scheduler, thread : *kernel.ThreadBase, newPriority : anytype) void {
+fn setPriority(sched : *scheduler.Scheduler, thread : *kernel.Thread, newPriority : anytype) void {
     Fifo.setPriority(sched, thread, newPriority);
 }
 

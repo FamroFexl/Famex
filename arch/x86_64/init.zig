@@ -136,8 +136,13 @@ fn setupFp() void {
     cpu.FP_SAVE_POOL.init(leaf.xsave_sz_xcr0_enabled, 64, null);
 
     cpu.FP_INIT.regs = cpu.FP_SAVE_POOL.alloc();
+    kernel.memset(cpu.FP_INIT.regs, cpu.FP_SAVE_POOL.object_size, 0);
     reg.fpStateReset();
     cpu.FP_INIT.save();
+
+    // Setup default cpu state
+    kernel.memset(&cpu.CPU_STATE_INIT, @sizeOf(api.cpu.CpuState), 0);
+    cpu.CPU_STATE_INIT.rflags.irq_enable = true;
 }
 
 /// Only one GDT for all cores
@@ -146,32 +151,31 @@ fn setupGdt() void {
 
     const gdtSize = @sizeOf(reg.Gdtr.Layout) + api.cpu.FEATURES.NUM_CPU_CORES * @sizeOf(reg.TssDesc);
     const gdt = cast.toPtr(*reg.Gdtr.Layout, kernel.pmallocBytes(gdtSize));
-    gdt.kmode_code = .{
-        .seg_type = .SEG_CODE_ER,
-        .priv_level = 0,
-        .size = false,
-        .code_seg = true,
-    };
-
-    gdt.kmode_data = .{
-        .seg_type = .SEG_DATA_RW,
-        .priv_level = 0,
-        .size = true,
-        .code_seg = false,
-    };
-
-    gdt.umode_code = .{
-        .seg_type = .SEG_CODE_ER,
-        .priv_level = 3,
-        .size = false,
-        .code_seg = true,
-    };
-
-    gdt.umode_data = .{
-        .seg_type = .SEG_DATA_RW,
-        .priv_level = 3,
-        .size = true,
-        .code_seg = false,
+    gdt.* = .{
+        .kmode_code = .{
+            .seg_type = .SEG_CODE_ER,
+            .priv_level = 0,
+            .size = false,
+            .code_seg = true,
+        },
+        .kmode_data = .{
+            .seg_type = .SEG_DATA_RW,
+            .priv_level = 0,
+            .size = true,
+            .code_seg = false,
+        },
+        .umode_code = .{
+            .seg_type = .SEG_CODE_ER,
+            .priv_level = 3,
+            .size = false,
+            .code_seg = true,
+        },
+        .umode_data = .{
+            .seg_type = .SEG_DATA_RW,
+            .priv_level = 3,
+            .size = true,
+            .code_seg = false,
+        },
     };
 
     // Create per-core tss
@@ -188,20 +192,13 @@ fn setupGdt() void {
 
         const ist = cast.toPtr([*]align(1) u64, tss + @offsetOf(reg.Tss, "ist1"));
 
-        // Assign interrupt stacks (stacks are at top of memory allocation)
-        for (0..7) |j| {
-            var ist_stack : u64 = undefined;
-            // IST1 is used for general interrupts
-            if (j == 0) {
-                ist_stack = @intFromPtr(kernel.pmallocBytes(kernel.config.IRQ_STACK_SIZE)) + kernel.config.IRQ_STACK_SIZE;
-            }
-            // IST2 to IST7 Used for special interrupts (double faults, etc)
-            else {
-                ist_stack = @intFromPtr(kernel.pmallocBytes(types.SIZE_4KB)) + types.SIZE_4KB;
-            }
+        // IST1 is used for general interrupts
+        ist[0] = bin.alignDown(@intFromPtr(kernel.pmallocBytes(kernel.config.IRQ_STACK_SIZE)) + kernel.config.IRQ_STACK_SIZE, 16);
 
+        // Assign interrupt stacks (stacks are at top of memory allocation)
+        for (1..7) |j| {
             // Interrupt stacks should be 16-byte aligned (SysV ABI)
-            ist[j] = bin.alignDown(ist_stack, 16);
+            ist[j] = bin.alignDown(@intFromPtr(kernel.pmallocBytes(types.SIZE_4KB)) + types.SIZE_4KB, 16);
         }
     }
 
@@ -250,7 +247,7 @@ fn setupSyscalls() void {
     reg.Efer.set(efer);
 
     // Set the syscall entry point (asm)
-    reg.SyscallLStar.set(@intFromPtr(&kernel.pm.syscall.syscallHandler));
+    reg.SyscallLStar.set(@intFromPtr(&irq.syscallEntry));
 
     // Set the RFLAGS mask on syscall entry
     var rflags : reg.Rflags = @bitCast(@as(u64, 0));
@@ -279,7 +276,7 @@ fn smpCpuInit(smp_info : *limine.LimineMpInfoX86) void {
 
     reg.Gdtr.set(&GDTR);
 
-    reg.Idtr.set(&IDTR);
+    //reg.Idtr.set(&IDTR);
 
     reg.Tss.set(@intCast(@sizeOf(reg.Gdtr.Layout) + cpuId * @sizeOf(reg.TssDesc)));
 
@@ -337,13 +334,12 @@ pub export fn init() void {
 
     kernel.mm.memory.setup();
 
-    print("after\n", .{});
-
     setupFp();
 
     setupGdt();
 
     setupIdt();
+
 
     setupSmp(true);
 
@@ -355,11 +351,82 @@ pub export fn init() void {
 
     time.setup();
 
-    //print("before", .{});
-    kernel.pm.time.setLocalTimer(.Sec(1));
-    //kernel.pm.process.setup();
-    //
+    kernel.pm.process.setup();
+
+    const file = kernel.Limine.module_request.response.?.modules[0];
+    const fileAddr = kernel.Paddr.asPhys(@intFromPtr(kernel.Limine.toPhys(file.address))).toVirt();
+    const hdr = cast.toPtr(*lib.elf.ElfHdr, fileAddr.ptr());
+
+    if (!hdr.isElf() and !hdr.isValid())
+        @panic("Invalid elf!\n");
+
+    const process = kernel.pmalloc(kernel.Process);
+    process.createTime = kernel.getUnixClock();
+    process.threads.init();
+    process.children.init();
+    process.parent = kernel.kernelProcess;
+    process.addr_space.start = kernel.mm.memory.USER_MEMORY_START;
+    process.addr_space.end = kernel.mm.memory.USER_MEMORY_END;
+    process.addr_space.rootPt = cast.toPtr(*kernel.mm.paging.Ptable, kernel.zallocPage4k().toVirt().ptr());
+    kernel.mm.vmm.mapKernelTables(process.addr_space.rootPt);
+    _ = process.addr_space.rootPt.switchTo();
+    process.addr_space.tree.init(.{});
+
+    // Setup headers
+    for (0..hdr.ph_num) |i| {
+        const phdr = hdr.getPhdrByIndex(i) orelse break;
+        if (phdr.type != .LOAD) continue;
+
+        const vmArea = kernel.pmalloc(kernel.mm.vmm.VmArea);
+        vmArea.start = .asVirt(phdr.vaddr);
+        vmArea.end = .asVirt(phdr.vaddr + phdr.mem_sz);
+        vmArea.flags = .{
+            .exec = phdr.flags.execute,
+            .read = phdr.flags.read,
+            .write = phdr.flags.write,
+        };
+        _ = process.addr_space.tree.storeRange(vmArea.start.val, vmArea.end.val - 1, vmArea);
+
+        // TODO something is wrong with pteNext or pteInit that causes it to skip the last page (if end is 0x7000->0x7fff, only up to 0x6000 will be mapped)
+        var mapState = kernel.PfeState.create(.MAP, &process.addr_space, .asVirt(bin.alignDown(vmArea.start.val, types.SIZE_4KB)), .asVirt(bin.alignUp(vmArea.end.val, types.SIZE_4KB) + types.SIZE_4KB), .LEVEL_4KB);
+
+        const pte = kernel.mm.paging.PFE_DEFAULTS[0];
+        while (true) {
+            const pfe = mapState.mapNext() orelse break;
+            if (!pfe.getEmpty(0)) continue;
+            pfe.* = pte;
+            pfe.setEntry(0, kernel.allocPage4k());
+        }
+
+        kernel.mm.memory.memcpy(@ptrFromInt(vmArea.start.val), @ptrFromInt(fileAddr.val + phdr.offset), phdr.file_sz);
+        kernel.mm.memory.memset(@ptrFromInt(vmArea.start.val + phdr.file_sz), phdr.mem_sz - phdr.file_sz, 0);
+
+        var permState = kernel.PfeState.create(.GET, &process.addr_space, .asVirt(bin.alignDown(vmArea.start.val, types.SIZE_4KB)), .asVirt(bin.alignUp(vmArea.end.val, types.SIZE_4KB) + types.SIZE_4KB), .LEVEL_4KB);
+        while (true) {
+            const pfe = permState.getNext() orelse break;
+            pfe.setUser(0, true);
+            pfe.setRead(0, vmArea.flags.read);
+            pfe.setWrite(0, vmArea.flags.write);
+            pfe.setExec(0, vmArea.flags.exec);
+        }
+    }
+
+    const mainThread = kernel.pmalloc(kernel.UThread);
+    process.threads.insertFront(&mainThread.base.link);
+    mainThread.fpuContext = api.cpu.FpuState.alloc();
+    const base = &mainThread.base;
+    base.* = .{
+        .stack = .{
+            .size = kernel.config.SYSCALL_STACK_SIZE,
+            .start = kernel.allocPage(kernel.mm.buddyAlloc.sizeToOrder(kernel.config.SYSCALL_STACK_SIZE)).toVirt().ptr()
+        },
+        .state = .RUNNING,
+    };
+    base.context.init();
+    base.context.setPc(hdr.entry);
+    base.context.setStack(kernel.mm.memory.USER_MEMORY_END.val);
+
+    print("after", .{});
     while(true) {
-       // kernel.print("irq enabled {}\n", .{@import("arch_api").cpu.irqEnabled()});
     }
 }

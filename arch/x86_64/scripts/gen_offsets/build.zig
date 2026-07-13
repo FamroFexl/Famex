@@ -3,13 +3,14 @@ const log = std.log;
 
 const cwd = "arch/x86_64/scripts/gen_offsets/";
 
-pub fn exec(b : *std.Build, arch_path : std.Build.LazyPath, name : []const u8) std.Build.LazyPath {
+pub fn exec(b : *std.Build, arch_path : std.Build.LazyPath, kernel_path : std.Build.LazyPath, name : []const u8) std.Build.LazyPath {
     const gen_offsets_module = b.createModule(.{
         .root_source_file = b.path(cwd ++ "gen_offsets.zig"),
         .target = b.graph.host,
     });
 
     gen_offsets_module.addAnonymousImport("reg", .{.root_source_file = arch_path});
+    gen_offsets_module.addAnonymousImport("asmLayout", .{.root_source_file = kernel_path});
 
     const gen_offsets = b.addExecutable(.{
         .name = "gen_offsets",

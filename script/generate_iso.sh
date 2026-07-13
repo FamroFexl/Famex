@@ -7,11 +7,16 @@ mkdir -p isodir/boot/limine
 cp -v "${KERNEL_BIN}" isodir/boot/${KERNEL_BIN}
 #cp -v ../limine/limine-bios.sys ../limine/limine-bios-cd.bin ../limine/limine-uefi-cd.bin isodir/boot/limine
 cp -v ../../limine/limine-uefi-cd.bin isodir/boot/limine
+
+mkdir -p isodir/boot/modules
+cp -v ../../zig-out/bin/testProc.elf isodir/boot/modules
+
 #../modules/comp_exec.sh
 echo "timeout: 0
 /${KERNEL_NAME}
   protocol: limine
 	path: boot():/boot/${KERNEL_BIN}
+	module_path: boot():/boot/modules/testProc.elf
 " > isodir/boot/limine/limine.conf
 
 #module_path: boot():/boot/posix_tests

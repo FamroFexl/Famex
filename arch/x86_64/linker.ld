@@ -65,6 +65,8 @@ SECTIONS
     . = ALIGN(0x1000);
 
     .percpu (NOLOAD) :{
+        /* Start region for offset-based retrieval */
+        KEEP(*(.percpu.start))
         KEEP(*(.percpu))
     }
 

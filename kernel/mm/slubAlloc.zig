@@ -304,6 +304,13 @@ pub fn SlubPoolTyped(comptime T: type, obj_init : ?fn (*anyopaque) void) type {
     };
 }
 
+pub fn getSlubPool(addr : *anyopaque) *SlubPool {
+    const new_addr : mem.Vaddr = .{.val = @intFromPtr(addr)};
+    const info = new_addr.toInfo();
+    const slab : *Slab = @ptrFromInt(bin.alignDown(new_addr.val, buddy.orderToSize(info.getData().order)));
+    return slab.pool;
+}
+
 // Setup the array mapping sizes to pools
 fn setupObjectArray() void {
     print("  Setting up the PMalloc pool object array\n", .{});
@@ -356,11 +363,11 @@ fn setupSlubPoolPool() void {
     slub_pool_pool.init(size, 8, null);
 
     // Setup the main list
-    var i : i64 = size >> 3;
-    while (i >= 0) : (i -= 1) {
-        const cur_pool = object_pools[@intCast(i)].load(.acquire);
+    var i : u64 = size >> 3;
+    while (i > 0) : (i -= 1) {
+        const cur_pool = object_pools[i].load(.acquire);
         if (cur_pool == null or cur_pool.?.object_size >> 3 != i) {
-            object_pools[@intCast(i)].store(&slub_pool_pool, .release);
+            object_pools[i].store(&slub_pool_pool, .release);
         }
         else {
             break;
@@ -394,11 +401,11 @@ pub fn slubPoolPmalloc(size : u64) void {
     new_pool.__init(aligned_8, 8, order, count, null);
 
     // Initialize pool in object array
-    var i : i64 = @as(i64, @intCast(size)) >> 3;
-    while (i >= 0) : (i -= 1) {
-        const cur_pool = object_pools[@intCast(i)].load(.acquire);
+    var i : u64 = size >> 3;
+    while (i > 0) : (i -= 1) {
+        const cur_pool = object_pools[i].load(.acquire);
         if (cur_pool == null or cur_pool.?.object_size >> 3 != i) {
-            object_pools[@intCast(i)].store(&slub_pool_pool, .release);
+            object_pools[i].store(new_pool, .release);
         }
         else {
             break;
@@ -411,7 +418,7 @@ pub fn slubPoolPmalloc(size : u64) void {
 fn setupPow2Pools() void {
     print("  Setting up first power-of-2 pools for PMalloc\n", .{});
 
-    var i : u32 = 8;
+    var i : u64 = 8;
     while (i < MAX_SLUB_SIZE) : (i *= 2) {
         slubPoolPmalloc(i);
     }

@@ -19,12 +19,12 @@ pub fn sync() void {
 
 /// RCU read lock
 pub fn lock() void {
-    kernel.ThreadBase.preemptSave(kernel.cThread());
+    kernel.Thread.preemptSave(kernel.cThread());
 }
 
 /// RCU read unlock
 pub fn unlock() void {
-    kernel.ThreadBase.preemptRestore(kernel.cThread());
+    kernel.Thread.preemptRestore(kernel.cThread());
 }
 
 pub fn asyncFree(state : *RcuAsync, callback : fn (*RcuAsync) void) void {
@@ -70,7 +70,7 @@ fn RcuFree(comptime T : type, comptime alloc : AllocType) type {
                 for (@typeInfo(T).@"struct".fields) |f| {
                     if (f.type == RcuAsync) break :blk f.name;
                 }
-                unreachable;
+                @panic("Struct has no RcuAsync field!");
             };
         }
 
@@ -143,17 +143,17 @@ pub fn RcuPtr(comptime T : type, comptime alloc : AllocType) type {
 }
 
 /// Report a quiescent state has passed for this cpu
-pub fn reportQs() void {
+pub fn reportQs() void { kernel.noIrq();
     TREE.report(cpu.getCpuId());
 }
 
 /// CPU enters an extended quiescent state (no longer influences grace period)
-pub fn enterEqs() void {
+pub fn enterEqs() void { kernel.noIrq();
     TREE.disable(cpu.getCpuId());
 }
 
 /// CPU exits an extended quiescent state (now influences grace period)
-pub fn exitEqs() void {
+pub fn exitEqs() void { kernel.noIrq();
     TREE.enable(cpu.getCpuId());
 }
 

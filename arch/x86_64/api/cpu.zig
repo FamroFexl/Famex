@@ -23,9 +23,16 @@ pub var FEATURES : CpuFeatures = undefined;
 pub const FpuState = struct {
     regs : *anyopaque,
 
-    /// Allocate an appropriately-sized FPU register state
-    pub fn alloc() *@This() {
-        return .{.regs = cpu.FP_SAVE_POOL.alloc()};
+    pub fn init(this : *@This()) void {
+        this.* = cpu.FP_INIT;
+    }
+
+    /// Allocate and initialize an appropriately-sized FPU register state
+    pub fn alloc() @This() {
+        const regs = cpu.FP_SAVE_POOL.alloc();
+        var out : @This() = .{.regs = regs};
+        init(&out);
+        return out;
     }
 
     /// Free a FPU state

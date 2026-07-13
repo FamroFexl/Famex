@@ -3,6 +3,7 @@ const std = @import("std");
 const cpu = @import("arch").cpu;
 
 const kernel = @import("kernel");
+const cast = kernel.cast;
 
 pub const Policy = enum(u8) {
     FIFO = 0,       // First in-first out (FIFO) scheduling policy.
@@ -14,22 +15,22 @@ pub const Policy = enum(u8) {
 pub const Scheduler = struct {
     policy : Policy,
     data : *anyopaque,
-    enqueue : *const fn (*@This(), *kernel.ThreadBase) void,
-    dequeue : *const fn (*@This(), *kernel.ThreadBase) void,
-    onSleep : *const fn (*@This(), *kernel.ThreadBase) void,
-    onWake : *const fn (*@This(), *kernel.ThreadBase) void,
-    onYield : *const fn (*@This(), *kernel.ThreadBase) void,
-    onPreempt : *const fn (*@This(), *kernel.ThreadBase) void,
-    pickNext : *const fn (*@This()) ?*kernel.ThreadBase,
-    getTimeslice : *const fn (*@This(), *kernel.ThreadBase) ?kernel.Time,
-    setPriority : *const fn(*@This(), *kernel.ThreadBase, anytype) void,
+    enqueue : *const fn (*@This(), *kernel.Thread) void,
+    dequeue : *const fn (*@This(), *kernel.Thread) void,
+    onSleep : *const fn (*@This(), *kernel.Thread) void,
+    onWake : *const fn (*@This(), *kernel.Thread) void,
+    onYield : *const fn (*@This(), *kernel.Thread) void,
+    onPreempt : *const fn (*@This(), *kernel.Thread) void,
+    pickNext : *const fn (*@This()) ?*kernel.Thread,
+    getTimeslice : *const fn (*@This(), *kernel.Thread) ?kernel.Time,
+    setPriority : *const fn(*@This(), *kernel.Thread, anytype) void,
 };
 
 const SchedData = struct {
     spinlock : kernel.util.Spinlock,
     sched : [std.meta.fields(Policy).len]Scheduler,
     idle : kernel.pm.process.KThread,
-    current : *kernel.pm.process.ThreadBase,
+    current : *kernel.pm.process.Thread,
     flags : Flags,
     // kstacktop
     timer : kernel.TimerEvent,  // Scheduler tick timer
@@ -46,13 +47,11 @@ fn rescheduleTimer(event : *kernel.TimerEvent) void {
 
 pub const schedData = kernel.pm.process.PerCpuStat(SchedData, opaque {});
 
-pub fn cThread() *kernel.pm.process.ThreadBase {
+pub fn cThread() *kernel.pm.process.Thread {
     return schedData.getLocal().current;
 }
 
-pub fn switchThread() void {
-    std.debug.assert(!kernel.irqEnabled());
-
+pub fn switchThread() void { kernel.noIrq();
     const irqSaveDepth = kernel.io.irq.irqSaveDepth.getLocal().*;
 
     cThread().migrateSave();
@@ -68,7 +67,7 @@ pub fn switchThread() void {
     // being saved, not loaded
     if (!cThread().flags.loaded) {
         // Add runtime to the thread
-        if (kernel.pm.process.inKmode(&state)) {
+        if (state.inKmode()) {
             kernel.pm.process.addKtime();
         }
         else {
@@ -79,7 +78,7 @@ pub fn switchThread() void {
         schedule(&state);
 
         // TODO Check for signals with the current thread
-        if (!kernel.pm.process.inKmode(&state))
+        if (!state.inKmode())
             kernel.pm.ipc.rcu.enterEqs();
 
         state.load();
@@ -92,32 +91,37 @@ pub fn switchThread() void {
     kernel.io.irq.irqSaveDepth.getLocal().* = irqSaveDepth;
 }
 
-fn loadThread(new : *kernel.ThreadBase, state : *kernel.CpuState) void {
+fn loadThread(new : *kernel.Thread, state : *kernel.CpuState) void {
     const data = schedData.getLocal();
 
     data.current.context = state.*;
 
     data.current = new;
-    // set kstack top
     state.* = new.context;
 
-    // Notifies inline saved threads which path to take
-    new.flags.loaded = true;
+    if(new.container() == .uThread) {
+        // Set syscall stack
+        kernel.pm.process.perCpuStart.getLocal().syscallStack = kernel.bin.alignDown(cast.toInt(new.stack.start) + new.stack.size, 16);
+    }
+    else {
 
-    _ = kernel.mm.paging.switchPageTables(new.owner.addr_space.rootPt);
+    }
+
+    // Notifies inline saved threads which path to take
+        new.flags.loaded = true;
+
+    _ = new.owner.addr_space.rootPt.switchTo();
 }
 
-pub fn threadFromSched(node : *kernel.List.Node) *kernel.ThreadBase {
+pub fn threadFromSched(node : *kernel.List.Node) *kernel.Thread {
     return @fieldParentPtr("schedLink", node);
 }
 
-pub fn schedule(state : *kernel.CpuState) void {
-    std.debug.assert(!kernel.irqEnabled());
-
+pub fn schedule(state : *kernel.CpuState) void { kernel.noIrq();
     const data = schedData.getLocal();
     data.flags.reschedule = false;
 
-    var next : *kernel.ThreadBase = undefined;
+    var next : *kernel.Thread = undefined;
     var timeslice : ?kernel.Time = null;
     {
         data.spinlock.lock();
@@ -141,6 +145,7 @@ pub fn schedule(state : *kernel.CpuState) void {
 }
 
 pub fn setup() void {
+    kernel.print("pm: Setting up Scheduler\n", .{});
     for (0..kernel.CPU_FEATURES.NUM_CPU_CORES) |i| {
         const localData = schedData.getGlobal(i);
 

@@ -27,13 +27,17 @@ pub const VmArea = struct {
 };
 
 pub const VmSpace = struct {
-    spinlock : kernel.Spinlock,
-    cpuMask : kernel.CpuMask,
-    tree : MapleTree,
+    spinlock : kernel.Spinlock = .create(),
+    cpuMask : kernel.CpuMask = 0,
+    rootPt : *paging.Ptable,
     start : Vaddr,
     end : Vaddr,
-    rootPt : *paging.Ptable,
+    tree : MapleTree,
 };
+
+pub fn mapKernelTables(table : *paging.Ptable) void {
+    @memcpy(table.pte[256..], kernel.kernelProcess.addr_space.rootPt.pte[256..]);
+}
 
 pub fn setup() void {
     kernel.print("\nmm: Setting up Virtual Memory Management\n", .{});

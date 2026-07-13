@@ -14,6 +14,10 @@ pub fn init(spinlock : *@This()) void {
     spinlock.val.store(false, .unordered);
 }
 
+pub fn create() @This() {
+    return .{.val = .init(false)};
+}
+
 pub fn tryLock(spinlock : *@This()) bool {
     kernel.irqSave();
     _ = spinlock.val.cmpxchgStrong(false, true, .acquire, .monotonic) orelse {
@@ -40,9 +44,7 @@ pub fn lock(spinlock : *@This()) void {
     locks.lockAdd(spinlock);
 }
 
-pub fn unlock(spinlock : *@This()) void {
-    std.debug.assert(!kernel.irqEnabled());
-
+pub fn unlock(spinlock : *@This()) void { kernel.noIrq();
     spinlock.val.store(false, .release);
 
     locks.lockRemove(spinlock);

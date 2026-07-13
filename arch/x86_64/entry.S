@@ -194,3 +194,105 @@ FUNC irqEntry
     iretq
 
 FUNC_END irqEntry
+
+/*
+ * On entry, RCX contains the last RIP, R11 contains the last RFLAGS, and RSP contains
+ * the last RSP.
+ *
+ * Certain registers can be clobbered since the general behavior of a syscall
+ * is kernel-defined.
+ *
+ * Syscalls MUST only be called from user mode since this entry automatically
+ * does a swapgs, which would corrupt the user segment in kernel mode.
+ *
+ * The c handler called by this entry must be of the following format:
+ * void (*syscall_handler) (struct cpu_state*);
+ *
+ * On exit, RCX must contain the RIP to be loaded, R11 must contain the RFLAGS to be
+ * loaded, RSP must contain the RSP to be loaded, and RAX must contain the return value
+ */
+FUNC syscallEntry
+    /*
+     * Switch to cpu_data for kernel-mode (needed for syscall_handler and getting the current
+     * thread's kernel stack instance (KSTACKTOP)
+     */
+    swapgs
+
+    // RSP is still set to the current user stack, which we need to save. RAX can be safely clobbered
+    mov rax, rsp
+
+    // Switch to kernel stack
+    mov rsp, gs:[SYSCALL_STACK_OFST]
+
+    // Alloc stack space and align (for SysV func alignment)
+    sub rsp, CPU_STATE_SIZE
+    and rsp, -16
+
+    // Stack: cpu_state
+
+    // Temp save RDI
+    push rdi
+
+    // Stack: cpu_state, old_rdi
+
+    // Set rdi to cpu_state
+    lea rdi, [rsp + 8]
+
+    // Save user flags
+    mov [rdi + RFLAGS_OFST], r11
+
+    // Save user pc
+    mov [rdi + RIP_OFST], rcx
+
+    // Save user stack
+    mov [rdi + RSP_OFST], rax
+
+    // Save regs consumes old_rdi from stack
+    call saveRegs
+
+    // Stack: cpu_state
+
+    // Set rdi back to cpu state
+    lea rdi, [rsp]
+
+    // Called with rdi arg
+    call syscallHandler
+
+    // Set rdi back to cpu_state
+    lea rdi, [rsp]
+
+    call loadRegs
+
+    // Restore user flags
+    mov r11, [rsp + RFLAGS_OFST]
+
+    // Restore user pc
+    mov rcx, [rsp + RIP_OFST]
+
+    // Used as scratch reg to avoid modifying rsp directly
+    mov rdi, [rsp + RSP_OFST]
+
+    // Switch back to user thread state
+    swapgs
+
+    /*
+     * We disable interrupts until RFLAGS switches back during sysret
+     * so the user stack isn't scrambled by interrupts. This was suggested
+     * by the Intel SDM.
+     *
+     * It is required to make sure an interrupt that executes between the user
+     * stack being restored and sysret won't mistake the thread as in user mode.
+     *
+     * Generally, interrupts are enabled throughout the
+     * syscall handler because syscalls are executing on behalf of threads,
+     * and threads should be able to be preempted in user or kernel mode
+     * regardless.
+     */
+    cli
+
+    // Restore user stack
+    mov rsp, rdi
+
+    sysret
+
+FUNC_END syscallEntry

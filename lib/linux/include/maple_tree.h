@@ -213,10 +213,7 @@ typedef struct { /* nothing */ } lockdep_map_p;
  * re-allocating and RCU freeing nodes when there is a single user.
  */
 struct maple_tree {
-	union {
-		spinlock_t	ma_lock;
-		lockdep_map_p	ma_external_lock;
-	};
+	spinlock_t	ma_lock;
 	unsigned int	ma_flags;
 	void __rcu      *ma_root;
 };

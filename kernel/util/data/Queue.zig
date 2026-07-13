@@ -11,7 +11,7 @@ pub fn init(queue : *@This()) void {
 }
 
 pub fn empty(queue : *@This()) bool {
-    return queue.head;
+    return queue.head == null;
 }
 
 pub fn push(queue : *@This(), node : *Node) void {

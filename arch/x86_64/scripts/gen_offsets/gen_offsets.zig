@@ -1,5 +1,6 @@
 const std = @import("std");
 const reg = @import("reg");
+const asmLayout = @import("asmLayout");
 
 var buf : [1024]u8 = undefined;
 var writer : std.Io.File.Writer = undefined;
@@ -10,6 +11,8 @@ fn gen_pair(name : []const u8, num : anytype) void {
 
 pub fn main(init: std.process.Init) !void {
     writer = std.Io.File.stdout().writerStreaming(init.io, &buf);
+
+    gen_pair("SYSCALL_STACK_OFST", @offsetOf(asmLayout.PerCpuStart, "syscallStack"));
 
     gen_pair("KERNEL_GS_BASE", reg.KernelGsBase.addr);
     gen_pair("GS_BASE", reg.GsBase.addr);

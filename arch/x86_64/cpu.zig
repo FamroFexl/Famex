@@ -9,6 +9,8 @@ const log = kernel.util.log;
 pub var FP_SAVE_POOL : kernel.mm.slubAlloc.SlubPool = undefined;
 /// Used to initialize FP states for new threads
 pub var FP_INIT : api.cpu.FpuState = undefined;
+/// Used to initialize Cpu states for new threads
+pub var CPU_STATE_INIT : api.cpu.CpuState = undefined;
 /// Use XSave if true, FXSave if false
 pub var XSAVE_ON : bool = false;
 

@@ -326,28 +326,6 @@ fn mapKernelImage(kernel_root_pt : *paging.Ptable) void {
     }
 }
 
-fn mapModules(kernel_root_pt : *paging.Ptable) void {
-    print("  Mapping Kernel Modules\n", .{});
-
-    if (kernel.Limine.module_request.response == null) return;
-
-    var pfe : paging.Pte = paging.PFE_DEFAULTS[0];
-    pfe.setGlobal(0, true);
-
-    for(0..kernel.Limine.mmap_request.response.*.entry_count) |i| {
-        const module = &kernel.Limine.module_request.response.?.modules[i].*;
-
-        const vaddr : memory.Vaddr = memory.Vaddr.asVirt(bin.alignDown(@intFromPtr(module.address), types.SIZE_4KB));
-        const paddr : memory.Paddr = vaddr.toPhys();
-
-        var j : u64 = 0;
-        while (j < bin.alignUp(module.size, types.SIZE_4KB)) : (j += types.SIZE_4KB) {
-            pfe.setEntry(0, .{.val = paddr.val + j});
-            paging.mapBootPage(.{.val = vaddr.val + j}, pfe, 0, kernel_root_pt);
-        }
-    }
-}
-
 fn mapPercpu(kernel_root_pt : *paging.Ptable) void {
     print("  Mapping per-cpu static region\n", .{});
 
@@ -383,6 +361,35 @@ fn mapPercpuDyn() void {
     process.perCpu.dyn_alloc_bmap_lock.init();
 }
 
+fn mapModules() void {
+    print("  Mapping Kernel Modules\n", .{});
+
+    if (kernel.Limine.module_request.response == null) return;
+
+    var pfeDef : paging.Pte = paging.PFE_DEFAULTS[0];
+    pfeDef.setGlobal(0, true);
+
+    for(0..kernel.Limine.module_request.response.?.module_count) |i| {
+        const module = &kernel.Limine.module_request.response.?.modules[i].*;
+        const moduleAddr = memory.Paddr.asPhys(@intFromPtr(kernel.Limine.toPhys(module.address))).toVirt();
+        const moduleSize = bin.alignUp(module.size, types.SIZE_4KB);
+
+        const vaddr : memory.Vaddr = memory.Vaddr.asVirt(bin.alignDown(moduleAddr.val, types.SIZE_4KB));
+
+        var state = kernel.PfeState.create(.MAP, &kernel.kernelProcess.addr_space, vaddr, .asVirt(vaddr.val + moduleSize), .LEVEL_4KB);
+
+        var curAddr = vaddr.toPhys();
+        while (true) {
+            const pfe = state.mapNext() orelse break;
+            // Skip over already mapped pages
+            if (pfe.getEmpty(0) == false) continue;
+            pfe.* = pfeDef;
+            pfe.setEntry(0, curAddr);
+            curAddr.val += types.SIZE_4KB;
+        }
+    }
+}
+
 fn switchToNewPtables() void {
     // Setup paging information
     paging.setup();
@@ -396,21 +403,19 @@ fn switchToNewPtables() void {
     // Setup page metadata
     mapPageMdata(kernel_root_pt.*);
 
+
     // Setup the Higher-Half Direct Map for applicable regions
     mapNewHhdm(kernel_root_pt.*);
 
     // Setup mappings for kernel sections
     mapKernelImage(kernel_root_pt.*);
 
-    // Setup mappings for modules
-    mapModules(kernel_root_pt.*);
-
     // Setup page caches in the per-cpu storage region
     mapPercpu(kernel_root_pt.*);
 
     // Switch to the new page tables
     print("  Switching to new Page Tables\n", .{});
-    _ = paging.switchPageTables(kernel_root_pt.*);
+    _ = kernel_root_pt.*.switchTo();
 }
 
 pub fn setup() void {
@@ -434,7 +439,7 @@ pub fn setup() void {
 
     // We don't want irqs enabling before they should
     for (0..cpu.FEATURES.NUM_CPU_CORES) |i| {
-        kernel.io.irq.irqSaveDepth.getGlobal(i).* = 500;
+        kernel.io.irq.irqSaveDepth.getGlobal(i).* = 1;
     }
 
     // Temporary way to set the cpu data of the bootstrap processor
@@ -452,4 +457,6 @@ pub fn setup() void {
     mapPercpuDyn();
 
     slubAlloc.setup();
+
+    mapModules();
 }

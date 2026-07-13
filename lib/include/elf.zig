@@ -1,11 +1,13 @@
 const std = @import("std");
 
+const builtin = @import("builtin");
+
 pub const ElfHdr = extern struct {
     id : ElfId,                 // ELF identification
     type : ET,                  // Object file type
     machine : MACHINE,          // Machine ID
     version : u32,              // Object file version
-    entry : u32,                // Entry point address
+    entry : u64,                // Entry point address
     ph_off : u64,               // Program header offset
     sh_off : u64,               // Section header offset
     flags : u32,                // Processor-specific flags
@@ -70,7 +72,7 @@ pub const ElfHdr = extern struct {
         AARCH32          = 40,   // AARCH32 (ARM32)
         X86_64           = 62,   // Intel x86-64
         AARCH64          = 183,  // AARCH64 (ARM64)
-        RISCV            = 243   // RISC-V
+        RISCV            = 243,   // RISC-V
     };
 
     /// Check if ELF signature matches
@@ -78,15 +80,27 @@ pub const ElfHdr = extern struct {
         return std.mem.eql(u8, &hdr.id.magic, "\x7fELF");
     }
 
+    pub fn isValid(hdr : *@This()) bool {
+        if (hdr.id.class != .C64 and hdr.id.data != .LSB)
+            return false;
+
+        return hdr.machine == switch (builtin.cpu.arch) {
+            .x86_64 => .X86_64,
+            .aarch64 => .AARCH64,
+            .riscv64 => .RISCV,
+            else => unreachable,
+        };
+    }
+
     /// Get a program header by it's index
     pub fn getPhdrByIndex(hdr : *@This(), num : anytype) ?*ElfPrgHdr {
-        if (num > hdr.ph_num) return null;
+        if (num >= hdr.ph_num) return null;
         return @ptrFromInt(@intFromPtr(hdr) + hdr.ph_off + hdr.ph_ent_size * num);
     }
 
     /// Get a section header by it's index
     pub fn getShdrByIndex(hdr : *@This(), num : anytype) ?*ElfSecHdr {
-        if (num > hdr.sh_num) return null;
+        if (num >= hdr.sh_num) return null;
         return @ptrFromInt(@intFromPtr(hdr) + hdr.sh_off + hdr.sh_ent_size * num);
     }
 
@@ -142,7 +156,9 @@ pub const ElfSecHdr = extern struct {
         write : bool,   // Section contains writable data
         alloc : bool,   // Section is allocated in memory image of program
         execinstr : bool,  // Section contains executable instructions
-        unused3 : u61,
+        unused1 : u24,
+        x86_64Large : bool, // SHF_X86_64_LARGE
+        unused2 : u36,
     };
 };
 
@@ -184,13 +200,13 @@ pub const ElfPrgHdr = extern struct {
 
     /// Program table type
     pub const PT = enum(u32) {
-        NULL,                // Unused entry
-        LOAD,                // Loadable segment
-        DYNAMIC,             // Dynamic linking tables
-        INTERP,              // Program interpreter path name
-        NOTE,                // Note sections
-        SHLIB,               // Reserved
-        PHDR,                // Program header table
+        NULL = 0,                // Unused entry
+        LOAD = 1,                // Loadable segment
+        DYNAMIC = 2,             // Dynamic linking tables
+        INTERP = 3,              // Program interpreter path name
+        NOTE = 4,                // Note sections
+        SHLIB = 5,               // Reserved
+        PHDR = 6,                // Program header table
     };
 
     pub const SegFlag = packed struct(u32) {

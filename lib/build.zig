@@ -12,7 +12,9 @@ pub fn module(b : *std.Build, options : *const std.Build.Module.CreateOptions) *
 
     lib_module.addImport("acpica", acpica.module(b, options));
 
-    lib_module.addImport("linux", linux.module(b, options));
+    const linuxModule = linux.module(b, options);
+    linuxModule.addImport("lib", lib_module);
+    lib_module.addImport("linux", linuxModule);
 
     lib_module.addImport("posix", posix.module(b, options));
 

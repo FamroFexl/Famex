@@ -36,6 +36,8 @@ pub fn build(b: *std.Build) !void {
     lib_module.addImport("kernel", kernel_module);
     lib_module.addImport("arch", arch_api_module);
 
+    try @import("testProc/build.zig").build(b, arch_data.target);
+
     const famex = b.addExecutable(.{
         .name = "famex.elf",
         .root_module = arch_module,

@@ -4,6 +4,8 @@ const std = @import("std");
 
 const maple = @cImport({@cInclude("maple_tree.h");});
 
+const errno = @import("lib").posix.errno;
+
 val : maple.struct_maple_tree,
 
 const MapleTree = @This();
@@ -76,7 +78,7 @@ pub fn insert(tree : *@This(), addr : u64, data : ?*anyopaque) void {
 }
 
 pub fn insertRange(tree : *@This(), first : u64, last : u64, data : ?*anyopaque) void {
-    maple.mtree_insert_range(&tree.val, first, last, data);
+    _ = maple.mtree_insert_range(&tree.val, first, last, data);
 }
 
 pub fn store(tree : *@This(), addr : u64, data : ?*anyopaque) void {
@@ -84,7 +86,7 @@ pub fn store(tree : *@This(), addr : u64, data : ?*anyopaque) void {
 }
 
 pub fn storeRange(tree : *@This(), first : u64, last : u64, data : ?*anyopaque) void {
-    maple.mtree_store_range(&tree.val, first, last, data);
+    _ = maple.mtree_store_range(&tree.val, first, last, data);
 }
 
 pub fn find(tree : *@This(), index : *u64, max : u64) ?*anyopaque {
@@ -125,11 +127,11 @@ pub const MaState = struct {
     }
 
     pub fn lock(state : *@This()) void {
-        maple.spin_lock(&state.val.tree.*.unnamed_0.ma_lock);
+        maple.spin_lock(&state.val.tree.*.ma_lock);
     }
 
     pub fn unlock(state : *@This()) void {
-        maple.spin_unlock(&state.val.tree.*.unnamed_0.ma_lock);
+        maple.spin_unlock(&state.val.tree.*.ma_lock);
     }
 
     pub fn setRange(state : *@This(), start : anytype, end : anytype) void {

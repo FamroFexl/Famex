@@ -11,6 +11,10 @@ pub fn init(this : *@This()) void {
     this.val.raw = 0;
 }
 
+pub fn create() @This() {
+    return .{.val = .init(0)};
+}
+
 pub fn readLock(this : *@This()) void {
     // Non-blocking for multiple readers
     while (true) {

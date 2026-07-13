@@ -38,7 +38,7 @@ fn arch_module(b : *std.Build, options : *std.Build.Module.CreateOptions) *std.B
     x86_module.root_source_file = b.path(cwd ++ "root.zig");
     x86_module.resolved_target = get_target(b);
 
-    const gen_offsets_file = gen_offsets.exec(b, b.path(cwd ++ "registers.zig"),"asm_offsets.h");
+    const gen_offsets_file = gen_offsets.exec(b, b.path(cwd ++ "registers.zig"), b.path("kernel/io/asmLayout.zig"),"asm_offsets.h");
     x86_module.addIncludePath(gen_offsets_file.dirname());
 
     x86_module.addAssemblyFile(b.path(cwd ++ "registers.S"));

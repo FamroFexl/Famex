@@ -70,8 +70,8 @@ fn pop(tree : *@This()) ?*State {
     const stack = (tree.cpuTree.getPeriod() + 1) % 3;
     var node : *util.data.Stack.Node = undefined;
 
-    kernel.ThreadBase.preemptSave(kernel.cThread());
-    defer kernel.ThreadBase.preemptRestore(kernel.cThread());
+    kernel.Thread.preemptSave(kernel.cThread());
+    defer kernel.Thread.preemptRestore(kernel.cThread());
 
     var stacks = tree.stacks.getLocal().*;
     node = stacks[stack].pop() orelse return null;

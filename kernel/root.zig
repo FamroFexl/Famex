@@ -11,6 +11,7 @@ const limine = lib.limine;
 
 comptime {
     _ = io.acpi;
+    _ = pm.syscall.syscall;
 }
 
 pub const Limine = struct {
@@ -45,19 +46,23 @@ pub const Limine = struct {
 pub const irqSave = io.irq.irqSave;
 pub const irqRestore = io.irq.irqRestore;
 pub const inIrq = io.irq.inIrq;
+pub const noIrq = io.irq.noIrq;
 pub const CpuMask = pm.process.CpuMask;
 pub const cpuMaskFull = pm.process.cpuMaskFull;
 pub const kernelProcess = &pm.process.kernelProcess;
 pub const PerCpuDyn = pm.process.PerCpuDyn;
 pub const PerCpuStat = pm.process.PerCpuStat;
 pub const Process = pm.process.Process;
-pub const ThreadBase = pm.process.ThreadBase;
+pub const Thread = pm.process.Thread;
 pub const KThread = pm.process.KThread;
 pub const UThread = pm.process.UThread;
+pub const SmpRequest = io.irq.SmpRequest;
+
 pub const RcuAsync = pm.ipc.rcu.RcuAsync;
 pub const RcuPtr = pm.ipc.rcu.RcuPtr;
 pub const Mutex = pm.ipc.Mutex;
 pub const Semaphore = pm.ipc.Semaphore;
+
 pub const Time = pm.time.Time;
 pub const TimerEvent = pm.time.TimerEvent;
 pub const getUnixClock = pm.time.getUnixClock;
@@ -86,7 +91,6 @@ pub const freePage4k = mm.buddyAlloc.freePage4k;
 pub const SlubPool = mm.slubAlloc.SlubPool;
 pub const SlubPoolTyped = mm.slubAlloc.SlubPoolTyped;
 pub const PfeState = mm.paging.PfeState;
-pub const SmpRequest = io.irq.SmpRequest;
 
 pub const bin = util.binary;
 pub const Spinlock = util.Spinlock;

@@ -45,6 +45,16 @@ pub fn flushAll(info : *kernel.SmpRequest.CallInfo) void {
 
 pub const Ptable = struct {
     pte : [PTE_ENTRIES]Pte,
+
+    /// Switches to this table and returns the old tables
+    pub fn switchTo(this : *@This()) *@This() {
+        const cur : *@This() = arch.paging.getPageTables();
+        if(cur == this) return this;
+
+        arch.paging.setPageTables(this);
+
+        return cur;
+    }
 };
 
 pub const PteCache = enum(u4) {
@@ -99,23 +109,17 @@ pub fn getPtableEntry(addr : memory.Vaddr, level : anytype) u9 {
     return @intCast(bin.getBits(PTE_ENTRY_BITS, PTE_SIZE_BITS + level * PTE_ENTRY_BITS, addr.val));
 }
 
-const PteType = enum {
-    EMPTY,
-    PFE,
-    TABLE
-};
-
-fn getPteType(pte : *Pte, level : anytype) PteType {
-    if(pte.getEmpty(level)) return PteType.EMPTY;
+fn getPteType(pte : *Pte, level : anytype) enum {EMPTY, PFE, TABLE} {
+    if(pte.getEmpty(level)) return .EMPTY;
 
     if (pte.getPresent(level)) {
         if (pte.getPfe(level))
-            return PteType.PFE;
+            return .PFE;
 
-        return PteType.TABLE;
+        return .TABLE;
     }
 
-    return PteType.PFE;
+    return .PFE;
 }
 
 const PageOrder = enum(u8) {
@@ -310,13 +314,13 @@ pub const PfeState = struct {
     iterator : PfeIterator,
     space : *vmm.VmSpace,
 
-    pub fn create(iterator : PfeIterator, space : *vmm.VmSpace, start : memory.Vaddr, end : memory.Vaddr, level : PageLevel) PfeState {
+    pub fn create(comptime iterator : PfeIterator, space : *vmm.VmSpace, start : memory.Vaddr, end : memory.Vaddr, level : PageLevel) PfeState {
         const size = PageLevelToSize[@intFromEnum(level)];
-        const new_start : memory.Vaddr = .{.val = bin.alignUp(start.val, size)};
+        const new_start : memory.Vaddr = .{.val = bin.alignDown(start.val, size)};
         return .{
             .pfe = null,
             .start = new_start,
-            .end = .{.val = bin.alignDown(end.val, size)},
+            .end = .{.val = bin.alignUp(end.val, size)},
             .cur = new_start,
             .level = @intFromEnum(level),
             .walk = blk: {
@@ -333,12 +337,11 @@ pub const PfeState = struct {
     pub fn getNext(state : *@This()) ?*Pte {
         std.debug.assert(state.iterator == .GET);
 
-        state.pfe = pteNext(state, state.level, false);
-        while (state.pfe and getPteType(state.level, state.pfe) != .PFE) {
-            state.pfe = pteNext(state, state.level, false);
+        while (true) {
+            state.pfe = pteNext(state, state.level, false) orelse return null;
+            if (getPteType(state.pfe.?, state.level) == .PFE)
+                return state.pfe;
         }
-
-        return state.pfe;
     }
 
     pub fn mapNext(state : *@This()) ?*Pte {
@@ -400,8 +403,8 @@ pub fn printPtables(root_pt : *Ptable, level : anytype, min : anytype) void {
         const pte : *Pte = &root_pt.pte[i];
 
         switch (getPteType(pte, level)) {
-            PteType.EMPTY => continue :outer,
-            PteType.TABLE => {
+            .EMPTY => continue :outer,
+            .TABLE => {
                 const page : memory.Paddr = pte.getEntry(level);
                 const table : *Ptable = @ptrFromInt(page.toVirt().val);
                 log.printChar(' ', (cpu.FEATURES.PAGE_TABLE_LEVELS - 1 - level) * 4);
@@ -409,7 +412,7 @@ pub fn printPtables(root_pt : *Ptable, level : anytype, min : anytype) void {
                 if (level - 1 >= min)
                     printPtables(table, level - 1, min);
             },
-            PteType.PFE => {
+            .PFE => {
                 const page : memory.Paddr = pte.getEntry(level);
                 log.printChar(' ', (cpu.FEATURES.PAGE_TABLE_LEVELS - 1 - level) * 4);
                 print("Page {d} 0x{X}\n", .{i, page.val});
@@ -437,16 +440,6 @@ pub fn mapBootPage(addr : memory.Vaddr, pte : Pte, level : u8, root_pt : *Ptable
     }
 
     current_pte.* = pte;
-}
-
-// Switches to new table and returns the old tables
-pub fn switchPageTables(new_tables : *Ptable) *Ptable {
-    const cur : *Ptable = arch.paging.getPageTables();
-    if(cur == new_tables) return new_tables;
-
-    arch.paging.setPageTables(new_tables);
-
-    return cur;
 }
 
 pub fn setupRootPt(rootPt : *Ptable) void {

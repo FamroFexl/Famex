@@ -112,6 +112,11 @@
       "root": "generated",
       "public": true,
       "imports": []
+    },
+    {
+      "root": "testProc/main.zig",
+      "public": true,
+      "imports": []
     }
   ],
   "dependencies": []
