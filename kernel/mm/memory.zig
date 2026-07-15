@@ -149,13 +149,12 @@ pub fn vmallocBytes(size : usize) *anyopaque {
     mas.unlock();
 
     // Page mapping
-    var pfeState = paging.PfeState.create(.MAP, vmSpace, area.start, area.end, .LEVEL_4KB);
+    var pfeState = kernel.PfeState(.MAP).create(vmSpace, area.start, area.end, .LEVEL_4KB);
 
     vmSpace.spinlock.lock();
     defer vmSpace.spinlock.unlock();
 
-    while (true) {
-        const pfe = pfeState.mapNext() orelse break;
+    while (pfeState.next()) |pfe| {
         pfe.* = paging.PFE_DEFAULTS[0];
         pfe.setGlobal(0, true);
         pfe.setEntry(0, buddy.allocPage4k());
@@ -184,14 +183,12 @@ pub fn vfreeBytes(addr : *anyopaque) void {
     mas.erase();
     mas.unlock();
 
-    const pfeState = paging.PfeState.create(.UNMAP, vmSpace, area.start, area.end, .LEVEL_4KB);
-
+    const pfeState = kernel.PfeState(.UNMAP).create(vmSpace, area.start, area.end, false, .LEVEL_4KB);
     {
         vmSpace.spinlock.lock();
         defer vmSpace.spinlock.unlock();
 
-        while (true) {
-            const pfe = pfeState.unmapNext(false) orelse break;
+        while (pfeState.next()) |pfe| {
             const entry = pfe.getEntry(0);
             buddy.freePage4k(entry);
         }

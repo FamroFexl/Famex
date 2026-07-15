@@ -269,9 +269,8 @@ pub fn PerCpuDyn(comptime T: type) type {
                 for (0..cpu.FEATURES.NUM_CPU_CORES) |i| {
                     const percpu = @intFromPtr(getGlobalPercpu(*anyopaque, i, 0)) + perCpu.PER_CPU_STARTING_OFFSET.val;
 
-                    var state = paging.PfeState.create(.MAP, &kernelProcess.addr_space, .{.val = percpu + perCpu.cur_offset.val}, .{.val = percpu + last}, .LEVEL_4KB);
-                    while (true) {
-                        const pte = state.mapNext() orelse break;
+                    var state = kernel.PfeState(.MAP).create(&kernelProcess.addr_space, .{.val = percpu + perCpu.cur_offset.val}, .{.val = percpu + last}, .LEVEL_4KB);
+                    while (state.next()) |pte| {
                         pte.* = pfe;
                         pte.setEntry(0, buddy.allocPage4k());
                     }

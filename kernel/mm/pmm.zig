@@ -376,11 +376,10 @@ fn mapModules() void {
 
         const vaddr : memory.Vaddr = memory.Vaddr.asVirt(bin.alignDown(moduleAddr.val, types.SIZE_4KB));
 
-        var state = kernel.PfeState.create(.MAP, &kernel.kernelProcess.addr_space, vaddr, .asVirt(vaddr.val + moduleSize), .LEVEL_4KB);
+        var state = kernel.PfeState(.MAP).create(&kernel.kernelProcess.addr_space, vaddr, .asVirt(vaddr.val + moduleSize), .LEVEL_4KB);
 
         var curAddr = vaddr.toPhys();
-        while (true) {
-            const pfe = state.mapNext() orelse break;
+        while (state.next()) |pfe| {
             // Skip over already mapped pages
             if (pfe.getEmpty(0) == false) continue;
             pfe.* = pfeDef;

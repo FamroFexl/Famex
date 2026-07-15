@@ -394,12 +394,11 @@ pub export fn init() void {
         _ = process.addr_space.tree.storeRange(vmArea.start.val, vmArea.end.val - 1, vmArea);
 
         // TODO something is wrong with pteNext or pteInit that causes it to skip the last page (if end is 0x7000->0x7fff, only up to 0x6000 will be mapped)
-        var mapState = kernel.PfeState.create(.MAP, &process.addr_space, .asVirt(bin.alignDown(vmArea.start.val, types.SIZE_4KB)), .asVirt(bin.alignUp(vmArea.end.val, types.SIZE_4KB) + types.SIZE_4KB), .LEVEL_4KB);
+        var mapState = kernel.PfeState(.MAP).create(&process.addr_space, .asVirt(bin.alignDown(vmArea.start.val, types.SIZE_4KB)), .asVirt(bin.alignUp(vmArea.end.val, types.SIZE_4KB) + types.SIZE_4KB), .LEVEL_4KB);
 
         var pte = kernel.mm.paging.PFE_DEFAULTS[0];
         pte.setUser(0, true);
-        while (true) {
-            const pfe = mapState.mapNext() orelse break;
+        while (mapState.next()) |pfe| {
             if (!pfe.getEmpty(0)) continue;
             pfe.* = pte;
             pfe.setEntry(0, kernel.allocPage4k());
@@ -408,9 +407,8 @@ pub export fn init() void {
         kernel.mm.memory.memcpy(@ptrFromInt(vmArea.start.val), @ptrFromInt(fileAddr.val + phdr.offset), phdr.file_sz);
         kernel.mm.memory.memset(@ptrFromInt(vmArea.start.val + phdr.file_sz), phdr.mem_sz - phdr.file_sz, 0);
 
-        var permState = kernel.PfeState.create(.GET, &process.addr_space, .asVirt(bin.alignDown(vmArea.start.val, types.SIZE_4KB)), .asVirt(bin.alignUp(vmArea.end.val, types.SIZE_4KB) + types.SIZE_4KB), .LEVEL_4KB);
-        while (true) {
-            const pfe = permState.getNext() orelse break;
+        var permState = kernel.PfeState(.GET).create(&process.addr_space, .asVirt(bin.alignDown(vmArea.start.val, types.SIZE_4KB)), .asVirt(bin.alignUp(vmArea.end.val, types.SIZE_4KB) + types.SIZE_4KB), .LEVEL_4KB);
+        while (permState.next()) |pfe| {
             pfe.setRead(0, vmArea.flags.read);
             pfe.setWrite(0, vmArea.flags.write);
             pfe.setExec(0, vmArea.flags.exec);
@@ -431,9 +429,8 @@ pub export fn init() void {
     base.context.init();
     base.context.setPc(hdr.entry);
     base.context.setStack(bin.alignDown(kernel.mm.memory.USER_MEMORY_END.val, 16));
-    var stackState = kernel.PfeState.create(.MAP, &process.addr_space, .asVirt(bin.alignDown(kernel.mm.memory.USER_MEMORY_END.val, types.SIZE_4KB)), .asVirt(bin.alignUp(kernel.mm.memory.USER_MEMORY_END.val, types.SIZE_4KB) + types.SIZE_4KB), .LEVEL_4KB);
-    while (true) {
-        const pfe = stackState.mapNext() orelse break;
+    var stackState = kernel.PfeState(.MAP).create(&process.addr_space, .asVirt(bin.alignDown(kernel.mm.memory.USER_MEMORY_END.val, types.SIZE_4KB)), .asVirt(bin.alignUp(kernel.mm.memory.USER_MEMORY_END.val, types.SIZE_4KB) + types.SIZE_4KB), .LEVEL_4KB);
+    while (stackState.next()) |pfe| {
         pfe.* = kernel.mm.paging.PFE_DEFAULTS[0];
         pfe.setUser(0, true);
         pfe.setEntry(0, kernel.allocPage4k());

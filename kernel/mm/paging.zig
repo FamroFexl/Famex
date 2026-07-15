@@ -18,6 +18,8 @@ const cpu = arch.cpu;
 const log = kernel.util.log;
 const print = log.print;
 
+const paging = @This();
+
 pub const PTE_MAX_DEPTH = 5;
 pub const PFE_MAX_DEPTH = 3;
 
@@ -143,7 +145,7 @@ const PageLevelToSize = [_]usize{
     types.SIZE_128PB,
 };
 
-fn pteInit(state : *PfeState, level : anytype, alloc : bool) ?*Pte {
+fn pteInit(state : *PfeStateData, level : anytype, alloc : bool) ?*Pte {
     const entry = getPtableEntry(state.cur, level);
 
     if (level == state.level)
@@ -189,7 +191,7 @@ fn pteInit(state : *PfeState, level : anytype, alloc : bool) ?*Pte {
     return pte;
 }
 
-fn pteNext(state : *PfeState, level : anytype, alloc : bool) ?*Pte {
+fn pteNext(state : *PfeStateData, level : anytype, alloc : bool) ?*Pte {
     if (!state.init) {
         state.init = true;
         state.pfe = pteInit(state, cpu.FEATURES.PAGE_TABLE_LEVELS - 1, alloc);
@@ -245,9 +247,17 @@ fn pteNext(state : *PfeState, level : anytype, alloc : bool) ?*Pte {
     }
 }
 
-fn pteUnmapNext(state : *PfeState, prior_unmapped : bool) ?Pte {
+fn getNext(this : *PfeStateData) ?*Pte {
+    while (true) {
+        this.pfe = pteNext(this, this.level, false) orelse return null;
+        if (getPteType(this.pfe.?, this.level) == .PFE)
+            return this.pfe;
+    }
+}
+
+fn pteUnmapNext(state : *PfeStateData, prior_unmapped : bool) ?Pte {
     if (!state.init)
-        state.getNext();
+        getNext();
 
     const pte = state.pfe orelse return null;
     const pfe = pte.*;
@@ -255,7 +265,7 @@ fn pteUnmapNext(state : *PfeState, prior_unmapped : bool) ?Pte {
 
     var cur_state = state.*;
 
-    state.getNext();
+    getNext();
 
     // See if any optimizations can be applied before a manual scan.
     var level : u8 = undefined;
@@ -301,69 +311,78 @@ fn pteUnmapNext(state : *PfeState, prior_unmapped : bool) ?Pte {
     return pfe;
 }
 
-const PfeIterator = enum {
-    MAP,
-    UNMAP,
-    GET,
-};
-
-pub const PfeState = struct {
-    pfe : ?*Pte,                     // The current PFE
+const PfeStateData = struct {
+    pfe : ?*Pte = null,             // The current PFE
     cur : memory.Vaddr,             // The address of the current PFE.
     walk : [PTE_MAX_DEPTH]*Ptable,  // Page tables in the walk to the current PFE.
     start : memory.Vaddr,           // Beginning of PFE iteration.
     end : memory.Vaddr,             // End limits of PFE iteration.
     level : u8,                     // The level all mapped, unmapped, and retrieved PFEs will be.
-    init : bool,                    // State has been initialized with first PFE and ptable walk.
-    iterator : PfeIterator,
+    init : bool = false,            // State has been initialized with first PFE and ptable walk.
     space : *vmm.VmSpace,
-
-    pub fn create(comptime iterator : PfeIterator, space : *vmm.VmSpace, start : memory.Vaddr, end : memory.Vaddr, level : PageLevel) PfeState {
-
-        if ((start.val & bin.setBit(63)) ^ (end.val & bin.setBit(63)) == 1)
-            @panic("Attempted to page kernel and user memory in the same state!");
-
-        const size = PageLevelToSize[@intFromEnum(level)];
-        const new_start : memory.Vaddr = .{.val = bin.alignDown(start.val, size)};
-        return .{
-            .pfe = null,
-            .start = new_start,
-            .end = .{.val = bin.alignUp(end.val, size)},
-            .cur = new_start,
-            .level = @intFromEnum(level),
-            .walk = blk: {
-                var walk : [PTE_MAX_DEPTH]*Ptable = undefined;
-                walk[cpu.FEATURES.PAGE_TABLE_LEVELS - 1] = space.rootPt;
-                break :blk walk;
-            },
-            .init = false,
-            .iterator = iterator,
-            .space = space,
-        };
-    }
-
-    pub fn getNext(state : *@This()) ?*Pte {
-        std.debug.assert(state.iterator == .GET);
-
-        while (true) {
-            state.pfe = pteNext(state, state.level, false) orelse return null;
-            if (getPteType(state.pfe.?, state.level) == .PFE)
-                return state.pfe;
-        }
-    }
-
-    pub fn mapNext(state : *@This()) ?*Pte {
-        std.debug.assert(state.iterator == .MAP);
-
-        return pteNext(state, state.level, true);
-    }
-
-    pub fn unmapNext(state : *@This(), prior_unmapped : bool) ?Pte {
-        std.debug.assert(state.iterator == .UNMAP);
-
-        return pteUnmapNext(state, prior_unmapped);
-    }
 };
+
+fn createPfeStateData(space : *vmm.VmSpace, start : memory.Vaddr, end : memory.Vaddr, level : PageLevel) PfeStateData {
+    if ((start.val & bin.setBit(63)) ^ (end.val & bin.setBit(63)) == 1)
+        @panic("Attempted to page kernel and user memory in the same state!");
+
+    const size = PageLevelToSize[@intFromEnum(level)];
+    const new_start : memory.Vaddr = .{.val = bin.alignDown(start.val, size)};
+    return .{
+        .start = new_start,
+        .end = .{.val = bin.alignUp(end.val, size)},
+        .cur = new_start,
+        .level = @intFromEnum(level),
+        .walk = blk: {
+            var walk : [PTE_MAX_DEPTH]*Ptable = undefined;
+            walk[cpu.FEATURES.PAGE_TABLE_LEVELS - 1] = space.rootPt;
+            break :blk walk;
+        },
+        .space = space,
+    };
+}
+
+pub fn PfeState(comptime iterator : enum {MAP, UNMAP, GET}) type {
+    return switch (iterator) {
+        .GET => struct {
+            data : PfeStateData,
+
+            pub fn create(space : *vmm.VmSpace, start : memory.Vaddr, end : memory.Vaddr, level : PageLevel) @This() {
+                return .{ .data = createPfeStateData(space, start, end, level), };
+            }
+
+            pub fn next(this : *@This()) ?*Pte {
+                return getNext(&this.data);
+            }
+        },
+        .MAP => struct {
+            data : PfeStateData,
+
+            pub fn create(space : *vmm.VmSpace, start : memory.Vaddr, end : memory.Vaddr, level : PageLevel) @This() {
+                return .{ .data = createPfeStateData(space, start, end, level), };
+            }
+
+            pub fn next(this : *@This()) ?*Pte {
+                return pteNext(&this.data, this.data.level, true);
+            }
+        },
+        .UNMAP => struct {
+            data : PfeStateData,
+            priorUnmapped : bool,
+
+            pub fn create(space : *vmm.VmSpace, start : memory.Vaddr, end : memory.Vaddr, priorUnmapped : bool, level : PageLevel) @This() {
+                return .{
+                    .data = createPfeStateData(space, start, end, level),
+                    .priorUnmapped = priorUnmapped,
+                };
+            }
+
+            pub fn next(this : *@This()) ?Pte {
+                return pteUnmapNext(&this.data, this.priorUnmapped);
+            }
+        }
+    };
+}
 
 pub fn mmioMap(start : memory.Paddr, size : usize, cache : PteCache) memory.Vaddr {
     var pstart : memory.Paddr = .asPhys(bin.alignDown(start.val, types.SIZE_4KB));
@@ -391,13 +410,12 @@ pub fn mmioMap(start : memory.Paddr, size : usize, cache : PteCache) memory.Vadd
 
     mas.unlock();
 
-    var pfeState = PfeState.create(.MAP, &kernel.kernelProcess.addr_space, vstart, .asVirt(vstart.val + sizeAligned), .LEVEL_4KB);
+    var pfeState = PfeState(.MAP).create(&kernel.kernelProcess.addr_space, vstart, .asVirt(vstart.val + sizeAligned), .LEVEL_4KB);
 
     kernel.kernelProcess.addr_space.spinlock.lock();
     defer kernel.kernelProcess.addr_space.spinlock.unlock();
 
-    while (true) {
-        const pfe = pfeState.mapNext() orelse break;
+    while (pfeState.next()) |pfe| {
         pfe.* = PFE_DEFAULTS[0];
         pfe.setCache(0, cache);
         pfe.setEntry(0, pstart);
