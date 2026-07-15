@@ -124,7 +124,7 @@ pub const Thread = struct {
     pub fn yield(this : *@This()) void { kernel.noIrq();
         std.debug.assert(!kernel.irqEnabled());
 
-        const scheduler = &sched.schedData.getLocal().sched[@intFromEnum(this.sched.policy)];
+        const scheduler = &sched.schedData.getLocal().sched.get(this.sched.policy);
         scheduler.onYield(scheduler, this);
         sched.switchThread();
     }
@@ -132,13 +132,13 @@ pub const Thread = struct {
     pub fn sleep(this : *@This()) void { kernel.noIrq();
         this.state = .INTERRUPTABLE;
 
-        const scheduler = &sched.schedData.getLocal().sched[@intFromEnum(this.sched.policy)];
+        const scheduler = &sched.schedData.getLocal().sched.get(this.sched.policy);
         scheduler.onSleep(scheduler, this);
         sched.switchThread();
     }
 
     pub fn wake(this : *@This()) void { kernel.noIrq();
-        const scheduler = &sched.schedData.getLocal().sched[@intFromEnum(this.sched.policy)];
+        const scheduler = &sched.schedData.getLocal().sched.get(this.sched.policy);
         scheduler.onWake(scheduler, this);
 
         this.state = .RUNNING;
@@ -341,9 +341,7 @@ pub fn addUtime() void {
     cThread.timeLock.writeUnlock();
 }
 
-pub export fn inKmode(state : *kernel.CpuState) bool {
-    return state.getStack() >= mem.KERNEL_MEMORY.val;
-}
+pub extern fn inKmode(state : *kernel.CpuState) callconv(.c) bool;
 
 fn setupKernelProc() void {
     kernelProcess.pid = 0;

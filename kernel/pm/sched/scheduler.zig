@@ -15,29 +15,26 @@ pub const Policy = enum(u8) {
 pub const Scheduler = struct {
     policy : Policy,
     data : *anyopaque,
-    enqueue : *const fn (*@This(), *kernel.Thread) void,
-    dequeue : *const fn (*@This(), *kernel.Thread) void,
-    onSleep : *const fn (*@This(), *kernel.Thread) void,
-    onWake : *const fn (*@This(), *kernel.Thread) void,
-    onYield : *const fn (*@This(), *kernel.Thread) void,
-    onPreempt : *const fn (*@This(), *kernel.Thread) void,
-    pickNext : *const fn (*@This()) ?*kernel.Thread,
-    getTimeslice : *const fn (*@This(), *kernel.Thread) ?kernel.Time,
-    setPriority : *const fn(*@This(), *kernel.Thread, anytype) void,
+    enqueue : *const fn (*const @This(), *kernel.Thread) void,
+    dequeue : *const fn (*const @This(), *kernel.Thread) void,
+    onSleep : *const fn (*const @This(), *kernel.Thread) void,
+    onWake : *const fn (*const @This(), *kernel.Thread) void,
+    onYield : *const fn (*const @This(), *kernel.Thread) void,
+    onPreempt : *const fn (*const @This(), *kernel.Thread) void,
+    pickNext : *const fn (*const @This()) ?*kernel.Thread,
+    getTimeslice : *const fn (*const @This(), *kernel.Thread) ?kernel.Time,
+    setPriority : *const fn(*const @This(), *kernel.Thread, anytype) void,
 };
 
 const SchedData = struct {
     spinlock : kernel.util.Spinlock,
-    sched : [std.meta.fields(Policy).len]Scheduler,
+    sched : std.EnumArray(Policy, Scheduler),
     idle : kernel.pm.process.KThread,
     current : *kernel.pm.process.Thread,
-    flags : Flags,
-    // kstacktop
-    timer : kernel.TimerEvent,  // Scheduler tick timer
-
-    const Flags = packed struct {
+    flags : packed struct {
         reschedule : bool,
-    };
+    },
+    timer : kernel.TimerEvent,  // Scheduler tick timer
 };
 
 fn rescheduleTimer(event : *kernel.TimerEvent) void {
@@ -57,6 +54,7 @@ pub fn switchThread() void { kernel.noIrq();
     cThread().migrateSave();
 
     var state : kernel.CpuState = undefined;
+
 
     cThread().flags.loaded = false;
 
@@ -78,6 +76,7 @@ pub fn switchThread() void { kernel.noIrq();
         schedule(&state);
 
         // TODO Check for signals with the current thread
+
         if (!state.inKmode())
             kernel.pm.ipc.rcu.enterEqs();
 
@@ -95,7 +94,6 @@ fn loadThread(new : *kernel.Thread, state : *kernel.CpuState) void {
     const data = schedData.getLocal();
 
     data.current.context = state.*;
-
     data.current = new;
     state.* = new.context;
 
@@ -108,7 +106,7 @@ fn loadThread(new : *kernel.Thread, state : *kernel.CpuState) void {
     }
 
     // Notifies inline saved threads which path to take
-        new.flags.loaded = true;
+    new.flags.loaded = true;
 
     _ = new.owner.addr_space.rootPt.switchTo();
 }
@@ -128,7 +126,7 @@ pub fn schedule(state : *kernel.CpuState) void { kernel.noIrq();
         defer data.spinlock.unlock();
 
         for (0..std.meta.fields(Policy).len) |i| {
-            const sched = &data.sched[i];
+            const sched = &data.sched.get(@enumFromInt(i));
 
             if (sched.pickNext(sched)) |thread| {
                 next = thread;
@@ -137,11 +135,23 @@ pub fn schedule(state : *kernel.CpuState) void { kernel.noIrq();
         }
     }
 
-    loadThread(next, state);
+    if (next != cThread()) {
+        loadThread(next, state);
+    }
 
     if (timeslice) |time| {
         data.timer.reset(time, false);
     }
+}
+
+fn createIdle(idle : *kernel.KThread) void {
+    idle.* = .{.base = .{
+        .owner = kernel.kernelProcess,
+    }};
+    idle.base.context.init();
+    idle.base.context.setPc(@intFromPtr(&cpu.idleEntry));
+    idle.base.context.setStack(kernel.mm.memory.KERNEL_MEMORY.val);
+    idle.base.sched.policy = .IDLE;
 }
 
 pub fn setup() void {
@@ -149,22 +159,17 @@ pub fn setup() void {
     for (0..kernel.CPU_FEATURES.NUM_CPU_CORES) |i| {
         const localData = schedData.getGlobal(i);
 
-        const idle = &localData.idle;
-        //idle.base.tid = alloc id
-        idle.base.owner = kernel.kernelProcess;
-        idle.base.context.setPc(@intFromPtr(&cpu.idleEntry));
-        idle.base.context.setStack(kernel.mm.memory.KERNEL_MEMORY.val);
-
-        localData.current = &idle.base;
+        createIdle(&localData.idle);
+        localData.current = &localData.idle.base;
 
         localData.flags.reschedule = false;
         localData.spinlock.init();
 
         localData.timer.init(.MONOTONIC, .zero(), rescheduleTimer);
 
-        localData.sched[@intFromEnum(Policy.FIFO)] = @import("Fifo.zig").getScheduler();
-        localData.sched[@intFromEnum(Policy.RR)] = @import("RoundRobin.zig").getScheduler();
-        localData.sched[@intFromEnum(Policy.OTHER)] = @import("Eevdf.zig").getScheduler();
-        localData.sched[@intFromEnum(Policy.IDLE)] = @import("Idle.zig").getScheduler();
+        localData.sched.set(.FIFO, @import("Fifo.zig").getScheduler());
+        localData.sched.set(.RR, @import("RoundRobin.zig").getScheduler());
+        localData.sched.set(.OTHER, @import("Eevdf.zig").getScheduler());
+        localData.sched.set(.IDLE, @import("Idle.zig").getScheduler());
     }
 }

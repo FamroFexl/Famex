@@ -5,8 +5,6 @@
 
 .section .entry.text, "ax"
 
-.extern inKmode
-
 .macro FUNC name
 .globl \name
 .type \name, @function
@@ -19,6 +17,17 @@
 
 // return RAX
 // arguments RDI, RSI, RDX, RCX, R8, R9
+
+FUNC inKmode
+    mov rdi, [rdi + RSP_OFST]
+    test rdi, rdi
+    js end
+        mov rax, 0
+        ret
+    end:
+    mov rax, 1
+    ret
+FUNC_END inKmode
 
 FUNC getCr0
     mov rax, cr0
@@ -339,24 +348,18 @@ FUNC saveState
 
     ret
 FUNC_END saveState
-
+.globl bpoint
+.globl bpoint2
 FUNC loadState
     // Setup interrupt frame for return
+    bpoint2:
 
-    // Save stack
-    mov rsi, rsp
-    and rsp, -16
     push rdi
-    push rsi
 
     // Stack: cpu_state, old_rsp
 
     // RDI contains cpu_state, as required by in_kmode
     call inKmode
-
-    // Restore stack
-    pop rsi
-    mov rsp, rsi
 
     // Stack: cpu_state
 
@@ -384,6 +387,7 @@ FUNC loadState
 
     // Push RFLAGS
     mov rdx, [rdi + RFLAGS_OFST]
+
     push rdx
 
     // Push correct Code Segment
@@ -421,7 +425,8 @@ FUNC loadState
 
     add rsp, 8
 
-    // Stack: data_seg, rsp, rflags, code_seg, rip
+    bpoint:
 
+    // Stack: data_seg, rsp, rflags, code_seg, rip
     iretq
 FUNC_END loadState

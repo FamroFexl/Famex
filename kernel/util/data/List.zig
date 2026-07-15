@@ -28,11 +28,13 @@ pub fn insertBack(list : *@This(), node : *Node) void {
     list.prev = node;
 }
 
-pub fn front(list : *@This()) *Node {
+pub fn front(list : *@This()) ?*Node {
+    if (list.empty()) return null;
     return list.next;
 }
 
-pub fn back(list : *@This()) *Node {
+pub fn back(list : *@This()) ?*Node {
+    if (list.empty()) return null;
     return list.prev;
 }
 
@@ -42,15 +44,17 @@ pub fn remove(list : *@This(), node : *Node) void {
     node.prev.next = node.next;
 }
 
-pub fn removeFront(list : *@This()) *Node {
+pub fn removeFront(list : *@This()) ?*Node {
     const next = list.next;
+    if (list.empty()) return null;
     remove(list, list.next);
 
     return next;
 }
 
-pub fn removeBack(list : *@This()) *Node {
+pub fn removeBack(list : *@This()) ?*Node {
     const prev = list.prev;
+    if (list.empty()) return null;
     remove(list, list.prev);
 
     return prev;
@@ -88,7 +92,7 @@ pub fn at(list : *@This(), index : usize) ?*Node {
     return null;
 }
 
-pub fn size(list : *@This()) usize {
+pub fn len(list : *@This()) usize {
     var next = list.next;
     var i = 0;
     while (next != list.prev) : (next = next.next) {

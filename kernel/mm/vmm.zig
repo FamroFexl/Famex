@@ -15,6 +15,10 @@ pub const VmArea = struct {
 
     const AreaType = enum {
         VMALLOC,
+        MMIO,
+        USER_PROG,
+        USER_STACK,
+        USER_HEAP,
     };
 
     const Flags = packed struct {

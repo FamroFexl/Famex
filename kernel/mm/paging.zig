@@ -162,6 +162,8 @@ fn pteInit(state : *PfeState, level : anytype, alloc : bool) ?*Pte {
 
                 pte.?.* = PTE_DEFAULTS[level];
                 pte.?.setEntry(level, page);
+                // Permissions are determined at frame, not table
+                pte.?.setUser(level, true);
 
                 state.walk[level - 1] = cast.toPtr(*Ptable, page.toVirt().ptr());
 
@@ -229,6 +231,8 @@ fn pteNext(state : *PfeState, level : anytype, alloc : bool) ?*Pte {
 
                 pte.* = PTE_DEFAULTS[level];
                 pte.setEntry(level, page);
+                // Permissions are determined at frame, not table
+                pte.setUser(level, true);
             },
             .TABLE => page = pte.getEntry(level),
             .PFE => continue,
@@ -315,6 +319,10 @@ pub const PfeState = struct {
     space : *vmm.VmSpace,
 
     pub fn create(comptime iterator : PfeIterator, space : *vmm.VmSpace, start : memory.Vaddr, end : memory.Vaddr, level : PageLevel) PfeState {
+
+        if ((start.val & bin.setBit(63)) ^ (end.val & bin.setBit(63)) == 1)
+            @panic("Attempted to page kernel and user memory in the same state!");
+
         const size = PageLevelToSize[@intFromEnum(level)];
         const new_start : memory.Vaddr = .{.val = bin.alignDown(start.val, size)};
         return .{
@@ -368,6 +376,7 @@ pub fn mmioMap(start : memory.Paddr, size : usize, cache : PteCache) memory.Vadd
     area.start = vstart;
     area.end = vend;
     area.flags.reserved = true;
+    area.areaType = .MMIO;
 
     var mas = lib.linux.MapleTree.MaState.create(&kernel.kernelProcess.addr_space.tree, vstart.val, vstart.val);
     mas.lock();

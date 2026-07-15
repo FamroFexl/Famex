@@ -27,7 +27,7 @@ pub fn main(init: std.process.Init) !void {
     gen_pair("CS_0", @offsetOf(reg.Gdtr.Layout, "kmode_code") | 0);
     gen_pair("SS_0", @offsetOf(reg.Gdtr.Layout, "kmode_data") | 0);
     gen_pair("CS_3", @offsetOf(reg.Gdtr.Layout, "umode_code") | 3);
-    gen_pair("SS_3", @offsetOf(reg.Gdtr.Layout, "umode_code") | 3);
+    gen_pair("SS_3", @offsetOf(reg.Gdtr.Layout, "umode_data") | 3);
 
     gen_pair("INT_SFRAME_CS", @offsetOf(reg.IrqFrame, "cs"));
     gen_pair("INT_SFRAME_SS", @offsetOf(reg.IrqFrame, "ss"));

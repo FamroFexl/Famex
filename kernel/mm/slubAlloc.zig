@@ -68,7 +68,7 @@ const Slab = struct {
 
             // Max free slabs has been reached, release the LRU free slab
             if (pool.cur_slabs_empty == pool.max_slabs_empty) {
-                const old_slab : *Slab = @fieldParentPtr("link", pool.slabs_empty.removeBack());
+                const old_slab : *Slab = @fieldParentPtr("link", pool.slabs_empty.removeBack().?);
 
                 pool.spinlock.unlock();
                 old_slab.free();
@@ -222,11 +222,11 @@ pub const SlubPool = struct {
                 pool.slabs_full.insertFront(&slab.link);
 
                 if (!pool.slabs_partial.empty()) {
-                    slab = @fieldParentPtr("link", pool.slabs_partial.removeFront());
+                    slab = @fieldParentPtr("link", pool.slabs_partial.removeFront().?);
                     pool.spinlock.unlock();
                 }
                 else if (!pool.slabs_empty.empty()) {
-                    slab = @fieldParentPtr("link", pool.slabs_empty.removeFront());
+                    slab = @fieldParentPtr("link", pool.slabs_empty.removeFront().?);
                     pool.spinlock.unlock();
                 }
                 else {

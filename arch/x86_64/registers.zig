@@ -62,7 +62,7 @@ pub const CpuState = struct {
 
     /// Get a state's flags
     pub fn getFlags(state : *@This()) u64 {
-        return state.rflags;
+        return @bitCast(state.rflags);
     }
 
     /// Set a state's flags
@@ -96,9 +96,7 @@ pub const CpuState = struct {
         };
     }
 
-    pub fn inKmode(state : *@This()) bool {
-        return if (is_kernel) @import("kernel").pm.process.inKmode(state) else false;
-    }
+    pub const inKmode = if (is_kernel) @import("kernel").pm.process.inKmode else void;
 
     pub fn init(state : *@This()) void {
         if (is_kernel) state.* = @import("arch").cpu.CPU_STATE_INIT;

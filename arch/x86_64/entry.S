@@ -18,7 +18,7 @@
 .extern interruptVectorHandler
 
 // Used to determine if a thread is in kernel mode
-.extern inKmode
+.extern isKmodeStack
 
 .extern saveRegs
 .extern loadRegs
@@ -135,20 +135,7 @@ FUNC irqEntry
     // RDI contains cpu_state, as required by in_kmode
     lea rdi, [rsp]
 
-    // Save stack
-    mov rsi, rsp
-    and rsp, -16
-    push rsi
-
-    // Stack: irq_frame, irq_num, cpu_state, old_rsp
-
     call inKmode
-
-    // Restore stack
-    pop rsi
-    mov rsp, rsi
-
-    // Stack: irq_frame, irq_num, cpu_state
 
     // Set cpu_state address for restore_regs
     lea rdi, [rsp]

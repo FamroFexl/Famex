@@ -143,6 +143,7 @@ fn setupFp() void {
     // Setup default cpu state
     kernel.memset(&cpu.CPU_STATE_INIT, @sizeOf(api.cpu.CpuState), 0);
     cpu.CPU_STATE_INIT.rflags.irq_enable = true;
+    cpu.CPU_STATE_INIT.rflags.set1 = 1;
 }
 
 /// Only one GDT for all cores
@@ -276,7 +277,7 @@ fn smpCpuInit(smp_info : *limine.LimineMpInfoX86) void {
 
     reg.Gdtr.set(&GDTR);
 
-    //reg.Idtr.set(&IDTR);
+    reg.Idtr.set(&IDTR);
 
     reg.Tss.set(@intCast(@sizeOf(reg.Gdtr.Layout) + cpuId * @sizeOf(reg.TssDesc)));
 
@@ -340,7 +341,6 @@ pub export fn init() void {
 
     setupIdt();
 
-
     setupSmp(true);
 
     acpi.setupTables();
@@ -373,13 +373,19 @@ pub export fn init() void {
     process.addr_space.tree.init(.{});
 
     // Setup headers
+    var execStack = false;
     for (0..hdr.ph_num) |i| {
         const phdr = hdr.getPhdrByIndex(i) orelse break;
-        if (phdr.type != .LOAD) continue;
+        if (phdr.type != .LOAD) {
+            if (phdr.type == .GNU_STACK)
+                execStack = phdr.flags.execute;
+            continue;
+        }
 
         const vmArea = kernel.pmalloc(kernel.mm.vmm.VmArea);
         vmArea.start = .asVirt(phdr.vaddr);
         vmArea.end = .asVirt(phdr.vaddr + phdr.mem_sz);
+        vmArea.areaType = .USER_PROG;
         vmArea.flags = .{
             .exec = phdr.flags.execute,
             .read = phdr.flags.read,
@@ -390,7 +396,8 @@ pub export fn init() void {
         // TODO something is wrong with pteNext or pteInit that causes it to skip the last page (if end is 0x7000->0x7fff, only up to 0x6000 will be mapped)
         var mapState = kernel.PfeState.create(.MAP, &process.addr_space, .asVirt(bin.alignDown(vmArea.start.val, types.SIZE_4KB)), .asVirt(bin.alignUp(vmArea.end.val, types.SIZE_4KB) + types.SIZE_4KB), .LEVEL_4KB);
 
-        const pte = kernel.mm.paging.PFE_DEFAULTS[0];
+        var pte = kernel.mm.paging.PFE_DEFAULTS[0];
+        pte.setUser(0, true);
         while (true) {
             const pfe = mapState.mapNext() orelse break;
             if (!pfe.getEmpty(0)) continue;
@@ -404,7 +411,6 @@ pub export fn init() void {
         var permState = kernel.PfeState.create(.GET, &process.addr_space, .asVirt(bin.alignDown(vmArea.start.val, types.SIZE_4KB)), .asVirt(bin.alignUp(vmArea.end.val, types.SIZE_4KB) + types.SIZE_4KB), .LEVEL_4KB);
         while (true) {
             const pfe = permState.getNext() orelse break;
-            pfe.setUser(0, true);
             pfe.setRead(0, vmArea.flags.read);
             pfe.setWrite(0, vmArea.flags.write);
             pfe.setExec(0, vmArea.flags.exec);
@@ -424,9 +430,32 @@ pub export fn init() void {
     };
     base.context.init();
     base.context.setPc(hdr.entry);
-    base.context.setStack(kernel.mm.memory.USER_MEMORY_END.val);
-
-    print("after", .{});
-    while(true) {
+    base.context.setStack(bin.alignDown(kernel.mm.memory.USER_MEMORY_END.val, 16));
+    var stackState = kernel.PfeState.create(.MAP, &process.addr_space, .asVirt(bin.alignDown(kernel.mm.memory.USER_MEMORY_END.val, types.SIZE_4KB)), .asVirt(bin.alignUp(kernel.mm.memory.USER_MEMORY_END.val, types.SIZE_4KB) + types.SIZE_4KB), .LEVEL_4KB);
+    while (true) {
+        const pfe = stackState.mapNext() orelse break;
+        pfe.* = kernel.mm.paging.PFE_DEFAULTS[0];
+        pfe.setUser(0, true);
+        pfe.setEntry(0, kernel.allocPage4k());
+        pfe.setExec(0, execStack);
     }
+
+    // Add stack area to tree
+    // const stackArea = kernel.pmalloc(kernel.mm.vmm.VmArea);
+    // stackArea.areaType = .USER_STACK
+    //_ = process.addr_space.tree.storeRange(vmArea.start.val, vmArea.end.val - 1, vmArea);
+
+    mainThread.base.sched.policy = .FIFO;
+    mainThread.base.sched.priority = 0;
+
+    const sched = &kernel.schedData.getLocal().sched.get(.FIFO);
+    sched.enqueue(sched, &mainThread.base);
+
+    //const fcr = cast.toPtr([*]u8, mainThread.base.context.rip);
+    //print("{}\n", .{fcr[0]});
+    //kernel.schedData.getLocal().idle.base.context.load();
+    mainThread.base.context.load();
+    //kernel.pm.sched.scheduler.switchThread();
+
+
 }

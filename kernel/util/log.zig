@@ -61,6 +61,15 @@ pub fn printChar(char : u8, num : u8) void {
     printChars(&buf, num);
 }
 
+pub fn printMem(ptr : *anyopaque, comptime size : type, count : usize) void {
+    const out : [*]size = @ptrCast(@alignCast(ptr));
+
+    const addr = @intFromPtr(ptr);
+    for (0..count) |i| {
+        print("0x{x}: 0x{x:0>16}\n", .{addr + i * @sizeOf(size), out[i]});
+    }
+}
+
 pub fn panic(comptime str : []const u8, args: anytype) void {
     print(str, args);
     //unreachable;

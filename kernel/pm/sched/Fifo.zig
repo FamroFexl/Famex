@@ -32,7 +32,7 @@ pub fn getFifo(data : *anyopaque) *@This() {
     return cast.toPtr(*@This(), data);
 }
 
-pub fn enqueue(sched : *scheduler.Scheduler, thread : *kernel.Thread) void {
+pub fn enqueue(sched : *const scheduler.Scheduler, thread : *kernel.Thread) void {
     const this = getFifo(sched.data);
 
     const priority = thread.sched.priority;
@@ -43,7 +43,7 @@ pub fn enqueue(sched : *scheduler.Scheduler, thread : *kernel.Thread) void {
     this.priority[priority].insertBack(&thread.schedLink);
 }
 
-pub fn dequeue(sched : *scheduler.Scheduler, thread : *kernel.Thread) void {
+pub fn dequeue(sched : *const scheduler.Scheduler, thread : *kernel.Thread) void {
     const this = getFifo(sched.data);
 
     const priority = thread.sched.priority;
@@ -56,15 +56,15 @@ pub fn dequeue(sched : *scheduler.Scheduler, thread : *kernel.Thread) void {
     this.priority[priority].remove(&thread.schedLink);
 }
 
-pub fn onSleep(sched : *scheduler.Scheduler, thread : *kernel.Thread) void {
+pub fn onSleep(sched : *const scheduler.Scheduler, thread : *kernel.Thread) void {
     dequeue(sched, thread);
 }
 
-pub fn onWake(sched : *scheduler.Scheduler, thread : *kernel.Thread) void {
+pub fn onWake(sched : *const scheduler.Scheduler, thread : *kernel.Thread) void {
     enqueue(sched, thread);
 }
 
-pub fn onYield(sched : *scheduler.Scheduler, thread : *kernel.Thread) void {
+pub fn onYield(sched : *const scheduler.Scheduler, thread : *kernel.Thread) void {
     const this = getFifo(sched.data);
 
     const priority = thread.sched.priority;
@@ -78,37 +78,38 @@ pub fn onYield(sched : *scheduler.Scheduler, thread : *kernel.Thread) void {
     list.insertBack(&thread.schedLink);
 }
 
-pub fn onPreempt(sched : *scheduler.Scheduler, thread : *kernel.Thread) void {
+pub fn onPreempt(sched : *const scheduler.Scheduler, thread : *kernel.Thread) void {
     _ = sched;
     _ = thread;
     @panic("FIFO threads cannot be preempted!");
 }
 
-pub fn pickNext(sched : *scheduler.Scheduler) ?*kernel.Thread {
+pub fn pickNext(sched : *const scheduler.Scheduler) ?*kernel.Thread {
     const this = getFifo(sched.data);
 
-    var i = this.priority.len;
+    var i = this.priority.len - 1;
 
     this.spinlock.lock();
     defer this.spinlock.unlock();
 
     while (i > 0) {
-        var prio = this.priority[i];
-        if (!prio.empty())
-            return scheduler.threadFromSched(prio.front());
+        var prio = &this.priority[i];
+        if (!prio.empty()) {
+            return scheduler.threadFromSched(prio.front().?);
+        }
 
         i -= 1;
     }
     return null;
 }
 
-pub fn getTimeslice(sched : *scheduler.Scheduler, thread : *kernel.Thread) ?kernel.Time {
+pub fn getTimeslice(sched : *const scheduler.Scheduler, thread : *kernel.Thread) ?kernel.Time {
     _ = sched;
     _ = thread;
     return null;
 }
 
-pub fn setPriority(sched : *scheduler.Scheduler, thread : *kernel.Thread, newPriority : anytype) void {
+pub fn setPriority(sched : *const scheduler.Scheduler, thread : *kernel.Thread, newPriority : anytype) void {
     const this = getFifo(sched.data);
 
     const priority = thread.sched.priority;

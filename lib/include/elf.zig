@@ -156,9 +156,7 @@ pub const ElfSecHdr = extern struct {
         write : bool,   // Section contains writable data
         alloc : bool,   // Section is allocated in memory image of program
         execinstr : bool,  // Section contains executable instructions
-        unused1 : u24,
-        x86_64Large : bool, // SHF_X86_64_LARGE
-        unused2 : u36,
+        unused1 : u61,
     };
 };
 
@@ -207,6 +205,7 @@ pub const ElfPrgHdr = extern struct {
         NOTE = 4,                // Note sections
         SHLIB = 5,               // Reserved
         PHDR = 6,                // Program header table
+        GNU_STACK = 0x6474e551,  // Specifies if stack is executable in flags.execute only
     };
 
     pub const SegFlag = packed struct(u32) {
@@ -214,46 +213,5 @@ pub const ElfPrgHdr = extern struct {
         write : bool,   // Write permission
         read : bool,    // Read permission
         unused3 : u29,
-    };
-};
-
-pub const ElfDynTblEntry = extern struct {
-    type : DT,   // Dynamic table entry type
-    entry : packed union {
-        val : u64,          // Used for integer values
-        ptr : u64,          // Used for virtual addresses
-    },
-
-    /// Dynamic table type
-    pub const DT = enum(i64) {
-        NULL,                // Marks a dynamic array end
-        NEEDED,              // String table offset of a needed library name
-        PLTRELSZ,            // Procedure linkage table total size in bytes
-        PLTGOT,              // Processor-dependent linkage table associated address
-        HASH,                // Symbol hash table address
-        STRTAB,              // Dynamic string table address
-        SYMTAB,              // Dynamic symbol table address
-        RELA,                // elf_rela_t table address
-        RELASZ,              // elf_rela_t table total size
-        RELAENT,             // elf_rela_t table entry size
-        STRSZ,               // String table total size
-        SYMENT,              // elf_sym_tbl_t entry size
-        INIT,                // Initialization function address
-        FINI,                // Termination function address
-        SONAME,              // String table offset of this shared object's name
-        RPATH,               // String table offset of a shared library search path string
-        SYMBOLIC,            //
-        REL,                 // elf_rel_t table address
-        RELSZ,               // elf_rel_t table total size
-        RELENT,              // elf_rel_t table entry size
-        PLTREL,              // Relocation entry type used for procedure linkage
-        DEBUG,               // Reserved for debugger
-        TEXTDEL,             // Relocation table contains non-writable segments
-        JMPREL,              // Procedure linkage table relocations address
-        BIND_NOW,            // All relocations for this object should be processed before transferring control to the program
-        INIT_ARRAY,          // Pointer to a pointer array of initialization functions
-        FINI_ARRAY,          // Pointer to a pointer array of termination functions
-        INIT_ARRAYSZ,        // Size of the pointer array of initialization functions
-        FINI_ARRAYSZ,        // Size of the pointer array of termination functions
     };
 };

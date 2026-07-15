@@ -19,48 +19,48 @@ pub fn getScheduler() scheduler.Scheduler {
     };
 }
 
-fn enqueue(sched : *scheduler.Scheduler, thread : *kernel.Thread) void {
+fn enqueue(sched : *const scheduler.Scheduler, thread : *kernel.Thread) void {
     _ = sched;
     _ = thread;
 }
 
-fn dequeue(sched : *scheduler.Scheduler, thread : *kernel.Thread) void {
+fn dequeue(sched : *const scheduler.Scheduler, thread : *kernel.Thread) void {
     _ = sched;
     _ = thread;
 }
 
-fn onSleep(sched : *scheduler.Scheduler, thread : *kernel.Thread) void {
+fn onSleep(sched : *const scheduler.Scheduler, thread : *kernel.Thread) void {
     _ = sched;
     _ = thread;
 }
 
-fn onWake(sched : *scheduler.Scheduler, thread : *kernel.Thread) void {
+fn onWake(sched : *const scheduler.Scheduler, thread : *kernel.Thread) void {
     _ = sched;
     _ = thread;
 }
 
-fn onYield(sched : *scheduler.Scheduler, thread : *kernel.Thread) void {
+fn onYield(sched : *const scheduler.Scheduler, thread : *kernel.Thread) void {
     _ = sched;
     _ = thread;
 }
 
-fn onPreempt(sched : *scheduler.Scheduler, thread : *kernel.Thread) void {
+fn onPreempt(sched : *const scheduler.Scheduler, thread : *kernel.Thread) void {
     _ = sched;
     _ = thread;
 }
 
-fn pickNext(sched : *scheduler.Scheduler) ?*kernel.Thread {
+fn pickNext(sched : *const scheduler.Scheduler) ?*kernel.Thread {
     _ = sched;
     return null;
 }
 
-fn getTimeslice(sched : *scheduler.Scheduler, thread : *kernel.Thread) ?kernel.Time {
+fn getTimeslice(sched : *const scheduler.Scheduler, thread : *kernel.Thread) ?kernel.Time {
     _ = sched;
     _ = thread;
     return null;
 }
 
-fn setPriority(sched : *scheduler.Scheduler, thread : *kernel.Thread, newPriority : anytype) void {
+fn setPriority(sched : *const scheduler.Scheduler, thread : *kernel.Thread, newPriority : anytype) void {
     _ = sched;
     _ = thread;
     _ = newPriority;

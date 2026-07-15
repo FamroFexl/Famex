@@ -68,7 +68,7 @@ pub var PAGE_METADATA_SIZE : usize = undefined;
 pub const PER_CPU_DATA_SIZE : usize = types.SIZE_32MB;
 
 pub var PAGE_OFFSET : Vaddr = undefined;
-pub const USER_MEMORY_START : Vaddr = .asVirt(0x10000);
+pub const USER_MEMORY_START : Vaddr = .asVirt(0x1000);
 pub var USER_MEMORY_END : Vaddr = undefined;
 pub var KERNEL_MEMORY_START : Vaddr = undefined;
 pub var KERNEL_MEMORY : Vaddr = undefined;
