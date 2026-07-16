@@ -372,7 +372,8 @@ fn mapModules() void {
     for(0..kernel.Limine.module_request.response.?.module_count) |i| {
         const module = &kernel.Limine.module_request.response.?.modules[i].*;
         const moduleAddr = memory.Paddr.asPhys(@intFromPtr(kernel.Limine.toPhys(module.address))).toVirt();
-        const moduleSize = bin.alignUp(module.size, types.SIZE_4KB);
+        // TODO something is wrong with pteNext or pteInit that causes it to skip the last page (if end is 0x7000->0x7fff, only up to 0x6000 will be mapped)
+        const moduleSize = bin.alignUp(module.size, types.SIZE_4KB) + types.SIZE_4KB;
 
         const vaddr : memory.Vaddr = memory.Vaddr.asVirt(bin.alignDown(moduleAddr.val, types.SIZE_4KB));
 

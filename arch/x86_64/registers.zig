@@ -337,8 +337,8 @@ pub const Gdtr = packed struct(u80) {
         null_desc  : SegDesc = std.mem.zeroes(SegDesc),  // Null descriptor
         kmode_code : SegDesc,      // Kernel Mode Code Segment
         kmode_data : SegDesc,      // Kernel Mode Data Segment
-        umode_code : SegDesc,      // User Mode Code Segment
-        umode_data : SegDesc,      // User Mode Data Segment
+        umode_data : SegDesc,      // User Mode Code Segment
+        umode_code : SegDesc,      // User Mode Data Segment
 
         // Task-State Segments, one for each logical core (irq stacks)
         pub fn getTss(this : *@This()) []TssDesc {

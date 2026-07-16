@@ -10,6 +10,7 @@ pub fn build(b: *std.Build) !void {
         .pic = false,
         .optimize = optimize,
         .code_model = .kernel,
+        .strip = false,
     };
 
     const arch_data = @import("arch/build.zig").module(b, &options);
@@ -37,6 +38,11 @@ pub fn build(b: *std.Build) !void {
     lib_module.addImport("arch", arch_api_module);
 
     try @import("testProc/build.zig").build(b, arch_data.target);
+    // const cmd = b.addSystemCommand(&[_][]const u8{
+    //     "sh", "asm.sh",
+    // });
+    // cmd.setCwd(b.path("testProc/asmTest"));
+    // b.getInstallStep().dependOn(&cmd.step);
 
     const famex = b.addExecutable(.{
         .name = "famex.elf",

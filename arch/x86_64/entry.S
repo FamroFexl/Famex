@@ -181,7 +181,7 @@ FUNC irqEntry
     iretq
 
 FUNC_END irqEntry
-
+.extern xprint
 /*
  * On entry, RCX contains the last RIP, R11 contains the last RFLAGS, and RSP contains
  * the last RSP.
@@ -205,8 +205,8 @@ FUNC syscallEntry
      */
     swapgs
 
-    // RSP is still set to the current user stack, which we need to save. RAX can be safely clobbered
-    mov rax, rsp
+    // RSP is still set to the current user stack, which we need to save. R10 can be safely clobbered
+    mov r10, rsp
 
     // Switch to kernel stack
     mov rsp, gs:[SYSCALL_STACK_OFST]
@@ -232,7 +232,7 @@ FUNC syscallEntry
     mov [rdi + RIP_OFST], rcx
 
     // Save user stack
-    mov [rdi + RSP_OFST], rax
+    mov [rdi + RSP_OFST], r10
 
     // Save regs consumes old_rdi from stack
     call saveRegs
@@ -257,7 +257,7 @@ FUNC syscallEntry
     mov rcx, [rsp + RIP_OFST]
 
     // Used as scratch reg to avoid modifying rsp directly
-    mov rdi, [rsp + RSP_OFST]
+    mov r10, [rsp + RSP_OFST]
 
     // Switch back to user thread state
     swapgs
@@ -278,8 +278,7 @@ FUNC syscallEntry
     cli
 
     // Restore user stack
-    mov rsp, rdi
+    mov rsp, r10
 
-    sysret
-
+    sysretq
 FUNC_END syscallEntry

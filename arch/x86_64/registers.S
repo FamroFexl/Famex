@@ -348,11 +348,9 @@ FUNC saveState
 
     ret
 FUNC_END saveState
-.globl bpoint
-.globl bpoint2
+
 FUNC loadState
     // Setup interrupt frame for return
-    bpoint2:
 
     push rdi
 
@@ -424,8 +422,6 @@ FUNC loadState
     // Stack: data_seg, rsp, rflags, code_seg, rip, in_kmode
 
     add rsp, 8
-
-    bpoint:
 
     // Stack: data_seg, rsp, rflags, code_seg, rip
     iretq

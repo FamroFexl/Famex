@@ -41,6 +41,19 @@ pub const VecNum = enum(u8) {
     SIVR                = 255,  // Spurious Interrupt Vector Register entry
 };
 
+const pfaultError = packed struct(u64) {
+    present     : bool,    // (0) Not present caused fault (1) Protection violation caused fault
+    write       : bool,    // (0) Read caused fault (1) Write caused fault
+    user_mode   : bool,    // (0) Kernel mode fault (1) User mode fault
+    rsvd        : bool,    // Fault caused by reserved bit being set
+    instr_ftch  : bool,    // Fault caused by instruction fetch access
+    prot_key    : bool,    // Fault caused by protection key violation
+    shdw_stack  : bool,    // Fault caused by Shadow-stack access
+    hlat_paging : bool,    // (0) Normal paging fault (1) HLAT VM paging fault
+    sgx         : bool,    // Fault caused by SGX access control violation
+    __pad1      : u55,
+};
+
 /// Interrupt handler (called by asm)
 ///
 /// state: used to save and restore registers for a task
@@ -50,7 +63,12 @@ pub const VecNum = enum(u8) {
 pub export fn interruptVectorHandler(state : *reg.CpuState, err : u64, vec_num : u64) void {
     _ = state;
 
-    kernel.print("VecNum {} {}\n", .{vec_num, err});
+    if (vec_num == 14) {
+        kernel.print("Pfault {}\n", .{@as(pfaultError, @bitCast(err))});
+    }
+    else {
+        kernel.print("VecNum {} {}\n", .{vec_num, err});
+    }
 
     while (true) {}
 

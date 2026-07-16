@@ -165,17 +165,17 @@ fn setupGdt() void {
             .size = true,
             .code_seg = false,
         },
-        .umode_code = .{
-            .seg_type = .SEG_CODE_ER,
-            .priv_level = 3,
-            .size = false,
-            .code_seg = true,
-        },
         .umode_data = .{
             .seg_type = .SEG_DATA_RW,
             .priv_level = 3,
             .size = true,
             .code_seg = false,
+        },
+        .umode_code = .{
+            .seg_type = .SEG_CODE_ER,
+            .priv_level = 3,
+            .size = false,
+            .code_seg = true,
         },
     };
 
@@ -263,7 +263,7 @@ fn setupSyscalls() void {
 
     // Set the Kernel CS and SS segments on syscall entry and exit
     const kernel_cs : u64 = @offsetOf(reg.Gdtr.Layout, "kmode_code") << 32;
-    const user_cs : u64 = @offsetOf(reg.Gdtr.Layout, "umode_code") << 48;
+    const user_cs : u64 = (@offsetOf(reg.Gdtr.Layout, "umode_data") - 8) << 48;
     reg.SyscallStar.set(kernel_cs | user_cs);
 }
 
@@ -277,7 +277,7 @@ fn smpCpuInit(smp_info : *limine.LimineMpInfoX86) void {
 
     reg.Gdtr.set(&GDTR);
 
-    reg.Idtr.set(&IDTR);
+   //reg.Idtr.set(&IDTR);
 
     reg.Tss.set(@intCast(@sizeOf(reg.Gdtr.Layout) + cpuId * @sizeOf(reg.TssDesc)));
 
@@ -382,6 +382,7 @@ pub export fn init() void {
             continue;
         }
 
+
         const vmArea = kernel.pmalloc(kernel.mm.vmm.VmArea);
         vmArea.start = .asVirt(phdr.vaddr);
         vmArea.end = .asVirt(phdr.vaddr + phdr.mem_sz);
@@ -409,9 +410,10 @@ pub export fn init() void {
 
         var permState = kernel.PfeState(.GET).create(&process.addr_space, .asVirt(bin.alignDown(vmArea.start.val, types.SIZE_4KB)), .asVirt(bin.alignUp(vmArea.end.val, types.SIZE_4KB) + types.SIZE_4KB), .LEVEL_4KB);
         while (permState.next()) |pfe| {
-            pfe.setRead(0, vmArea.flags.read);
-            pfe.setWrite(0, vmArea.flags.write);
-            pfe.setExec(0, vmArea.flags.exec);
+            _ = pfe;
+            //pfe.setRead(0, vmArea.flags.read);
+            //pfe.setWrite(0, vmArea.flags.write);
+            //pfe.setExec(0, vmArea.flags.exec);
         }
     }
 
@@ -429,14 +431,18 @@ pub export fn init() void {
     base.context.init();
     base.context.setPc(hdr.entry);
     base.context.setStack(bin.alignDown(kernel.mm.memory.USER_MEMORY_END.val, 16));
+    base.timeLock.init();
+
     var stackState = kernel.PfeState(.MAP).create(&process.addr_space, .asVirt(bin.alignDown(kernel.mm.memory.USER_MEMORY_END.val, types.SIZE_4KB)), .asVirt(bin.alignUp(kernel.mm.memory.USER_MEMORY_END.val, types.SIZE_4KB) + types.SIZE_4KB), .LEVEL_4KB);
+    var pte = kernel.mm.paging.PFE_DEFAULTS[0];
+    pte.setUser(0, true);
+    pte.setExec(0, execStack);
     while (stackState.next()) |pfe| {
-        pfe.* = kernel.mm.paging.PFE_DEFAULTS[0];
-        pfe.setUser(0, true);
+        pfe.* = pte;
         pfe.setEntry(0, kernel.allocPage4k());
-        pfe.setExec(0, execStack);
     }
 
+    kernel.pm.process.perCpuStart.getLocal().syscallStack = @intFromPtr(base.stack.start);
     // Add stack area to tree
     // const stackArea = kernel.pmalloc(kernel.mm.vmm.VmArea);
     // stackArea.areaType = .USER_STACK
@@ -452,7 +458,6 @@ pub export fn init() void {
     //print("{}\n", .{fcr[0]});
     //kernel.schedData.getLocal().idle.base.context.load();
     mainThread.base.context.load();
-    //kernel.pm.sched.scheduler.switchThread();
 
 
 }

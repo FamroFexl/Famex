@@ -14,6 +14,11 @@ comptime {
     _ = pm.syscall.syscall;
 }
 
+/// ASM print
+export fn xprint(val : u64) callconv(.c) void {
+    print("xprint 0x{x} {b}\n", .{val, val});
+}
+
 pub const Limine = struct {
     const LIMINE_REQUESTS_START linksection(".limine_requests_start") = limine.LIMINE_REQUESTS_START_MARKER;
 
