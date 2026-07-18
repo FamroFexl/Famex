@@ -25,9 +25,15 @@ pub fn main(init: std.process.Init) !void {
         gen_pair("\t.quad irq_{}\n", i);
     }
 
+    // Exception vectors that push error codes
+    const errors = [_]u8{8, 10, 11, 12, 13, 14, 17, 21};
+
     gen_string("\n");
     for (0..256) |i| {
         gen_pair("irq_{}:\n", i);
+        if (std.mem.indexOfScalar(u8, &errors, @intCast(i)) == null) {
+            gen_string("\tpush 0\n");
+        }
         gen_pair("\tpush {}\n", i);
         gen_string("\tjmp irqEntry\n");
     }

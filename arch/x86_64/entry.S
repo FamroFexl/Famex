@@ -18,10 +18,12 @@
 .extern interruptVectorHandler
 
 // Used to determine if a thread is in kernel mode
-.extern isKmodeStack
+.extern inKmode
 
 .extern saveRegs
 .extern loadRegs
+
+.extern xprint
 
 .macro FUNC name
 .globl \name
@@ -46,6 +48,10 @@
  */
  // TODO update to support nested interrupts on ist stack entry
 FUNC irqEntry
+    // Direction and alignment check flags are always 0
+    //cld
+    //clac
+
     // Stack: irq_frame, irq_num
 
     // Alloc stack space and align
@@ -172,8 +178,8 @@ FUNC irqEntry
 
     // Stack: irq_frame, irq_num, cpu_state, in_kmode
 
-    // Sanitize stack for return
-    add rsp, 8 + CPU_STATE_SIZE + 8
+    // Sanitize stack for return (get rid of error code)
+    add rsp, 8 + CPU_STATE_SIZE + 16
 
     // Stack: irq_frame
 
@@ -181,13 +187,11 @@ FUNC irqEntry
     iretq
 
 FUNC_END irqEntry
-.extern xprint
 /*
  * On entry, RCX contains the last RIP, R11 contains the last RFLAGS, and RSP contains
  * the last RSP.
  *
- * Certain registers can be clobbered since the general behavior of a syscall
- * is kernel-defined.
+ * R10, RCX, and R11 are clobbered.
  *
  * Syscalls MUST only be called from user mode since this entry automatically
  * does a swapgs, which would corrupt the user segment in kernel mode.
@@ -199,6 +203,10 @@ FUNC_END irqEntry
  * loaded, RSP must contain the RSP to be loaded, and RAX must contain the return value
  */
 FUNC syscallEntry
+    // Direction and alignment check flags are always 0
+    cld
+    clac
+
     /*
      * Switch to cpu_data for kernel-mode (needed for syscall_handler and getting the current
      * thread's kernel stack instance (KSTACKTOP)
