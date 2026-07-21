@@ -369,19 +369,17 @@ FUNC saveState
     // Save RSP
     mov [rdi + RSP_OFST], rsp
 
-    /**
-     * This function returns twice, once when saving,
-     * and once when loading, so we need two  of the
-     * same return address
-     */
-    mov rsi, [rsp]
-    push rsi
-
     // Save current RIP
     lea rsi, [rip + 1f]
     mov [rdi + RIP_OFST], rsi
     1:
 
+    cmp rax, 1
+    jne load
+save:
+        mov rsi, [rsp]
+        jmp rsi
+load:
     ret
 FUNC_END saveState
 

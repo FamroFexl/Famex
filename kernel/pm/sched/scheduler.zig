@@ -66,7 +66,7 @@ pub fn switchThread() void { kernel.noIrq();
             kernel.pm.process.addUtime();
         }
 
-        // Switch to a new thread
+        // Get a new thread
         schedule(&state);
 
         // TODO Check for signals with the current thread
@@ -74,6 +74,7 @@ pub fn switchThread() void { kernel.noIrq();
         if (!state.inKmode())
             kernel.pm.ipc.rcu.enterEqs();
 
+        // Switch to the new thread
         state.load();
         unreachable;
     }

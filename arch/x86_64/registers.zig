@@ -34,6 +34,8 @@ pub const CpuState = struct {
 
     extern fn saveState(state : *CpuState) callconv(.c) bool;
     /// Save general registers from the CPU
+    /// If it returns true, we are saving state, otherwise
+    /// we are restoring from the save.
     pub const save = saveState;
 
     extern fn loadState(state : *CpuState) callconv(.c) noreturn;
