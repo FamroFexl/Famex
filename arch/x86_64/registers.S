@@ -372,14 +372,11 @@ FUNC saveState
     // Save current RIP
     lea rsi, [rip + 1f]
     mov [rdi + RIP_OFST], rsi
-    1:
 
-    cmp rax, 1
-    jne load
-save:
-        mov rsi, [rsp]
-        jmp rsi
-load:
+    mov rsi, [rsp]
+    jmp rsi
+
+    1:
     ret
 FUNC_END saveState
 

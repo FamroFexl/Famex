@@ -39,19 +39,26 @@ pub export fn syscallHandler(state : *cpu.CpuState) void {
 fn print(state : *cpu.CpuState) i64 {
     const ptr = cast.toPtr([*]const u8, state.getArgSys(0).*);
     const len = state.getArgSys(1).*;
-    kernel.log.printChars(ptr, len);
+    var buf : [1000]u8 = undefined;
+    if (cpu.copyFromUser(&buf, cast.toPtr(*anyopaque, ptr), len) != 0) {
+        kernel.print("Error, couldn't copy!\n", .{});
+    }
+    else {
+        kernel.log.printChars(&buf, len);
+    }
 
     return 0;
 }
 
 fn yield(state : *cpu.CpuState) i64 {
     _ = state;
+    kernel.irqSave();
+    defer kernel.irqRestore();
+
     kernel.cThread().yield();
 
     return 0;
 }
-
-
 
 fn syscall(sysNum : u64, state : *cpu.CpuState) i64 {
     return switch (sysNum) {

@@ -61,11 +61,7 @@ const PfaultError = packed struct(u64) {
 /// vec_num: what needs to be done depending on interrupt vector type
 ///
 pub export fn interruptVectorHandler(state : *reg.CpuState, err : u64, vec_num : u64) void {
-    if (vec_num == 14) {
-        kernel.print("Pfault {} ", .{@as(PfaultError, @bitCast(err))});
-        kernel.print("0x{x}\n", .{reg.Cr2.get()});
-    }
-    else {
+    if (vec_num != 14) {
         kernel.print("VecNum {}", .{vec_num});
         if (err != 0) {
             kernel.print(" {b}\n", .{err});
@@ -75,18 +71,14 @@ pub export fn interruptVectorHandler(state : *reg.CpuState, err : u64, vec_num :
         }
     }
 
-    if (vec_num == 6 or vec_num == 14) {
-        while (true) {}
-    }
-
     var data : ?kernel.io.exception.ExceptionData = null;
     if (vec_num == @intFromEnum(VecNum.PAGE_FAULT)) {
         const pfault : PfaultError = @bitCast(err);
-        data.?.pfault = .{
+        data = .{.pfault = .{
             .addr = .asVirt(reg.Cr2.get()),
             .present = pfault.present,
             .access = if (pfault.instr_ftch) .EXECUTE else if (pfault.write) .WRITE else .READ,
-        };
+        }};
     }
 
     const irqData : kernel.io.irq.IrqData = .{

@@ -33,6 +33,7 @@ pub fn print(comptime str : []const u8, args: anytype) void {
 }
 
 export fn main() void {
+    _ = syscall(1, .{5, 10, 0, 0, 0, 0});
     print("hello!\n", .{});
     _ = syscall(2, .{0, 0, 0, 0, 0, 0});
     print("hellove", .{});

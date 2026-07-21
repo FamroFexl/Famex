@@ -39,6 +39,7 @@ pub fn handler(irqNum : u64, data : *ExceptionData, state : *kernel.CpuState) vo
 }
 
 pub fn pageFault(data : *ExceptionData, state : *kernel.CpuState) void {
+    kernel.print("kmode pfault\n", .{});
     _ = data;
     if (state.inKmode()) {
         // Copy from/to user
