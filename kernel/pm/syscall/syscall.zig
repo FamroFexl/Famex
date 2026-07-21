@@ -37,15 +37,26 @@ pub export fn syscallHandler(state : *cpu.CpuState) void {
 }
 
 fn print(state : *cpu.CpuState) i64 {
-    const ptr = cast.toPtr([*:0]const u8, state.getArg(0).*);
-    kernel.log.printDirect(std.mem.span(ptr));
+    const ptr = cast.toPtr([*]const u8, state.getArgSys(0).*);
+    const len = state.getArgSys(1).*;
+    kernel.log.printChars(ptr, len);
 
     return 0;
 }
 
-fn syscall(sysNum : u64, state : *cpu.CpuState) callconv(.c) i64 {
+fn yield(state : *cpu.CpuState) i64 {
+    _ = state;
+    kernel.cThread().yield();
+
+    return 0;
+}
+
+
+
+fn syscall(sysNum : u64, state : *cpu.CpuState) i64 {
     return switch (sysNum) {
         1 => print(state),
+        2 => yield(state),
         else => -errno.ENOSYS,
     };
 }

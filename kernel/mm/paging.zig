@@ -323,7 +323,7 @@ const PfeStateData = struct {
 };
 
 fn createPfeStateData(space : *vmm.VmSpace, start : memory.Vaddr, end : memory.Vaddr, level : PageLevel) PfeStateData {
-    if ((start.val & bin.setBit(63)) ^ (end.val & bin.setBit(63)) == 1)
+    if ((start.val & bin.setBit(63)) ^ ((end.val - 1) & bin.setBit(63)) == 1)
         @panic("Attempted to page kernel and user memory in the same state!");
 
     const size = PageLevelToSize[@intFromEnum(level)];

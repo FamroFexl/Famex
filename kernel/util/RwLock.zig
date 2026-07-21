@@ -41,7 +41,6 @@ pub fn writeLock(this : *@This()) void {
     cpu.MemFence.full();
 
     while (true) {
-        kernel.print("{}\n", .{this.val.raw});
         const lock = this.val.load(.acquire);
 
         // Spin if being written

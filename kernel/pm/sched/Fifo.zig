@@ -69,7 +69,7 @@ pub fn onYield(sched : *const scheduler.Scheduler, thread : *kernel.Thread) void
 
     const priority = thread.sched.priority;
 
-    var list = this.priority[priority];
+    var list = &this.priority[priority];
 
     this.spinlock.lock();
     defer this.spinlock.unlock();
@@ -87,18 +87,17 @@ pub fn onPreempt(sched : *const scheduler.Scheduler, thread : *kernel.Thread) vo
 pub fn pickNext(sched : *const scheduler.Scheduler) ?*kernel.Thread {
     const this = getFifo(sched.data);
 
-    var i = this.priority.len - 1;
+    var i = this.priority.len;
 
     this.spinlock.lock();
     defer this.spinlock.unlock();
 
     while (i > 0) {
-        var prio = &this.priority[i];
-        if (!prio.empty()) {
-            return scheduler.threadFromSched(prio.front().?);
-        }
-
         i -= 1;
+        var prio = &this.priority[i];
+        if (prio.front()) |front| {
+            return scheduler.threadFromSched(front);
+        }
     }
     return null;
 }

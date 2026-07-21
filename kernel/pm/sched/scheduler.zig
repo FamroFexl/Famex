@@ -55,15 +55,9 @@ pub fn switchThread() void { kernel.noIrq();
 
     var state : kernel.CpuState = undefined;
 
-
-    cThread().flags.loaded = false;
-
     // Save the current thread's execution state
-    state.save();
-
-    // This will only execute if the current thread is
-    // being saved, not loaded
-    if (!cThread().flags.loaded) {
+    // If true, we are saving not loading
+    if (state.save()) {
         // Add runtime to the thread
         if (state.inKmode()) {
             kernel.pm.process.addKtime();
@@ -105,9 +99,6 @@ fn loadThread(new : *kernel.Thread, state : *kernel.CpuState) void {
 
     }
 
-    // Notifies inline saved threads which path to take
-    new.flags.loaded = true;
-
     _ = new.owner.addr_space.rootPt.switchTo();
 }
 
@@ -131,6 +122,7 @@ pub fn schedule(state : *kernel.CpuState) void { kernel.noIrq();
             if (sched.pickNext(sched)) |thread| {
                 next = thread;
                 timeslice = sched.getTimeslice(sched, thread);
+                break;
             }
         }
     }

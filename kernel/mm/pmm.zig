@@ -330,7 +330,7 @@ fn mapPercpu(kernel_root_pt : *paging.Ptable) void {
     print("  Mapping per-cpu static region\n", .{});
 
     const elf_hdr = cast.toPtr(*elf.ElfHdr, kernel.Limine.executable_file_request.response.*.executable_file.address);
-    const shdr = elf_hdr.getShdrByName(".percpu").?;
+    const shdr = elf_hdr.getShdrByName(".percpu") orelse @panic("Couldn't receive the static percpu section!");
     const size = bin.alignUp(shdr.size, types.SIZE_4KB);
 
     process.perCpu.PER_CPU_LINKER_OFFSET = .{.val = shdr.addr};

@@ -44,7 +44,6 @@ pub const Thread = struct {
     owner : *Process = undefined,
     state : State = undefined,
     flags : packed struct {
-        loaded : bool = undefined,   // For inline register save/load, used to determine how to proceed
     } = undefined,
 
     context : kernel.CpuState = undefined,

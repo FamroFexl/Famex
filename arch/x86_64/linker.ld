@@ -32,24 +32,20 @@ SECTIONS
         KEEP(*(.limine_requests_end))
     } :limine_requests
 
-    /* Move to the next memory page for .text */
-    . = ALIGN(0x1000);
-
-    .text : {
+    .text ALIGN(0x1000) : {
         *(.text .text.*)
     } :text
 
-    /* Move to the next memory page for .rodata */
-    . = ALIGN(0x1000);
+    /* Exception table for interrupt handlers to lookup */
+    .excp_tbl ALIGN(8) : {
+        *(.excp_tbl .excp_tbl.*)
+    } :text
 
-    .rodata : {
+    .rodata ALIGN(0x1000) : {
         *(.rodata .rodata.*)
     } :rodata
 
-    /* Move to the next memory page for .data */
-    . = ALIGN(0x1000);
-
-    .data : {
+    .data ALIGN(0x1000) : {
         *(.data .data.*)
     } :data
 
@@ -62,9 +58,8 @@ SECTIONS
         *(COMMON)
     } :data
 
-    . = ALIGN(0x1000);
-
-    .percpu (NOLOAD) :{
+    /* Per-cpu static allocation region */
+    .percpu ALIGN(0x1000) (NOLOAD) :{
         /* Start region for offset-based retrieval */
         KEEP(*(.percpu.start))
         KEEP(*(.percpu))

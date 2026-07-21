@@ -16,7 +16,7 @@ comptime {
 
 /// ASM print
 export fn xprint(val : u64) callconv(.c) void {
-    print("xprint 0x{x} {b}\n", .{val, val});
+    print("xprint 0x{x}\n", .{val});
 }
 
 pub const Limine = struct {
@@ -71,7 +71,7 @@ pub const Semaphore = pm.ipc.Semaphore;
 pub const Time = pm.time.Time;
 pub const TimerEvent = pm.time.TimerEvent;
 pub const getUnixClock = pm.time.getUnixClock;
-pub const getMonoClock = pm.time.getMonoClock();
+pub const getMonoClock = pm.time.getMonoClock;
 
 pub const cast = util.cast;
 

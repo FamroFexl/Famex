@@ -362,8 +362,9 @@ pub const TimerEvent = struct {
         spinlock.unlock();
 
         // No events are waiting. There is no need to set the local timer
-        if (node == null)
+        if (node == null) {
             return;
+        }
 
         setLocalTimer(.Nsec(time - getMonoClock().nsec));
     }
@@ -396,8 +397,8 @@ pub const TimerEvent = struct {
 
         var nextTime : u64 = std.math.maxInt(u64);
 
-        const mTimers = monoTimers.getLocal();
         const uTimers = unixTimers.getLocal();
+        const mTimers = monoTimers.getLocal();
 
         const spinlock = timerLock.getLocal();
         spinlock.lock();

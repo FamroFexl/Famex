@@ -5,6 +5,14 @@
 
 .section .entry.text, "ax"
 
+.macro EXCP_TBL from, to
+    .pushsection .excp_tbl, "a"
+    .balign 8
+    .quad \from
+    .quad \to
+    .popsection
+.endmacro
+
 .macro FUNC name
 .globl \name
 .type \name, @function
@@ -18,6 +26,11 @@
 // return RAX
 // arguments RDI, RSI, RDX, RCX, R8, R9
 
+/*
+ * Uses stack to determine if a state is in kernel mode.
+ *
+ * RDI must point to a CpuState
+ */
 FUNC inKmode
     mov rdi, [rdi + RSP_OFST]
     test rdi, rdi
@@ -213,8 +226,10 @@ FUNC spinWaitLoop
 FUNC_END spinWaitLoop
 
 FUNC idleEntry
+    1:
     sti
     hlt
+    jmp 1b
 FUNC_END idleEntry
 
 FUNC irqEnable
@@ -329,10 +344,22 @@ FUNC loadRegs
     ret
 FUNC_END loadRegs
 
+/*
+ * RDI must point to a CpuState
+ *
+ * Returns true if saving, false if loading
+ */
+.globl bpoint1
 FUNC saveState
+    // Returned when loading
+    mov rax, 0
+
     // Dummy RDI to satisfy save_regs requirements
     push rdi
     call saveRegs
+
+    // Returned when saving
+    mov rax, 1
 
     // Save RFLAGS
     pushfq
@@ -342,24 +369,34 @@ FUNC saveState
     // Save RSP
     mov [rdi + RSP_OFST], rsp
 
-    // Save current RIP (usually not used)
-    call 1f
-    1: pop [rdi + RIP_OFST]
+    /**
+     * This function returns twice, once when saving,
+     * and once when loading, so we need two  of the
+     * same return address
+     */
+    mov rsi, [rsp]
+    push rsi
+
+    // Save current RIP
+    lea rsi, [rip + 1f]
+    mov [rdi + RIP_OFST], rsi
+    1:
 
     ret
 FUNC_END saveState
 
+/*
+ * RDI must point to a CpuState
+ */
 FUNC loadState
     // Setup interrupt frame for return
 
     push rdi
 
-    // Stack: cpu_state, old_rsp
+    // Stack: rdi
 
     // RDI contains cpu_state, as required by in_kmode
     call inKmode
-
-    // Stack: cpu_state
 
     // Restore rdi
     pop rdi
@@ -424,5 +461,26 @@ FUNC loadState
     add rsp, 8
 
     // Stack: data_seg, rsp, rflags, code_seg, rip
+
+    bpoint12:
+
     iretq
 FUNC_END loadState
+
+/*
+ * Copy bytes with exception handling
+ *
+ * RDI points to destination
+ * RSI points to source
+ * RDX contains length
+ */
+FUNC memcpyExcp
+    mov rcx, rdx
+
+0:  rep movsb
+
+1:  mov rax, rcx
+    ret
+
+    EXCP_TBL 0b, 1b
+FUNC_END memcpyExcp

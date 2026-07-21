@@ -22,6 +22,7 @@ pub const IrqType = enum {
 
 pub const IrqData = struct {
     irqNum : u64,
+    data : ?*anyopaque,
 };
 
 /// Tracks time spent in IRQs
@@ -64,7 +65,7 @@ pub const SmpRequest = struct {
     cpuId : u8,             // CPU ID of the sending core
     mask : kernel.CpuMask,  // Mask of all Cpus that received this request
 
-    /// Used for non-contentious deferred frees of SmpRequest and SmpLink types
+    /// Used for non-contentious deferred frees of SmpRequests
     pub var TREE : *DeferTree = undefined;
 
     /// Queue of per-cpu pending SMP requests
@@ -75,24 +76,22 @@ pub const SmpRequest = struct {
         args : [6]usize = std.mem.zeroes([6]usize),
     };
 
+    /// Main function to free the SmpRequest and its Links
     pub fn free(this : *@This()) void {
-        kernel.pfree(@This(), this);
+        kernel.pfreeBytes(this);
     }
 
     const Link = struct {
         link : kernel.util.data.MpscQueue.Node,
         payload : *SmpRequest,
-        free : DeferTree.State,
     };
-
-    fn linkFree(state : *DeferTree.State) void {
-        kernel.pfree(Link, @fieldParentPtr("state", state));
-    }
 
     /// SMP call for cpus in mask. Async determines if the caller waits until all CPUs have completed.
     /// NOTE: The free function must free the SmpRequest.
     pub fn create(mask : kernel.CpuMask, async : bool, freeFn : ?*const fn (*DeferTree.State) void, data : SmpRequest.CallInfo) void {
-        const request = kernel.pmalloc(SmpRequest);
+        const request = kernel.pmallocBytes(SmpRequest + @popCount(mask) * @sizeOf(Link));
+        // Links are bundled with the smp request so all can be freed and allocated in a single call
+        const links = kernel.bin.getFlexArray(SmpRequest, Link, request);
 
         request.data = data;
         request.cpuId = kernel.getCpuId();
@@ -110,11 +109,8 @@ pub const SmpRequest = struct {
                 continue;
             }
 
-            const link = kernel.pmalloc(Link);
+            const link = &links[i];
             link.payload = request;
-
-            // Automatically free link nodes when the request is freed
-            TREE.push(&link.free, linkFree);
 
             // Add to remote cpu's queue
             queue.getLocal().push(&link.link);
@@ -168,7 +164,7 @@ fn nestedHandler(data : *const IrqData, state : *cpu.CpuState) void {
     switch (irq.getIrqType(data.irqNum)) {
         .LOCAL_TIMER => kernel.pm.time.TimerEvent.handler(),
         .IPI => SmpRequest.handler(),
-        .EXCEPTION => exception.handler(data, state),
+        .EXCEPTION => exception.handler(data.irqNum, @ptrCast(@alignCast(data.data)), state),
         .DEVICE => deviceHandler(data.irqNum, state),
         .SPURIOUS => return,
     }
@@ -244,4 +240,6 @@ pub fn setup() void {
         inIrqTime.getGlobal(i).* = 0;
         nestDepth.getGlobal(i).* = 0;
     }
+
+    exception.setup();
 }

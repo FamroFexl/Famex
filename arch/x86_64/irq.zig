@@ -41,7 +41,7 @@ pub const VecNum = enum(u8) {
     SIVR                = 255,  // Spurious Interrupt Vector Register entry
 };
 
-const pfaultError = packed struct(u64) {
+const PfaultError = packed struct(u64) {
     present     : bool,    // (0) Not present caused fault (1) Protection violation caused fault
     write       : bool,    // (0) Read caused fault (1) Write caused fault
     user_mode   : bool,    // (0) Kernel mode fault (1) User mode fault
@@ -61,24 +61,40 @@ const pfaultError = packed struct(u64) {
 /// vec_num: what needs to be done depending on interrupt vector type
 ///
 pub export fn interruptVectorHandler(state : *reg.CpuState, err : u64, vec_num : u64) void {
-    _ = state;
-
     if (vec_num == 14) {
-        kernel.print("Pfault {}\n", .{@as(pfaultError, @bitCast(err))});
+        kernel.print("Pfault {} ", .{@as(PfaultError, @bitCast(err))});
+        kernel.print("0x{x}\n", .{reg.Cr2.get()});
     }
     else {
-        kernel.print("VecNum {} {}\n", .{vec_num, err});
+        kernel.print("VecNum {}", .{vec_num});
+        if (err != 0) {
+            kernel.print(" {b}\n", .{err});
+        }
+        else {
+            kernel.print("\n", .{});
+        }
     }
 
-    while (true) {}
+    if (vec_num == 6 or vec_num == 14) {
+        while (true) {}
+    }
 
-    kernel.pm.time.setLocalTimer(.Sec(1));
+    var data : ?kernel.io.exception.ExceptionData = null;
+    if (vec_num == @intFromEnum(VecNum.PAGE_FAULT)) {
+        const pfault : PfaultError = @bitCast(err);
+        data.?.pfault = .{
+            .addr = .asVirt(reg.Cr2.get()),
+            .present = pfault.present,
+            .access = if (pfault.instr_ftch) .EXECUTE else if (pfault.write) .WRITE else .READ,
+        };
+    }
 
-    // const data : kernel.io.irq.IrqData = .{
-    //     .irqNum = vec_num,
-    // };
-    //
-    // kernel.io.irq.handler(&data, state);
+    const irqData : kernel.io.irq.IrqData = .{
+        .irqNum = vec_num,
+        .data = &data,
+    };
+
+    kernel.io.irq.handler(&irqData, state);
 
     if (vec_num >= @intFromEnum(VecNum.UINT_START))
         apic.set(.eoi, 0);

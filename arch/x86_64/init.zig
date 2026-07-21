@@ -277,7 +277,7 @@ fn smpCpuInit(smp_info : *limine.LimineMpInfoX86) void {
 
     reg.Gdtr.set(&GDTR);
 
-   //reg.Idtr.set(&IDTR);
+    reg.Idtr.set(&IDTR);
 
     reg.Tss.set(@intCast(@sizeOf(reg.Gdtr.Layout) + cpuId * @sizeOf(reg.TssDesc)));
 
@@ -291,7 +291,7 @@ fn smpCpuInit(smp_info : *limine.LimineMpInfoX86) void {
         apic.setupCore();
 
         // Go Idle
-        api.cpu.idleEntry();
+        //api.cpu.idleEntry();
     }
 }
 
@@ -421,6 +421,7 @@ pub export fn init() void {
     process.threads.insertFront(&mainThread.base.link);
     mainThread.fpuContext = api.cpu.FpuState.alloc();
     const base = &mainThread.base;
+    base.owner = process;
     base.* = .{
         .stack = .{
             .size = kernel.config.SYSCALL_STACK_SIZE,
@@ -454,10 +455,10 @@ pub export fn init() void {
     const sched = &kernel.schedData.getLocal().sched.get(.FIFO);
     sched.enqueue(sched, &mainThread.base);
 
-    //const fcr = cast.toPtr([*]u8, mainThread.base.context.rip);
-    //print("{}\n", .{fcr[0]});
-    //kernel.schedData.getLocal().idle.base.context.load();
+    kernel.schedData.getLocal().current = &mainThread.base;
+    //print("next {*}\n", .{sched.pickNext(sched)});
+    //kernel.schedData.getLocal().timer.reset(.Sec(4), false);
+    kernel.irqEnable();
     mainThread.base.context.load();
-
-
+    while (true) {}
 }

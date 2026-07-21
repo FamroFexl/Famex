@@ -32,11 +32,11 @@ pub const CpuState = struct {
     fs_base : u64,  // User FS.Base
     gs_base : u64,  // User GS.Base
 
-    extern fn saveState(state : *CpuState) callconv(.c) void;
+    extern fn saveState(state : *CpuState) callconv(.c) bool;
     /// Save general registers from the CPU
     pub const save = saveState;
 
-    extern fn loadState(state : *CpuState) callconv(.c) void;
+    extern fn loadState(state : *CpuState) callconv(.c) noreturn;
     /// Load general registers into the CPU
     pub const load = loadState;
 
@@ -91,12 +91,17 @@ pub const CpuState = struct {
     /// Get a register pointer from an argument number (for syscall register format)
     pub fn getArgSys(state : *@This(), arg : anytype) *u64 {
         return switch (arg) {
-            2 => &state.r10,
+            3 => &state.r10,
             else => getArg(state, arg),
         };
     }
 
-    pub const inKmode = if (is_kernel) @import("kernel").pm.process.inKmode else void;
+    pub inline fn inKmode(this : *@This()) bool {
+        if (is_kernel)
+            return @import("kernel").pm.process.inKmode(this);
+
+        return false;
+    }
 
     pub fn init(state : *@This()) void {
         if (is_kernel) state.* = @import("arch").cpu.CPU_STATE_INIT;
@@ -126,6 +131,11 @@ pub const Cr0 = packed struct(u64) {
 
     extern fn setCr0(cr0 : Cr0) callconv(.c) void;
     pub const set = setCr0;
+};
+
+pub const Cr2 = struct {
+    extern fn getCr2() callconv(.c) u64;
+    pub const get = getCr2;
 };
 
 pub const Cr3 = packed struct(u64) {
