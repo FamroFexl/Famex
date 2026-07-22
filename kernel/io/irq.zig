@@ -172,6 +172,12 @@ fn nestedHandler(data : *const IrqData, state : *cpu.CpuState) void {
 
 /// Operations to perform on a first-level interrupt
 fn threadHandler(data : *const IrqData, state : *cpu.CpuState) void {
+    const depth = irqSaveDepth.getLocal();
+
+    // Interrupts are NEVER enabled in IRQ context implicitly
+    // so irqSave and irqRestore should never enable them.
+    depth.* += 1;
+
     if (!sched.cThread().context.inKmode()) {
         rcu.exitEqs();
         process.addUtime();
@@ -181,11 +187,6 @@ fn threadHandler(data : *const IrqData, state : *cpu.CpuState) void {
     }
 
     const schedData = sched.schedData.getLocal();
-    const depth = irqSaveDepth.getLocal();
-
-    // Interrupts are NEVER enabled in IRQ context implicitly
-    // so irqSave and irqRestore should never enable them.
-    depth.* += 1;
 
     // Operations in the IRQ may use preemptSave and preemptRestore,
     // and we don't want them triggering any processes if preemption

@@ -61,6 +61,8 @@ pub const Process = pm.process.Process;
 pub const Thread = pm.process.Thread;
 pub const KThread = pm.process.KThread;
 pub const UThread = pm.process.UThread;
+pub const pids = &pm.process.pids;
+pub const tids = &pm.process.tids;
 pub const SmpRequest = io.irq.SmpRequest;
 
 pub const RcuAsync = pm.ipc.rcu.RcuAsync;

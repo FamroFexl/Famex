@@ -100,7 +100,7 @@ fn loadThread(new : *kernel.Thread, state : *kernel.CpuState) void {
 
     }
 
-    _ = new.owner.addr_space.rootPt.switchTo();
+    _ = new.owner.addrSpace.rootPt.switchTo();
 }
 
 pub fn threadFromSched(node : *kernel.List.Node) *kernel.Thread {

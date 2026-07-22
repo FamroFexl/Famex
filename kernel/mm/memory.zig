@@ -133,7 +133,7 @@ pub fn vmallocBytes(size : usize) *anyopaque {
         .exec = true,
     };
 
-    const vmSpace = &kernel.kernelProcess.addr_space;
+    const vmSpace = &kernel.kernelProcess.addrSpace;
 
     var mas = lib.linux.MapleTree.MaState.create(&vmSpace.tree, 0, 0);
     mas.lock();
@@ -170,7 +170,7 @@ pub fn vmalloc(comptime T : type) *T {
 }
 
 pub fn vfreeBytes(addr : *anyopaque) void {
-    const vmSpace = &kernel.kernelProcess.addr_space;
+    const vmSpace = &kernel.kernelProcess.addrSpace;
     var mas = lib.linux.MapleTree.MaState.create(&vmSpace.tree, @intFromPtr(addr), @intFromPtr(addr));
 
     mas.lock();

@@ -20,21 +20,24 @@ pub inline fn syscall(number: u64, args: [6]u64) i64 {
     );
 }
 
-var buf : [1000]u8 = undefined;
-
 pub fn print(comptime str : []const u8, args: anytype) void {
-    //var buf : [100]u8 = undefined;
+    var buf : [100]u8 = undefined;
     const out = std.fmt.bufPrint(&buf, str, args) catch {
-        const err = "bufPrint err\n";
+        const err = "bufPrint overflow\n";
         _ = syscall(1, .{@intFromPtr(err[0..].ptr), err.len, 0, 0, 0, 0});
         return;
     };
     _ = syscall(1,.{@intFromPtr(out.ptr), out.len, 0, 0, 0, 0});
 }
 
-export fn main() void {
-    _ = syscall(1, .{5, 10, 0, 0, 0, 0});
-    print("hello!\n", .{});
+pub fn yield() void {
     _ = syscall(2, .{0, 0, 0, 0, 0, 0});
-    print("hellove", .{});
+}
+
+export fn main() void {
+    const time : i64 = @bitCast(syscall(4, .{0, 0, 0, 0, 0, 0}));
+
+    print("{} chui\n", .{time});
+    print("hello!\n", .{});
+    print("hello9", .{});
 }

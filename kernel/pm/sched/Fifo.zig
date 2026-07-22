@@ -113,7 +113,7 @@ pub fn setPriority(sched : *const scheduler.Scheduler, thread : *kernel.Thread, 
 
     const priority = thread.sched.priority;
 
-    const list = this.priority[newPriority];
+    const list = &this.priority[newPriority];
 
     this.spinlock.lock();
     defer this.spinlock.unlock();

@@ -153,6 +153,21 @@ pub fn unixToTime(time : Time) lib.posix.times.tm {
     return defaultTimespec();
 }
 
+pub fn timeToTimespec(time : Time) lib.posix.times.timespec {
+    var newTime = time;
+    const sec = time.get(.SEC, false);
+    newTime.sub(.SEC, sec);
+
+    return .{
+        .tv_sec = sec,
+        .tv_nsec = cast.i64(newTime.nsec),
+    };
+}
+
+pub fn timespecToTime(timespec : lib.posix.times.timespec) Time {
+    return .Nsec(Time.Sec(timespec.tv_sec).nsec + cast.u64(timespec.tv_nsec));
+}
+
 pub const Timer = struct {
     pub var TIMERS : kernel.List = undefined;
 

@@ -377,7 +377,7 @@ fn mapModules() void {
 
         const vaddr : memory.Vaddr = memory.Vaddr.asVirt(bin.alignDown(moduleAddr.val, types.SIZE_4KB));
 
-        var state = kernel.PfeState(.MAP).create(&kernel.kernelProcess.addr_space, vaddr, .asVirt(vaddr.val + moduleSize), .LEVEL_4KB);
+        var state = kernel.PfeState(.MAP).create(&kernel.kernelProcess.addrSpace, vaddr, .asVirt(vaddr.val + moduleSize), .LEVEL_4KB);
 
         var curAddr = vaddr.toPhys();
         while (state.next()) |pfe| {
@@ -394,7 +394,7 @@ fn switchToNewPtables() void {
     // Setup paging information
     paging.setup();
 
-    const kernel_root_pt = &process.kernelProcess.addr_space.rootPt;
+    const kernel_root_pt = &process.kernelProcess.addrSpace.rootPt;
 
     // The new kernel root page table
     kernel_root_pt.* = @ptrFromInt(allocBootPage().toVirt().val);

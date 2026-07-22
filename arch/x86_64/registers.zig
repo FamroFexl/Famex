@@ -98,6 +98,10 @@ pub const CpuState = struct {
         };
     }
 
+    pub fn getRetSys(state : *@This()) *u64 {
+        return getRet(state);
+    }
+
     pub inline fn inKmode(this : *@This()) bool {
         if (is_kernel)
             return @import("kernel").pm.process.inKmode(this);

@@ -23,7 +23,9 @@ const paging = @This();
 pub const PTE_MAX_DEPTH = 5;
 pub const PFE_MAX_DEPTH = 3;
 
+/// Default PTE that is present, user, read, write, execute, with write back caching
 pub var PTE_DEFAULTS : [PTE_MAX_DEPTH]Pte = undefined;
+/// Default PFE that is present, read, write, execute, with write back caching
 pub var PFE_DEFAULTS : [PFE_MAX_DEPTH]Pte = undefined;
 
 pub const PTE_SIZE_BITS = 12;
@@ -165,7 +167,6 @@ fn pteInit(state : *PfeStateData, level : anytype, alloc : bool) ?*Pte {
                 pte.?.* = PTE_DEFAULTS[level];
                 pte.?.setEntry(level, page);
                 // Permissions are determined at frame, not table
-                pte.?.setUser(level, true);
 
                 state.walk[level - 1] = cast.toPtr(*Ptable, page.toVirt().ptr());
 
@@ -234,7 +235,6 @@ fn pteNext(state : *PfeStateData, level : anytype, alloc : bool) ?*Pte {
                 pte.* = PTE_DEFAULTS[level];
                 pte.setEntry(level, page);
                 // Permissions are determined at frame, not table
-                pte.setUser(level, true);
             },
             .TABLE => page = pte.getEntry(level),
             .PFE => continue,
@@ -397,7 +397,7 @@ pub fn mmioMap(start : memory.Paddr, size : usize, cache : PteCache) memory.Vadd
     area.flags.reserved = true;
     area.areaType = .MMIO;
 
-    var mas = lib.linux.MapleTree.MaState.create(&kernel.kernelProcess.addr_space.tree, vstart.val, vstart.val);
+    var mas = lib.linux.MapleTree.MaState.create(&kernel.kernelProcess.addrSpace.tree, vstart.val, vstart.val);
     mas.lock();
 
     if (mas.findRange(vend.val - 1) != null) {
@@ -410,10 +410,10 @@ pub fn mmioMap(start : memory.Paddr, size : usize, cache : PteCache) memory.Vadd
 
     mas.unlock();
 
-    var pfeState = PfeState(.MAP).create(&kernel.kernelProcess.addr_space, vstart, .asVirt(vstart.val + sizeAligned), .LEVEL_4KB);
+    var pfeState = PfeState(.MAP).create(&kernel.kernelProcess.addrSpace, vstart, .asVirt(vstart.val + sizeAligned), .LEVEL_4KB);
 
-    kernel.kernelProcess.addr_space.spinlock.lock();
-    defer kernel.kernelProcess.addr_space.spinlock.unlock();
+    kernel.kernelProcess.addrSpace.spinlock.lock();
+    defer kernel.kernelProcess.addrSpace.spinlock.unlock();
 
     while (pfeState.next()) |pfe| {
         pfe.* = PFE_DEFAULTS[0];
@@ -486,7 +486,7 @@ fn setupPtes() void {
         default.setCache(level, PteCache.WRITE_BACK);
         default.setPfe(level, false);
         default.setAccessed(level, false);
-        default.setUser(level, false);
+        default.setUser(level, true);
         default.setRead(level, true);
         default.setWrite(level, true);
         default.setExec(level, true);

@@ -5,13 +5,18 @@ const Vaddr = @import("memory.zig").Vaddr;
 const paging = @import("paging.zig");
 const mem = @import("memory.zig");
 
+const arch = @import("arch");
+
+/// Zeroed/empty page used for reads of uninitialized mmaps
+pub var EMPTY_PAGE : arch.paging.Pte = undefined;
+
 pub const VmArea = struct {
     start : Vaddr,      // Start address of the area
     end : Vaddr,        // End address of the area
     flags : Flags,
     areaType : AreaType,
-    // file
-    // file_offset
+    file : u64,
+    fileOffset : usize,
 
     const AreaType = enum {
         VMALLOC,
@@ -40,7 +45,7 @@ pub const VmSpace = struct {
 };
 
 pub fn mapKernelTables(table : *paging.Ptable) void {
-    @memcpy(table.pte[256..], kernel.kernelProcess.addr_space.rootPt.pte[256..]);
+    @memcpy(table.pte[256..], kernel.kernelProcess.addrSpace.rootPt.pte[256..]);
 }
 
 pub fn setup() void {
@@ -49,8 +54,13 @@ pub fn setup() void {
     kernel.mm.slubAlloc.slubPoolPmalloc(@sizeOf(VmArea));
     kernel.mm.slubAlloc.slubPoolPmalloc(@sizeOf(VmSpace));
 
+    EMPTY_PAGE = paging.PFE_DEFAULTS[0];
+    EMPTY_PAGE.setWrite(0, false);
+    EMPTY_PAGE.setUser(0, true);
+    EMPTY_PAGE.setEntry(0, kernel.zallocPage4k());
+
     kernel.print("  Initializing kernel vm space\n", .{});
-    const vmSpace = &kernel.kernelProcess.addr_space;
+    const vmSpace = &kernel.kernelProcess.addrSpace;
     vmSpace.start = mem.KERNEL_ALLOC;
     vmSpace.end = .asVirt(mem.KERNEL_ALLOC.val +  mem.KERNEL_ALLOC_SIZE);
     vmSpace.spinlock.init();

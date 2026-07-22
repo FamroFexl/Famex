@@ -60,6 +60,18 @@ pub fn removeBack(list : *@This()) ?*Node {
     return prev;
 }
 
+pub fn getNext(list : *@This(), tracker : *Node) ?*Node {
+    if (tracker.next == list)
+        return null;
+    return tracker.next;
+}
+
+pub fn getPrev(list : *@This(), tracker : *Node) ?*Node {
+    if (tracker.prev == list)
+        return null;
+    return tracker.prev;
+}
+
 pub fn contains(list : *@This(), node : *Node) bool {
     var next = list.next;
     while (next != list.prev) : (next = next.next) {

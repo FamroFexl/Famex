@@ -110,7 +110,6 @@ FUNC irqEntry
 
     // Align to SysV expectations on c function call
     and rsp, -16
-    sub rsp, 8
 
     // Save last rsp on alignment
     push rbx
@@ -204,8 +203,8 @@ FUNC_END irqEntry
  */
 FUNC syscallEntry
     // Direction and alignment check flags are always 0
-    cld
-    clac
+    //cld
+    //clac
 
     /*
      * Switch to cpu_data for kernel-mode (needed for syscall_handler and getting the current
@@ -222,6 +221,7 @@ FUNC syscallEntry
     // Alloc stack space and align (for SysV func alignment)
     sub rsp, CPU_STATE_SIZE
     and rsp, -16
+    sub rsp, 8
 
     // Stack: cpu_state
 

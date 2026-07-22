@@ -12,13 +12,20 @@ const sched = kernel.pm.sched.scheduler;
 const time = @import("time.zig");
 const cpu = @import("arch").cpu;
 
+const lib = @import("lib");
+
 const std = @import("std");
 
-pub const Pid = u64;
+pub const Pid = u32;
+
+/// Map of Process IDs to processes
+pub var pids : lib.linux.XArray = undefined;
+/// Map of Thread IDs to threads
+pub var tids : lib.linux.XArray = undefined;
 
 pub const Process = struct {
     parent : ?*@This(),
-    addr_space : vmm.VmSpace,
+    addrSpace : vmm.VmSpace,
     state : State,
 
     timeLock : kernel.RwLock = .create(),
@@ -268,7 +275,7 @@ pub fn PerCpuDyn(comptime T: type) type {
                 for (0..cpu.FEATURES.NUM_CPU_CORES) |i| {
                     const percpu = @intFromPtr(getGlobalPercpu(*anyopaque, i, 0)) + perCpu.PER_CPU_STARTING_OFFSET.val;
 
-                    var state = kernel.PfeState(.MAP).create(&kernelProcess.addr_space, .{.val = percpu + perCpu.cur_offset.val}, .{.val = percpu + last}, .LEVEL_4KB);
+                    var state = kernel.PfeState(.MAP).create(&kernelProcess.addrSpace, .{.val = percpu + perCpu.cur_offset.val}, .{.val = percpu + last}, .LEVEL_4KB);
                     while (state.next()) |pte| {
                         pte.* = pfe;
                         pte.setEntry(0, buddy.allocPage4k());
@@ -342,6 +349,7 @@ pub fn addUtime() void {
 pub extern fn inKmode(state : *kernel.CpuState) callconv(.c) bool;
 
 fn setupKernelProc() void {
+    pids.set(0, &kernelProcess);
     kernelProcess.pid = 0;
     kernelProcess.state = .RUNNING;
     kernelProcess.createTime = time.getUnixClock();
@@ -353,6 +361,9 @@ fn setupKernelProc() void {
 
 pub fn setup() void {
     kernel.print("pm: Setting up Processing\n", .{});
+
+    pids.init(true);
+    tids.init(true);
 
     kernel.pm.sched.scheduler.setup();
 

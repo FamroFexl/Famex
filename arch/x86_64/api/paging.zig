@@ -22,7 +22,7 @@ pub fn flushTlb() void {
 }
 
 pub fn flushPage(page : *anyopaque) void {
-    reg.tlb_page_flush(page);
+    reg.tlbPageFlush(page);
 }
 
 pub const Pte = packed struct(u64) {

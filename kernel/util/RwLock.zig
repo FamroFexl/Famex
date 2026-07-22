@@ -21,20 +21,20 @@ pub fn readLock(this : *@This()) void {
         const lock = this.val.load(.acquire);
 
         // Spin if being written
-        if (lock & WRITING_BIT) {
+        if (lock & WRITING_BIT == 1) {
             cpu.spinWaitLoop();
             continue;
         }
 
         // Change the value if it has not been written to
-        if (this.val.cmpxchgWeak(lock, lock + 1, .acquire, .monotonic)) {
+        if (this.val.cmpxchgWeak(lock, lock + 1, .acquire, .monotonic) != null) {
             break;
         }
     }
 }
 
 pub fn readUnlock(this : *@This()) void {
-    this.val.fetchSub(1, .release);
+    _ = this.val.fetchSub(1, .release);
 }
 
 pub fn writeLock(this : *@This()) void {
