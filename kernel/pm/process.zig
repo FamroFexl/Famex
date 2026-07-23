@@ -89,7 +89,7 @@ pub const Thread = struct {
 
     /// Thread stack structure
     pub const Stack = struct {
-        start : *anyopaque,
+        start : u64,
         size : usize,
     };
 

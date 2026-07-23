@@ -110,6 +110,7 @@ FUNC irqEntry
 
     // Align to SysV expectations on c function call
     and rsp, -16
+    sub rsp, 8
 
     // Save last rsp on alignment
     push rbx
@@ -221,7 +222,6 @@ FUNC syscallEntry
     // Alloc stack space and align (for SysV func alignment)
     sub rsp, CPU_STATE_SIZE
     and rsp, -16
-    sub rsp, 8
 
     // Stack: cpu_state
 

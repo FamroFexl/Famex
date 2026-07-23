@@ -429,7 +429,7 @@ pub export fn init() void {
     base.* = .{
         .stack = .{
             .size = kernel.config.SYSCALL_STACK_SIZE,
-            .start = kernel.allocPage(kernel.mm.buddyAlloc.sizeToOrder(kernel.config.SYSCALL_STACK_SIZE)).toVirt().ptr()
+            .start = kernel.allocPage(kernel.mm.buddyAlloc.sizeToOrder(kernel.config.SYSCALL_STACK_SIZE)).toVirt().val,
         },
         .state = .RUNNING,
     };
@@ -451,7 +451,7 @@ pub export fn init() void {
 
     //const vfr : *volatile u8 = @ptrFromInt(0x7FFFFFFFF990);
     //_ = vfr.*;
-    kernel.pm.process.perCpuStart.getLocal().syscallStack = @intFromPtr(base.stack.start);
+    kernel.pm.process.perCpuStart.getLocal().syscallStack = base.stack.start + base.stack.size;
     // Add stack area to tree
     // const stackArea = kernel.pmalloc(kernel.mm.vmm.VmArea);
     // stackArea.areaType = .USER_STACK

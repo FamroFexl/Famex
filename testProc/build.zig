@@ -8,6 +8,7 @@ pub fn build(b: *std.Build, target: std.Build.ResolvedTarget) !void {
         .optimize = b.standardOptimizeOption(.{}),
         .target = target,
         .root_source_file = b.path(cwd ++ "main.zig"),
+        .red_zone = false,
     });
 
     const testProc = b.addExecutable(.{
