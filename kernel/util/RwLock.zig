@@ -3,7 +3,7 @@ const std = @import("std");
 const kernel = @import("kernel");
 const cpu = @import("arch").cpu;
 
-const WRITING_BIT = 31;
+const WRITING_BIT : u32 = @intCast(kernel.bin.setBit(31));
 
 val : std.atomic.Value(u32) = .{.raw = 0},
 
@@ -27,7 +27,7 @@ pub fn readLock(this : *@This()) void {
         }
 
         // Change the value if it has not been written to
-        if (this.val.cmpxchgWeak(lock, lock + 1, .acquire, .monotonic) != null) {
+        if (this.val.cmpxchgWeak(lock, lock + 1, .acquire, .monotonic) == null) {
             break;
         }
     }

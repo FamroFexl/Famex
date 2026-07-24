@@ -191,7 +191,7 @@ FUNC_END irqEntry
  * On entry, RCX contains the last RIP, R11 contains the last RFLAGS, and RSP contains
  * the last RSP.
  *
- * R10, RCX, and R11 are clobbered.
+ * RBX, RCX, and R11 are clobbered.
  *
  * Syscalls MUST only be called from user mode since this entry automatically
  * does a swapgs, which would corrupt the user segment in kernel mode.
@@ -214,7 +214,7 @@ FUNC syscallEntry
     swapgs
 
     // RSP is still set to the current user stack, which we need to save. R10 can be safely clobbered
-    mov r10, rsp
+    mov rbx, rsp
 
     // Switch to kernel stack
     mov rsp, gs:[SYSCALL_STACK_OFST]
@@ -240,7 +240,7 @@ FUNC syscallEntry
     mov [rdi + RIP_OFST], rcx
 
     // Save user stack
-    mov [rdi + RSP_OFST], r10
+    mov [rdi + RSP_OFST], rbx
 
     // Save regs consumes old_rdi from stack
     call saveRegs
@@ -265,7 +265,7 @@ FUNC syscallEntry
     mov rcx, [rsp + RIP_OFST]
 
     // Used as scratch reg to avoid modifying rsp directly
-    mov r10, [rsp + RSP_OFST]
+    mov rbx, [rsp + RSP_OFST]
 
     // Switch back to user thread state
     swapgs
@@ -286,7 +286,7 @@ FUNC syscallEntry
     cli
 
     // Restore user stack
-    mov rsp, r10
+    mov rsp, rbx
 
     sysretq
 FUNC_END syscallEntry

@@ -1,3 +1,5 @@
+const std = @import("std");
+
 const kernel = @import("kernel");
 const cast = kernel.cast;
 const log = kernel.util.log;
@@ -364,15 +366,14 @@ pub export fn init() void {
     process.createTime = kernel.getUnixClock();
     process.threads.init();
     process.children.init();
-    //process.pid = kernel.pids.alloc(process);
-    process.pid = 1;
+    process.pid = @intCast(kernel.pids.alloc(0, std.math.maxInt(i32),process));
     process.parent = kernel.kernelProcess;
     process.addrSpace.start = kernel.mm.memory.USER_MEMORY_START;
     process.addrSpace.end = kernel.mm.memory.USER_MEMORY_END;
     process.addrSpace.rootPt = cast.toPtr(*kernel.mm.paging.Ptable, kernel.zallocPage4k().toVirt().ptr());
     kernel.mm.vmm.mapKernelTables(process.addrSpace.rootPt);
     _ = process.addrSpace.rootPt.switchTo();
-    process.addrSpace.tree.init(.{});
+    process.addrSpace.tree.init(.{.allocRange = true, .allocWrapped = true});
 
     // Setup headers
     var execStack = false;
@@ -394,6 +395,9 @@ pub export fn init() void {
             .read = phdr.flags.read,
             .write = phdr.flags.write,
         };
+
+        bin.setIfLarger(u64, &process.addrSpace.mmapBase.val, vmArea.end.val);
+
         _ = process.addrSpace.tree.storeRange(vmArea.start.val, vmArea.end.val - 1, vmArea);
 
         // TODO something is wrong with pteNext or pteInit that causes it to skip the last page (if end is 0x7000->0x7fff, only up to 0x6000 will be mapped)
@@ -412,18 +416,19 @@ pub export fn init() void {
 
         var permState = kernel.PfeState(.GET).create(&process.addrSpace, .asVirt(bin.alignDown(vmArea.start.val, types.SIZE_4KB)), .asVirt(bin.alignUp(vmArea.end.val, types.SIZE_4KB) + types.SIZE_4KB), .LEVEL_4KB);
         while (permState.next()) |pfe| {
-            _ = pfe;
-            //pfe.setRead(0, vmArea.flags.read);
-            //pfe.setWrite(0, vmArea.flags.write);
-            //pfe.setExec(0, vmArea.flags.exec);
+            pfe.setRead(0, vmArea.flags.read);
+            pfe.setWrite(0, vmArea.flags.write);
+            pfe.setExec(0, vmArea.flags.exec);
         }
     }
+
+    process.addrSpace.mmapBase.val = bin.alignUp(process.addrSpace.mmapBase.val, types.SIZE_4KB);
 
     const mainThread = kernel.pmalloc(kernel.UThread);
     process.threads.insertFront(&mainThread.base.link);
     mainThread.fpuContext = api.cpu.FpuState.alloc();
     //mainThread.base.tid = kernel.tids.alloc(&mainThread.base);
-    mainThread.base.tid = 9;
+    mainThread.base.tid = kernel.tids.alloc(0, std.math.maxInt(u32), &mainThread.base);
     const base = &mainThread.base;
     base.owner = process;
     base.* = .{

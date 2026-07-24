@@ -15,8 +15,8 @@ pub const VmArea = struct {
     end : Vaddr,        // End address of the area
     flags : Flags,
     areaType : AreaType,
-    file : u64,
-    fileOffset : usize,
+    file : u64 = undefined,
+    fileOffset : usize = undefined,
 
     const AreaType = enum {
         VMALLOC,
@@ -24,6 +24,7 @@ pub const VmArea = struct {
         USER_PROG,
         USER_STACK,
         USER_HEAP,
+        USER_FILE,
     };
 
     const Flags = packed struct {
@@ -42,6 +43,7 @@ pub const VmSpace = struct {
     start : Vaddr,
     end : Vaddr,
     tree : MapleTree,
+    mmapBase : Vaddr,   // Updated base that mmap allocations start at
 };
 
 pub fn mapKernelTables(table : *paging.Ptable) void {
@@ -56,8 +58,10 @@ pub fn setup() void {
 
     EMPTY_PAGE = paging.PFE_DEFAULTS[0];
     EMPTY_PAGE.setWrite(0, false);
+    EMPTY_PAGE.setExec(0, false);
     EMPTY_PAGE.setUser(0, true);
     EMPTY_PAGE.setEntry(0, kernel.zallocPage4k());
+    EMPTY_PAGE.setGlobal(0, true);
 
     kernel.print("  Initializing kernel vm space\n", .{});
     const vmSpace = &kernel.kernelProcess.addrSpace;

@@ -2,10 +2,10 @@ pub const dev_t = u32;
 pub const key_t = u32;
 
 // Must be able to individually store a pid_t, uid_t, or gid_t
-pub const id_t = i64;
+pub const id_t = u32;
 
 // Must be signed
-pub const pid_t = id_t;
+pub const pid_t = i32;
 
 // These NEED to be signed (for some reason, POSIX is ambiguous!)
 // They will be set to negative values in syscalls.

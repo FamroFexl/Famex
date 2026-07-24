@@ -128,12 +128,12 @@ pub fn getCpuId() u8 {
     return cpu.cpuId.getLocal().*;
 }
 
-extern fn memcpyExcp(dest : *anyopaque, src : *anyopaque, len : u64) callconv(.c) u64;
+extern fn memcpyExcp(dest : * allowzero anyopaque, src : *allowzero anyopaque, len : u64) callconv(.c) u64;
 
-pub fn copyToUser(dest : *anyopaque, src : *anyopaque, size : anytype) u64 {
+pub fn copyToUser(dest : *allowzero anyopaque, src : *anyopaque, size : anytype) u64 {
     return memcpyExcp(dest, src, size);
 }
 
-pub fn copyFromUser(dest : *anyopaque, src : *anyopaque, size : anytype) u64 {
+pub fn copyFromUser(dest : *anyopaque, src : *allowzero anyopaque, size : anytype) u64 {
     return memcpyExcp(dest, src, size);
 }

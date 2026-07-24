@@ -89,12 +89,20 @@ pub fn storeRange(tree : *@This(), first : u64, last : u64, data : ?*anyopaque) 
     _ = maple.mtree_store_range(&tree.val, first, last, data);
 }
 
-pub fn find(tree : *@This(), index : *u64, max : u64) ?*anyopaque {
-    return maple.mt_find(&tree.val, index, max);
+pub fn allocRange(tree : *@This(), size : usize, min : u64, max : u64, data : ?*anyopaque) u64 {
+    const out : u64 = min;
+    _ = maple.mtree_alloc_range(&tree.val, @ptrCast(@alignCast(@constCast(&out))), data, size, min, max);
+    return out;
 }
 
-pub fn findAfter(tree : *@This(), index : *u64, max : u64) ?*anyopaque {
-    return maple.mt_find_after(&tree.val, index, max);
+pub fn find(tree : *@This(), index : u64, max : u64) ?*anyopaque {
+    const indexCopy = index;
+    return maple.mt_find(&tree.val, @ptrCast(@alignCast(@constCast(&indexCopy))), max);
+}
+
+pub fn findAfter(tree : *@This(), index : u64, max : u64) ?*anyopaque {
+    const indexCopy = index;
+    return maple.mt_find_after(&tree.val, @ptrCast(@alignCast(@constCast(&indexCopy))), max);
 }
 
 pub fn next(tree : *@This(), index : u64, max : u64) ?*anyopaque {

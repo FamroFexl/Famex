@@ -60,16 +60,32 @@ pub fn removeBack(list : *@This()) ?*Node {
     return prev;
 }
 
-pub fn getNext(list : *@This(), tracker : *Node) ?*Node {
-    if (tracker.next == list)
-        return null;
-    return tracker.next;
-}
+pub const Iterator = struct {
+    list : *Node,
+    cur : *Node,
 
-pub fn getPrev(list : *@This(), tracker : *Node) ?*Node {
-    if (tracker.prev == list)
-        return null;
-    return tracker.prev;
+    pub fn next(this : *@This()) ?*Node {
+        if (this.cur.next == this.list)
+            return null;
+
+        this.cur = this.cur.next;
+        return this.cur;
+    }
+
+    pub fn prev(this : *@This()) ?*Node {
+        if (this.cur.prev == this.list)
+            return null;
+
+        this.cur = this.cur.prev;
+        return this.cur;
+    }
+};
+
+pub fn iterator(this : *@This()) Iterator {
+    return .{
+        .list = this,
+        .cur = this,
+    };
 }
 
 pub fn contains(list : *@This(), node : *Node) bool {

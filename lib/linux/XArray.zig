@@ -35,11 +35,11 @@ pub fn get(this : *@This(), index : u32) ?*anyopaque {
     return xarray.xa_load(&this.val, @intCast(index));
 }
 
-pub fn alloc(this : *@This(), entry : *anyopaque) u32 {
+pub fn alloc(this : *@This(), min : u32, max : u32, entry : *anyopaque) u32 {
     var id : u32 = undefined;
     _ = xarray.xa_alloc(&this.val, &id, entry, .{
-        .max = std.math.maxInt(c_uint),
-        .min = std.math.minInt(c_uint),
+        .min = min,
+        .max = max,
     });
 
     return id;

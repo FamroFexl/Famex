@@ -47,7 +47,7 @@ pub const tm = extern struct {
     tm_mday : i32 = 0,      // Day of month [1,31].
     tm_mon : i32 = 0,       // Month of year [0,11].
     tm_year : i32 = 0,      // Years since 1900.
-    tm_wday : i32 = 0,      // Day of week [0,6] (Sunday =0).
+    tm_wday : i32 = 0,      // Day of week [0,6] (Sunday = 0).
     tm_yday : i32 = 0,      // Day of year [0,365].
     tm_isdst : i32 = 0,     // Daylight Saving flag.
     tm_gmtoff : i64 = 0,    // Seconds east of UTC.

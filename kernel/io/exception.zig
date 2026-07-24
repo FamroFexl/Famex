@@ -3,9 +3,10 @@ const cast = kernel.cast;
 const bin = kernel.bin;
 const types = kernel.types;
 
-const lib = @import("lib");
-
 const irq = @import("irq.zig");
+const paging = kernel.mm.paging;
+
+const lib = @import("lib");
 
 const arch = @import("arch");
 
@@ -40,9 +41,10 @@ pub fn handler(irqNum : u64, data : *ExceptionData, state : *kernel.CpuState) vo
     }
 }
 
+
+
 pub fn pageFault(data : *ExceptionData, state : *kernel.CpuState) void {
-    kernel.print("kmode pfault {}\n", .{data.pfault});
-    //_ = data;
+    kernel.print("kmode pfault {} {}\n", .{data.pfault, state.inKmode()});
     if (state.inKmode()) {
         // Copy from/to user
         for (pfaultLUT) |lut| {
@@ -55,17 +57,53 @@ pub fn pageFault(data : *ExceptionData, state : *kernel.CpuState) void {
         @panic("Page fault in kernel mode!");
     }
 
-    // const addr = data.pfault.addr;
-    // const vmSpace = &kernel.cThread().owner.addrSpace;
-    // const area = cast.toPtr(?*kernel.mm.vmm.VmArea, vmSpace.tree.find(addr.ptr(), addr.val)) orelse undefined;
-    //
-    // const pteDef = kernel.mm.paging.PFE_DEFAULTS[0];
-    // pteDef.setUser(0, true);
-    //
-    // const start = bin.alignDown(addr.val, types.SIZE_4KB);
-    // const end = bin.alignUp(addr.val, types.SIZE_4KB);
+    const addr = data.pfault.addr;
+    const vmSpace = &kernel.cThread().owner.addrSpace;
+    const area = cast.toPtr(*kernel.mm.vmm.VmArea, vmSpace.tree.find(addr.val, addr.val) orelse undefined);
 
+    const start = bin.alignDown(addr.val, types.SIZE_4KB);
+    const end = bin.alignUp(addr.val, types.SIZE_4KB);
 
+    if (area.areaType == .USER_HEAP) {
+        var pfeState = kernel.PfeState(.MAP).create(vmSpace, .asVirt(start), .asVirt(end + types.SIZE_4KB), .LEVEL_4KB);
+        const pfe = pfeState.next().?;
+        if (data.pfault.access == .READ) {
+            //while (true) {}
+            // bad read
+            //if (!area.flags.read)
+            if (!pfe.getEmpty(0)) {
+                // Is swapped out page?
+
+            }
+            // Set to read-only zeroed page
+            pfe.* = kernel.mm.vmm.EMPTY_PAGE;
+        }
+        else if (data.pfault.access == .WRITE) {
+            // bad write
+            // if (!area.flags.write)
+            if (!pfe.getEmpty(0)) {
+                // Is swapped out page?
+
+                //else is 0-set page
+            }
+
+            pfe.* = paging.PFE_DEFAULTS[0];
+            pfe.setUser(0, true);
+            pfe.setRead(0, area.flags.read);
+            pfe.setWrite(0, area.flags.write);
+            pfe.setExec(0, area.flags.exec);
+
+            pfe.setEntry(0, kernel.zallocPage4k());
+        }
+        else if (data.pfault.access == .EXECUTE) {
+            // bad exec
+            // if (!area.flags.exec)
+            if (!pfe.getEmpty(0)) {
+                // Is swapped out page?
+
+            }
+        }
+    }
 
     // File Paging
     // if (area.areaType == .USER_PROG) {

@@ -1,12 +1,27 @@
 const kernel = @import("kernel");
 const cpu = @import("arch").cpu;
 
-pub fn sched_yield(state : *cpu.CpuState) i64 {
+const SysRet = @import("syscall.zig").SysRet;
+
+const posix = @import("lib").posix;
+
+pub fn sched_yield(state : *cpu.CpuState) SysRet {
     _ = state;
     kernel.irqSave();
     defer kernel.irqRestore();
 
     kernel.cThread().yield();
 
-    return 0;
+    return .ok(0);
 }
+
+// pub fn getpriority(state : *cpu.CpuState) SysRet {
+//     const which : i32 = @bitCast(@as(u32, @truncate(state.getArgSys(0).*)));
+//     const who : posix.types.id_t = @truncate(state.getArgSys(1).*);
+// }
+//
+// pub fn setpriority(state : *cpu.CpuState) SysRet {
+//     const which : i32 = @bitCast(@as(u32, @truncate(state.getArgSys(0).*)));
+//     const who : posix.types.id_t = @truncate(state.getArgSys(1).*);
+//     const value : i32 = @bitCast(@as(u32, @truncate(state.getArgSys(2).*)));
+// }

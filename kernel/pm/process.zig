@@ -16,7 +16,7 @@ const lib = @import("lib");
 
 const std = @import("std");
 
-pub const Pid = u32;
+pub const Pid = i32;
 
 /// Map of Process IDs to processes
 pub var pids : lib.linux.XArray = undefined;
@@ -37,6 +37,16 @@ pub const Process = struct {
 
     threads : util.data.List,
     children : util.data.List,
+
+    creds : struct {
+        ruid : lib.posix.types.uid_t,   // Real User ID
+        euid : lib.posix.types.uid_t,   // Effective User ID
+        suid : lib.posix.types.uid_t,   // Saved User ID
+
+        rgid : lib.posix.types.uid_t,   // Real Group ID
+        egid : lib.posix.types.uid_t,   // Effective Group ID
+        sgid : lib.posix.types.uid_t,   // Saved Group ID
+    },
 
     const State = enum {
         RUNNING,       // The process is running
@@ -66,18 +76,17 @@ pub const Thread = struct {
     stack : Stack = undefined,
 
     schedLink : kernel.List.Node = undefined,
-    sched : SchedData = undefined,
+    sched : struct {
+        policy : sched.Policy,
+        priority : u8,  // FIFO/RR real-time priority
+        nice : i8,      // Nice value for NORMAL policy
+    } = undefined,
 
     /// Semaphore and mutex sleep link
     sleepLink : util.data.Queue.Node = undefined,
 
     /// Process thread link
     link : kernel.List.Node = undefined,
-
-    const SchedData = struct {
-        policy : sched.Policy,
-        priority : u8,
-    };
 
     const State = enum {
         RUNNING,           // Is running or waiting to start running

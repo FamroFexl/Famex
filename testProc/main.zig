@@ -5,10 +5,10 @@ pub export fn _start() noreturn {
     while (true) {}
 }
 
-pub inline fn syscall(number: u64, args: [6]u64) i64 {
+pub inline fn syscall(number: u64, args: [6]u64) u64 {
     return asm volatile (
         \\ syscall
-    : [ret] "={rax}" (-> i64),
+    : [ret] "={rax}" (-> u64),
         : [num] "{rax}" (number),
           [a0] "{rdi}" (args[0]),
           [a1] "{rsi}" (args[1]),
@@ -16,7 +16,7 @@ pub inline fn syscall(number: u64, args: [6]u64) i64 {
           [a3] "{r10}" (args[3]),
           [a4] "{r8}" (args[4]),
           [a5] "{r9}" (args[5]),
-        : .{.rcx = true, .r11 = true, .r10 = true, .memory = true }
+        : .{.rcx = true, .r11 = true, .rbx = true, .memory = true }
     );
 }
 
@@ -34,10 +34,19 @@ pub fn yield() void {
     _ = syscall(2, .{0, 0, 0, 0, 0, 0});
 }
 
-export fn main() void {
-    const time : i64 = @bitCast(syscall(4, .{0, 0, 0, 0, 0, 0}));
+pub const timespec = extern struct {
+    tv_sec : u64,  // Whole seconds.
+    tv_nsec : i64,          // Nanoseconds [0, 999999999].
+};
 
-    print("{} chui\n", .{time});
+export fn main() void {
     print("hello!\n", .{});
+    const out = syscall(8, .{0, 80, 0b011, 1,  @bitCast(@as(i64, @intCast(-1))), 0});
+    const mem : [*]volatile u8 = @ptrFromInt(out);
+
+    _ = mem[0];
+
+    print("between\n", .{});
+    mem[0] = 8;
     print("hello9", .{});
 }
