@@ -239,8 +239,6 @@ pub fn setup() void {
     for (0..cpu.FEATURES.NUM_CPU_CORES) |i| {
         SmpCall.queue.getGlobal(i).init();
         inIrqTime.getGlobal(i).* = 0;
-        kernel.pm.process.perCpuStart.getGlobal(i).irqNestDepth = 0;
-        kernel.pm.process.perCpuStart.getGlobal(i).irqStack = @intFromPtr(kernel.pmallocBytes(kernel.config.IRQ_STACK_SIZE)) + kernel.config.IRQ_STACK_SIZE;
     }
 
     exception.setup();
