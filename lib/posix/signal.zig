@@ -89,8 +89,8 @@ pub const SigAction = packed struct(i32) {
 };
 
 pub const SigStatus = packed struct(i32) {
-    SS_ONSTACK : bool,  // Process is executing on an alternate signal stack
-    SS_DISABLE : bool,  // Alternate signal stack is disabled
+    SS_ONSTACK : bool = false,  // Process is executing on an alternate signal stack
+    SS_DISABLE : bool = false,  // Alternate signal stack is disabled
     __pad1 : u30 = undefined,
 };
 
@@ -156,7 +156,7 @@ pub const siginfo_t = extern struct {
     si_errno : i32 = 0,         // If non-zero, an errno value associated with this signal, as described in <errnoh>
     si_pid : types.pid_t,   // Sending process ID
     si_uid : types.uid_t,   // Real user ID of sending process
-    si_addr : *allowzero anyopaque = @ptrFromInt(1),   // Address that caused fault
+    si_addr : *allowzero anyopaque = @ptrFromInt(0),   // Address that caused fault
     si_status : i32 = 0,        // Exit value or signal
     si_value : sigval = .{.sival_int = 0},      // Signal value
 };

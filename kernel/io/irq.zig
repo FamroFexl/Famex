@@ -28,9 +28,6 @@ pub const IrqData = struct {
 /// Tracks time spent in IRQs
 const inIrqTime = kernel.PerCpuStat(u64, opaque {});
 
-/// Depth of IRQ nesting we are in
-const nestDepth = kernel.PerCpuStat(u8, opaque {});
-
 /// Depth of IRQ disable requests
 pub const irqSaveDepth = kernel.PerCpuStat(*u64, opaque {});
 
@@ -50,7 +47,7 @@ pub fn irqRestore() void { noIrq();
 }
 
 pub fn inIrq() bool {
-    return nestDepth.getLocal().* > 0;
+    return kernel.pm.process.perCpuStart.getLocal().irqNestDepth > 0;
 }
 
 /// No IRQ allowed
@@ -179,11 +176,6 @@ fn nestedHandler(data : *const IrqData, state : *cpu.CpuState) void {
 
 /// Operations to perform on a first-level interrupt
 fn threadHandler(data : *const IrqData, state : *cpu.CpuState) void { kernel.util.locks.noLocksHeld();
-    // Interrupts are NEVER enabled in IRQ context implicitly
-    // so irqSave and irqRestore should never enable them.
-    var inIrqSaveDepth : u64 = 1;
-    irqSaveDepth.getLocal().* = &inIrqSaveDepth;
-
     if (!sched.cThread().context.inKmode()) {
         rcu.exitEqs();
         process.addUtime();
@@ -217,17 +209,22 @@ fn threadHandler(data : *const IrqData, state : *cpu.CpuState) void { kernel.uti
 
     // Add time in irq
     inIrqTime.getLocal().* += process.startTimeReset();
-
-    irqSaveDepth.getLocal().* = &sched.cThread().irqSaveDepth;
 }
 
 pub fn handler(data : *const IrqData, state : *cpu.CpuState) void { noIrq();
-    const depth = nestDepth.getLocal();
+    const depth = &kernel.pm.process.perCpuStart.getLocal().irqNestDepth;
 
     depth.* += 1;
 
+    // Interrupts are NEVER enabled in IRQ context implicitly
+    // so irqSave and irqRestore should never enable them.
+    var inIrqSaveDepth : u64 = 1;
+    irqSaveDepth.getLocal().* = &inIrqSaveDepth;
+
     if (depth.* == 1) {
         threadHandler(data, state);
+
+        irqSaveDepth.getLocal().* = &sched.cThread().irqSaveDepth;
     }
     else {
         nestedHandler(data, state);
@@ -242,7 +239,8 @@ pub fn setup() void {
     for (0..cpu.FEATURES.NUM_CPU_CORES) |i| {
         SmpCall.queue.getGlobal(i).init();
         inIrqTime.getGlobal(i).* = 0;
-        nestDepth.getGlobal(i).* = 0;
+        kernel.pm.process.perCpuStart.getGlobal(i).irqNestDepth = 0;
+        kernel.pm.process.perCpuStart.getGlobal(i).irqStack = @intFromPtr(kernel.pmallocBytes(kernel.config.IRQ_STACK_SIZE)) + kernel.config.IRQ_STACK_SIZE;
     }
 
     exception.setup();

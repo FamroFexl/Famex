@@ -194,13 +194,12 @@ fn setupGdt() void {
 
         const ist = cast.toPtr([*]align(1) u64, tss + @offsetOf(reg.Tss, "ist1"));
 
-        // IST1 is used for general interrupts
-        ist[0] = bin.alignDown(@intFromPtr(kernel.pmallocBytes(kernel.config.IRQ_STACK_SIZE)) + kernel.config.IRQ_STACK_SIZE, 16);
+        // RSP0 is used for general interrupts
+        new_tss.rsp0 = @intFromPtr(kernel.pmallocBytes(kernel.config.IRQ_STACK_SIZE)) + kernel.config.IRQ_STACK_SIZE;
 
         // Assign interrupt stacks (stacks are at top of memory allocation)
-        for (1..7) |j| {
-            // Interrupt stacks should be 16-byte aligned (SysV ABI)
-            ist[j] = bin.alignDown(@intFromPtr(kernel.pmallocBytes(types.SIZE_4KB)) + types.SIZE_4KB, 16);
+        for (0..7) |j| {
+            ist[j] = @intFromPtr(kernel.pmallocBytes(types.SIZE_4KB)) + types.SIZE_4KB;
         }
     }
 
@@ -219,7 +218,7 @@ fn setupIdt() void {
 
         idt.id_gate[i] = .{
             .word1 = .{
-                .ist = 1,
+                .ist = 0,
                 .offset1 = @intCast(bin.getBits(16, 0, func)),
                 .offset2 = @intCast(bin.getBits(16, 16, func)),
             },
@@ -232,6 +231,7 @@ fn setupIdt() void {
     // Intel idt[9], idt[15], and idt[22]->idt[31] irqs should never fire
 
     // All these interrupts have separate safe IST stacks
+    idt.id_gate[@intFromEnum(irq.VecNum.CTRL_PROT_XC)].word1.ist    = 1;
     idt.id_gate[@intFromEnum(irq.VecNum.DEBUG_XCP)].word1.ist       = 2;
     idt.id_gate[@intFromEnum(irq.VecNum.NON_MASK_IRQ)].word1.ist    = 3;
     idt.id_gate[@intFromEnum(irq.VecNum.DOUBLE_FAULT)].word1.ist    = 4;
@@ -258,6 +258,7 @@ fn setupSyscalls() void {
     rflags.trap = true;
     rflags.iopl = 3;
     rflags.direction = true;
+    rflags.access = true;
     rflags.irq_enable = true;
 
     reg.SyscallFMask.set(@bitCast(rflags));

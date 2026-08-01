@@ -63,7 +63,7 @@ pub fn sigaction(sig : i32, act : *allowzero posix.signal.sigaction, oact : *all
     return syscallReg(syscallRet(@intFromEnum(SysNum.SIGACTION), sig, act, oact, 0, 0, 0));
 }
 
-pub fn sigaltstack(ss : *posix.signal.stack_t, oss : *posix.signal.stack_t) i32 {
+pub fn sigaltstack(ss : *const allowzero posix.signal.stack_t, oss : *allowzero posix.signal.stack_t) i32 {
     return syscallReg(syscallRet(@intFromEnum(SysNum.SIGALTSTACK), ss, oss, 0, 0, 0, 0));
 }
 
@@ -71,7 +71,7 @@ pub fn sigqueue(pid : posix.types.pid_t, signo : i32, value : posix.signal.sigva
     return syscallReg(syscallRet(@intFromEnum(SysNum.SIGQUEUE), pid, signo, value, 0, 0, 0));
 }
 
-pub fn pthread_sigmask(how : posix.signal.SigSet, set : *posix.signal.sigset_t, oset : *allowzero posix.signal.sigset_t) i32 {
+pub fn pthread_sigmask(how : posix.signal.SigSet, set : *const posix.signal.sigset_t, oset : *allowzero posix.signal.sigset_t) i32 {
     return syscallReg(syscallRet(@intFromEnum(SysNum.PTHREAD_SIGMASK), how, set, oset, 0, 0, 0));
 }
 

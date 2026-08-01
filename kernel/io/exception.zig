@@ -39,11 +39,12 @@ pub fn handler(irqNum : u64, data : *ExceptionData, state : *kernel.CpuState) vo
         .PAGE_FAULT => pageFault(data, state),
         else => @panic("unhandled handler!"),
     }
+    //kernel.print("done\n", .{});
+    //var cre : u16 = 0;
+    //cre = 1;
 }
 
 pub fn pageFault(data : *ExceptionData, state : *kernel.CpuState) void {
-    //kernel.print("kmode pfault {} {}\n", .{data.pfault, state.inKmode()});
-
     const addr = data.pfault.addr;
     const vmSpace = &kernel.cThread().owner.addrSpace;
 
@@ -84,8 +85,9 @@ pub fn pageFault(data : *ExceptionData, state : *kernel.CpuState) void {
             @panic("Page fault in kernel mode!");
 
         // Kill thread
+        @panic("thread kill!");
 
-        return;
+        //return;
     });
 
 
@@ -105,13 +107,14 @@ pub fn pageFault(data : *ExceptionData, state : *kernel.CpuState) void {
         if (state.inKmode())
             @panic("Page fault in kernel mode!");
 
+        @panic("thread kill!");
         // Kill thread
     }
 
     const start = bin.alignDown(addr.val, types.SIZE_4KB);
     const end = bin.alignUp(addr.val, types.SIZE_4KB);
 
-    var pfeState = kernel.PfeState(.MAP).create(vmSpace, .asVirt(start), .asVirt(end + types.SIZE_4KB), .LEVEL_4KB);
+    var pfeState = kernel.PfeState(.MAP).create(vmSpace, .asVirt(start), .asVirt(end), .LEVEL_4KB);
     const pfe = pfeState.next().?;
 
     var pageFlush = false;
@@ -173,8 +176,6 @@ pub fn pageFault(data : *ExceptionData, state : *kernel.CpuState) void {
                     kernel.memcpy(@ptrFromInt(newStart), page.ptr(), newEnd - newStart);
                 }
             }
-
-            //while (true) {}
 
             mas.unlock();
 

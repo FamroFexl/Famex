@@ -57,9 +57,8 @@ const PfaultError = packed struct(u64) {
 /// Interrupt handler (called by asm)
 ///
 /// state: used to save and restore registers for a task
-/// error: pushed by specific interrupts, otherwise contains garbage (rip)
+/// error: pushed by all interrupts, otherwise is 0
 /// vec_num: what needs to be done depending on interrupt vector type
-///
 pub export fn interruptVectorHandler(state : *reg.CpuState, err : u64, vec_num : u64) void {
     if (vec_num != 14) {
         kernel.print("VecNum {}", .{vec_num});

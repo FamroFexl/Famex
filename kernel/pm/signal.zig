@@ -21,7 +21,6 @@ const SigRTLink = struct {
 };
 
 pub fn sigAlarmCallback(event : *kernel.TimerEvent) void {
-    kernel.print("sig alarm\n", .{});
     const process : *kernel.Process = @fieldParentPtr("sigAlarm", event);
 
     sigSend(.PROCESS, process, .{
@@ -193,7 +192,6 @@ fn getSignal(sigData : *SigData, blocked : posix.signal.sigset_t) ?posix.signal.
 
 /// Check for pending signals and handle them
 pub fn sigHandle(state : *cpu.CpuState) void {
-    //if (true) return;
     const thread = kernel.cThread();
     const process = thread.owner;
 
@@ -278,9 +276,6 @@ pub fn sigHandle(state : *cpu.CpuState) void {
 
     // Copy over siginfo if requested
     if (sigAction.sa_flags.SA_SIGINFO) {
-        // Ucontext in arg 2
-        state.getArg(2).* = stackTop;
-
         stackTop -= @sizeOf(posix.signal.siginfo_t);
         if (mem.copyToUser(@ptrFromInt(stackTop), &signal, @sizeOf(posix.signal.siginfo_t)) != 0) {
             // Try SIGSEGV signal, else terminate process
@@ -306,19 +301,21 @@ pub fn sigHandle(state : *cpu.CpuState) void {
         .uc_mcontext = @bitCast(state.*),
     };
 
+    // Ucontext in arg 2
+    state.getArg(2).* = stackTop;
+
     if (mem.copyToUser(@ptrFromInt(stackTop), &ucontext, @sizeOf(posix.signal.ucontext_t)) != 0) {
         // Try SIGSEGV signal, else terminate process
         kernel.print("no copy ucontext\n",. {});
     }
 
-    // Copy in return
+    // Copy in return (sysV align for last push)
     stackTop = bin.alignDown(stackTop, 16) - 8;
     if (mem.copyToUser(@ptrFromInt(stackTop), &@intFromPtr(&kernel.pm.syscall.syscall.VDSO.sigReturn), @sizeOf(u64)) != 0) {
         // Try SIGSEGV signal, else terminate process
         kernel.print("no copy return\n",. {});
     }
 
-    // Align down for handler call
     state.setStack(stackTop);
 
     state.setPc(@intFromEnum(sigAction.sa_handler));
@@ -327,7 +324,7 @@ pub fn sigHandle(state : *cpu.CpuState) void {
 pub fn sigreturn(state : *cpu.CpuState) kernel.pm.syscall.syscall.SysRet {
     // Stack frame : siginfo, oldMask, ucontext
 
-    var stackTop = state.getStack() + 8;
+    var stackTop = state.getStack();
 
     var ucontext : posix.signal.ucontext_t = undefined;
     if (mem.copyFromUser(&ucontext, @ptrFromInt(stackTop), @sizeOf(posix.signal.ucontext_t)) != 0) {
@@ -341,7 +338,7 @@ pub fn sigreturn(state : *cpu.CpuState) kernel.pm.syscall.syscall.SysRet {
         kernel.print("stack error!\n", .{});
     }
 
-    state.sanitizeRetFlags();
+    newState.sanitizeRetFlags();
 
     state.* = newState.*;
 

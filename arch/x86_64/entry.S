@@ -46,11 +46,10 @@
  *
  * On exit, only irq_frame can remain
  */
- // TODO update to support nested interrupts on ist stack entry
 FUNC irqEntry
     // Direction and alignment check flags are always 0
-    //cld
-    //clac
+    cld
+    clac
 
     // Stack: irq_frame, irq_num
 
@@ -71,8 +70,6 @@ FUNC irqEntry
     je 1f
         swapgs
     1:
-
-    // Stack: irq_frame, irq_num, cpu_state, old_rdi
 
     // rdi will be cpu_state address, as save_regs mandates
     lea rdi, [rsp + 8]
@@ -179,7 +176,7 @@ FUNC irqEntry
     // Stack: irq_frame, irq_num, cpu_state, in_kmode
 
     // Sanitize stack for return (get rid of error code)
-    add rsp, 8 + CPU_STATE_SIZE + 16
+    add rsp, 8 + CPU_STATE_SIZE + 8 + 8
 
     // Stack: irq_frame
 
@@ -203,10 +200,6 @@ FUNC_END irqEntry
  * loaded, RSP must contain the RSP to be loaded, and RAX must contain the return value
  */
 FUNC syscallEntry
-    // Direction and alignment check flags are always 0
-    cld
-    clac
-
     /*
      * Switch to cpu_data for kernel-mode (needed for syscall_handler and getting the current
      * thread's kernel stack instance (KSTACKTOP)
