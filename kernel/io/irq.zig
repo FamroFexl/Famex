@@ -31,6 +31,9 @@ const inIrqTime = kernel.PerCpuStat(u64, opaque {});
 /// Depth of IRQ disable requests
 pub const irqSaveDepth = kernel.PerCpuStat(*u64, opaque {});
 
+/// Depth of IRQ nesting we are in
+const irqNestDepth = kernel.PerCpuStat(u8, opaque {});
+
 pub fn irqSave() void {
     cpu.irqDisable();
 
@@ -47,7 +50,7 @@ pub fn irqRestore() void { noIrq();
 }
 
 pub fn inIrq() bool {
-    return kernel.pm.process.perCpuStart.getLocal().irqNestDepth > 0;
+    return irqNestDepth.getLocal().* > 0;
 }
 
 /// No IRQ allowed
@@ -212,7 +215,7 @@ fn threadHandler(data : *const IrqData, state : *cpu.CpuState) void { kernel.uti
 }
 
 pub fn handler(data : *const IrqData, state : *cpu.CpuState) void { noIrq();
-    const depth = &kernel.pm.process.perCpuStart.getLocal().irqNestDepth;
+    const depth = irqNestDepth.getLocal();
 
     depth.* += 1;
 
@@ -239,6 +242,7 @@ pub fn setup() void {
     for (0..cpu.FEATURES.NUM_CPU_CORES) |i| {
         SmpCall.queue.getGlobal(i).init();
         inIrqTime.getGlobal(i).* = 0;
+        irqNestDepth.getGlobal(i).* = 0;
     }
 
     exception.setup();

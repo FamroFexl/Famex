@@ -5,7 +5,8 @@ const mem = kernel.mm.memory;
 
 const posix = @import("lib").posix;
 
-const cpu = @import("arch").cpu;
+const arch = @import("arch");
+const cpu = arch.cpu;
 
 pub const SigData = struct {
     pendingMask : posix.signal.sigset_t = 0,
@@ -265,35 +266,8 @@ pub fn sigHandle(state : *cpu.CpuState) void {
         thread.sigMask |= bin.setBit(signal.si_signo);
     thread.spinlock.unlock();
 
-    var stackTop = cast.toInt(curStack.ss_sp) + curStack.ss_size;
+    const stackTop = cast.toInt(curStack.ss_sp) + curStack.ss_size;
 
-    // Stack frame : siginfo, oldMask, ucontext, retAddr.
-    // Siginfo is pushed first because it is pushed conditionally,
-    // and may not exist as sigreturn expects
-
-    // Signo always in arg 0
-    state.getArg(0).* = bin.convert(u64, signal.si_signo);
-
-    // Copy over siginfo if requested
-    if (sigAction.sa_flags.SA_SIGINFO) {
-        stackTop -= @sizeOf(posix.signal.siginfo_t);
-        if (mem.copyToUser(@ptrFromInt(stackTop), &signal, @sizeOf(posix.signal.siginfo_t)) != 0) {
-            // Try SIGSEGV signal, else terminate process
-            kernel.print("no copy siginfo\n",. {});
-        }
-        // Siginfo in arg 1
-        state.getArg(1).* = stackTop;
-    }
-
-    // Copy old mask to restore
-    stackTop -= @sizeOf(posix.signal.sigset_t);
-    if (mem.copyToUser(@ptrFromInt(stackTop), &threadMask, @sizeOf(posix.signal.sigset_t)) != 0) {
-        // Try SIGSEGV signal, else terminate process
-        kernel.print("no copy old mask\n",. {});
-    }
-
-    // Copy ucontext
-    stackTop -= @sizeOf(posix.signal.ucontext_t);
     const ucontext : posix.signal.ucontext_t = .{
         .uc_link = null,
         .uc_stack = curStack,
@@ -301,40 +275,29 @@ pub fn sigHandle(state : *cpu.CpuState) void {
         .uc_mcontext = @bitCast(state.*),
     };
 
-    // Ucontext in arg 2
-    state.getArg(2).* = stackTop;
-
-    if (mem.copyToUser(@ptrFromInt(stackTop), &ucontext, @sizeOf(posix.signal.ucontext_t)) != 0) {
+    arch.signal.pushSigFrame(state, &.{
+        .stackTop = stackTop,
+        .ucontext = ucontext,
+        .siginfo = signal,
+        .savedMask = threadMask,
+        .retAddr = @intFromPtr(&kernel.pm.syscall.syscall.VDSO.sigReturn)
+    }) catch {
         // Try SIGSEGV signal, else terminate process
-        kernel.print("no copy ucontext\n",. {});
-    }
-
-    // Copy in return (sysV align for last push)
-    stackTop = bin.alignDown(stackTop, 16) - 8;
-    if (mem.copyToUser(@ptrFromInt(stackTop), &@intFromPtr(&kernel.pm.syscall.syscall.VDSO.sigReturn), @sizeOf(u64)) != 0) {
-        // Try SIGSEGV signal, else terminate process
-        kernel.print("no copy return\n",. {});
-    }
-
-    state.setStack(stackTop);
+    };
 
     state.setPc(@intFromEnum(sigAction.sa_handler));
 }
 
 pub fn sigreturn(state : *cpu.CpuState) kernel.pm.syscall.syscall.SysRet {
-    // Stack frame : siginfo, oldMask, ucontext
+    var sigFrame : arch.signal.SigFrame = undefined;
 
-    var stackTop = state.getStack();
+    arch.signal.popSigFrame(state, &sigFrame) catch {
+        // Try SIGSEGV signal, else terminate process
+    };
 
-    var ucontext : posix.signal.ucontext_t = undefined;
-    if (mem.copyFromUser(&ucontext, @ptrFromInt(stackTop), @sizeOf(posix.signal.ucontext_t)) != 0) {
-        // error!
-        kernel.print("ucontext copy error!\n", .{});
-    }
-
-    const newState : *cpu.CpuState = cast.toPtr(*cpu.CpuState, &ucontext.uc_mcontext);
+    const newState : *cpu.CpuState = cast.toPtr(*cpu.CpuState, &sigFrame.ucontext.uc_mcontext);
     if (newState.getStack() > mem.USER_MEMORY_END.val) {
-        // error!
+        // Try SIGSEGV signal, else terminate process
         kernel.print("stack error!\n", .{});
     }
 
@@ -342,17 +305,9 @@ pub fn sigreturn(state : *cpu.CpuState) kernel.pm.syscall.syscall.SysRet {
 
     state.* = newState.*;
 
-    stackTop += @sizeOf(posix.signal.ucontext_t);
-
-    var oldMask : posix.signal.sigset_t = undefined;
-    if (mem.copyFromUser(&oldMask, @ptrFromInt(stackTop), @sizeOf(posix.signal.sigset_t)) != 0) {
-        // error!
-        kernel.print("old mask error!\n", .{});
-    }
-
     const thread = kernel.cThread();
     thread.spinlock.lock();
-    thread.sigMask = oldMask;
+    thread.sigMask = sigFrame.savedMask;
     thread.spinlock.unlock();
 
     return .ok(0);
