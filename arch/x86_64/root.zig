@@ -14,8 +14,8 @@ comptime {
 }
 
 pub fn panic(msg: []const u8, stack_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
-    kernel.irqDisable();
     _ = stack_trace;
+    kernel.irqDisable();
     kernel.log.printDirect("PANIC: ");
     kernel.log.printDirect(msg);
     if (ret_addr) |addr| {

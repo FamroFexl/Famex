@@ -32,7 +32,7 @@ pub const PTE_SIZE_BITS = 12;
 pub const PTE_ENTRIES = 512;
 pub const PTE_ENTRY_BITS = 9;
 
-pub fn flushPages(info : *kernel.SmpRequest.CallInfo) void {
+pub fn flushPages(info : *const kernel.SmpCall.CallInfo) void {
     var start = info.args[0];
     const end = info.args[1];
 
@@ -41,7 +41,7 @@ pub fn flushPages(info : *kernel.SmpRequest.CallInfo) void {
     }
 }
 
-pub fn flushAll(info : *kernel.SmpRequest.CallInfo) void {
+pub fn flushAll(info : *kernel.SmpCall.CallInfo) void {
     _ = info;
 
     arch.paging.flushTlb();

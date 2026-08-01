@@ -7,6 +7,7 @@ const debug = @import("std").debug;
 const reg = @import("arch").reg;
 const PatType = reg.Pat.Layout.PatType;
 
+const arch = @import("arch");
 const cpu = @import("cpu.zig");
 
 pub fn setPageTables(tables : *paging.Ptable) void {
@@ -113,7 +114,7 @@ pub const Pte = packed struct(u64) {
 
     pub fn setExec(this : *@This(), level : anytype, exec : bool) void {
         _ = level;
-        if(cpu.FEATURES.EXECUTE_BIT == false) return;
+        if (!arch.cpu.EXECUTE_PAGING_BIT) return;
 
         this.no_execute = !exec;
     }
@@ -196,7 +197,7 @@ pub const Pte = packed struct(u64) {
 
     pub fn getExec(this : *@This(), level : anytype) bool {
         _ = level;
-        if(cpu.FEATURES.EXECUTE_BIT == false) return true;
+        if (!arch.cpu.EXECUTE_PAGING_BIT) return true;
 
         return !this.no_execute;
     }

@@ -13,6 +13,9 @@ pub fn build(b: *std.Build) !void {
         .strip = false,
     };
 
+    // For passing some modules further down the build tree
+    var modules : std.StringHashMap(*std.Build.Module) = .init(b.allocator);
+
     const arch_data = @import("arch/build.zig").module(b, &options);
     const arch_module = arch_data.arch_module;
     const arch_api_module = arch_data.api_module;
@@ -20,7 +23,7 @@ pub fn build(b: *std.Build) !void {
 
     const kernel_module = @import("kernel/build.zig").module(b, &options);
 
-    const lib_module =@import("lib/build.zig").module(b, &options);
+    const lib_module =@import("lib/build.zig").module(b, &options, &modules);
 
     arch_module.addImport("lib", lib_module);
     arch_module.addImport("kernel", kernel_module);
@@ -37,7 +40,7 @@ pub fn build(b: *std.Build) !void {
     lib_module.addImport("kernel", kernel_module);
     lib_module.addImport("arch", arch_api_module);
 
-    try @import("testProc/build.zig").build(b, arch_data.target);
+    try @import("testProc/build.zig").build(b, arch_data.target, &modules);
     // const cmd = b.addSystemCommand(&[_][]const u8{
     //     "sh", "asm.sh",
     // });

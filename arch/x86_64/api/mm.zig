@@ -1,4 +1,4 @@
-const cpu = @import("cpu.zig");
+const arch = @import("arch");
 
 pub fn validAccess(read : bool, write : bool, exec : bool) bool {
     _ = write;
@@ -6,7 +6,7 @@ pub fn validAccess(read : bool, write : bool, exec : bool) bool {
     if (!read)
         return false;
 
-    if (!exec and !cpu.FEATURES.EXECUTE_BIT)
+    if (!exec and !arch.cpu.EXECUTE_PAGING_BIT)
         return false;
 
     return true;

@@ -12,10 +12,9 @@ pub const SYSCALL_STACK_SIZE = types.SIZE_16KB;
 pub const SCHED_PRIORITY_MAX = 32;
 pub const ROUND_ROBIN_TIMESLICE = kernel.Time.create(.MSEC, 100);
 
-/// Buffer between the end of the stack and other VMAs
+/// Buffer between the end of the stack and other VMAs.
+/// The max amount the stack can grow in a single fault
 pub const USER_STACK_GUARD_GAP = types.SIZE_1MB;
-/// The default max fault distance a stack error can be from the stack
-/// in order to be considered legitimate
-pub const USER_STACK_DEF_MAX_FAULT = 256;
+
 /// The default max size of a user stack.
 pub const USER_STACK_DEF_MAX_SIZE = types.SIZE_8MB;

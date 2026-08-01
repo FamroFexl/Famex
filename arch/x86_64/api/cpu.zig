@@ -3,6 +3,8 @@ pub const CpuState= @import("arch").reg.CpuState;
 const reg = @import("arch").reg;
 const cpu = @import("arch").cpu;
 
+const kernel = @import("kernel");
+
 const proc = @import("kernel").pm.process;
 
 pub const CACHELINE_SIZE = 64;
@@ -12,8 +14,6 @@ const CpuFeatures = struct {
     VIRT_ADDR_BITS : u8,        // Virtual memory address bits
     MAX_PAGE_SIZE : u3,         // Max page size in levels (starting from 0)
     PAGE_TABLE_LEVELS : u8,     // Number of page table levels (starting from 1)
-    EXECUTE_BIT : bool,
-    READ_BIT : bool,
     NUM_CPU_CORES : u64,
 };
 
@@ -128,12 +128,18 @@ pub fn getCpuId() u8 {
     return cpu.cpuId.getLocal().*;
 }
 
-extern fn memcpyExcp(dest : * allowzero anyopaque, src : *allowzero anyopaque, len : u64) callconv(.c) u64;
+const sigRetBytes = [_]u8{
+    0x48, 0xc7, 0xc0, 0x0f, 0x00, 0x00, 0x00,   // mov rax, 15
+    0x0f, 0x05,                                 // syscall
+};
 
-pub fn copyToUser(dest : *allowzero anyopaque, src : *anyopaque, size : anytype) u64 {
-    return memcpyExcp(dest, src, size);
+pub fn getSigRetSize() usize {
+    return sigRetBytes.len;
 }
 
-pub fn copyFromUser(dest : *anyopaque, src : *allowzero anyopaque, size : anytype) u64 {
-    return memcpyExcp(dest, src, size);
+/// Copy sigreturn machine code into its page
+pub fn setSigRet(mem : *anyopaque) void {
+    kernel.memcpy(mem, kernel.cast.toPtr(*anyopaque, &sigRetBytes), getSigRetSize());
 }
+
+pub extern fn memcpyExcp(dest : * allowzero anyopaque, src : *allowzero anyopaque, len : u64) callconv(.c) u64;

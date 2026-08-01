@@ -126,7 +126,7 @@ pub const ElfHdr = extern struct {
 
 pub const ElfSecHdr = extern struct {
     name : u32,             // Section name offset
-    type : ST,              // Section type
+    secType : ST,           // Section type
     flag : SecFlag,         // Section attributes
     addr : u64,             // Virtual address in memory
     offset : u64,           // Offset in file

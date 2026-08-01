@@ -1,15 +1,15 @@
 pub const PROT = packed struct(u32) {
-    READ : bool,    // Page can be read.
-    WRITE : bool,   // Page can be written.
-    EXEC : bool,     // Page can be executed.
+    READ : bool = false,    // Page can be read.
+    WRITE : bool = false,   // Page can be written.
+    EXEC : bool = false,     // Page can be executed.
     _pad1 : u29 = undefined,
 };
 
 pub const MAP = packed struct(u32) {
-    ANONYMOUS : bool,   // Map anonymous memory.
-    FIXED : bool,       // Interpret addr exactly.
-    PRIVATE : bool,     // Changes are private.
-    SHARED : bool,      // Share changes.
+    ANONYMOUS : bool = false,   // Map anonymous memory.
+    FIXED : bool = false,       // Interpret addr exactly.
+    PRIVATE : bool = false,     // Changes are private.
+    SHARED : bool = false,      // Share changes.
     _pad1 : u28 = undefined,
 };
 

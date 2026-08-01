@@ -12,6 +12,8 @@ const sched = kernel.pm.sched.scheduler;
 const time = @import("time.zig");
 const cpu = @import("arch").cpu;
 
+const signal = @import("signal.zig");
+
 const lib = @import("lib");
 
 const std = @import("std");
@@ -24,29 +26,39 @@ pub var pids : lib.linux.XArray = undefined;
 pub var tids : lib.linux.XArray = undefined;
 
 pub const Process = struct {
-    parent : ?*@This(),
-    addrSpace : vmm.VmSpace,
-    state : State,
+    spinlock : kernel.Spinlock = .create(),
 
-    timeLock : kernel.RwLock = .create(),
+    parent : ?*@This(),
+    addrSpace : vmm.VmSpace = undefined,
+    state : State = undefined,
+
     createTime : kernel.Time,           // Process creation time
     termUTime : kernel.Time = .zero(),  // User-mode time of all terminated child processes
     termKTime : kernel.Time = .zero(),  // Kernel-mode time of all terminated child processes
 
-    pid : Pid = undefined,
+    pid : Pid,
 
-    threads : util.data.List,
-    children : util.data.List,
+    sigAction : [lib.posix.signal.SIGRTMAX]lib.posix.signal.sigaction = [_]lib.posix.signal.sigaction{.{
+        .sa_flags = .{},
+        .sa_handler = .SIG_DFL,
+        .sa_mask = 0,
+    }} ** lib.posix.signal.SIGRTMAX,
+    sigData : signal.SigData = undefined,
+
+    sigAlarm : kernel.TimerEvent = .create(.MONOTONIC, .Msec(100), kernel.pm.signal.sigAlarmCallback),
+
+    threads : util.data.List = undefined,
+    children : util.data.List = undefined,
 
     creds : struct {
-        ruid : lib.posix.types.uid_t,   // Real User ID
-        euid : lib.posix.types.uid_t,   // Effective User ID
-        suid : lib.posix.types.uid_t,   // Saved User ID
+        ruid : lib.posix.types.uid_t = undefined,   // Real User ID
+        euid : lib.posix.types.uid_t = undefined,   // Effective User ID
+        suid : lib.posix.types.uid_t = undefined,   // Saved User ID
 
-        rgid : lib.posix.types.uid_t,   // Real Group ID
-        egid : lib.posix.types.uid_t,   // Effective Group ID
-        sgid : lib.posix.types.uid_t,   // Saved Group ID
-    },
+        rgid : lib.posix.types.uid_t = undefined,   // Real Group ID
+        egid : lib.posix.types.uid_t = undefined,   // Effective Group ID
+        sgid : lib.posix.types.uid_t = undefined,   // Saved Group ID
+    } = undefined,
 
     const State = enum {
         RUNNING,       // The process is running
@@ -58,6 +70,8 @@ pub const Process = struct {
 pub const Tid = u32;
 
 pub const Thread = struct {
+    spinlock : kernel.Spinlock = .create(),
+
     owner : *Process = undefined,
     state : State = undefined,
     flags : packed struct {
@@ -66,9 +80,9 @@ pub const Thread = struct {
     context : kernel.CpuState = undefined,
     tid : Tid = undefined,
 
-    timeLock : kernel.RwLock = .create(),
     ktime : kernel.Time = .zero(),
 
+    irqSaveDepth : u64 = 0,
     preemptDepth : u8 = 0,
     migrateDepth : u8 = 0,
 
@@ -82,8 +96,20 @@ pub const Thread = struct {
         nice : i8,      // Nice value for NORMAL policy
     } = undefined,
 
+    sigMask : lib.posix.signal.sigset_t = 0,
+    sigAltStack : lib.posix.signal.stack_t = .{
+        .ss_flags = .{ .SS_DISABLE = true, .SS_ONSTACK = false},
+        .ss_size = undefined,
+        .ss_sp = undefined,
+    },
+    sigData : signal.SigData = undefined,
+
     /// Semaphore and mutex sleep link
     sleepLink : util.data.Queue.Node = undefined,
+    wakeReason : enum {
+        TIMER_EXPIRED,
+        SIGNAL_RECEIVED
+    } = undefined,
 
     /// Process thread link
     link : kernel.List.Node = undefined,
@@ -136,27 +162,21 @@ pub const Thread = struct {
         this.migrateDepth -= 1;
     }
 
-    pub fn yield(this : *@This()) void { kernel.noIrq();
-        std.debug.assert(!kernel.irqEnabled());
-
+    pub fn yield(this : *@This()) void { kernel.irqSaved();
         const scheduler = &sched.schedData.getLocal().sched.get(this.sched.policy);
         scheduler.onYield(scheduler, this);
         sched.switchThread();
     }
 
-    pub fn sleep(this : *@This()) void { kernel.noIrq();
-        this.state = .INTERRUPTABLE;
-
+    pub fn sleep(this : *@This()) void { kernel.irqSaved();
         const scheduler = &sched.schedData.getLocal().sched.get(this.sched.policy);
         scheduler.onSleep(scheduler, this);
         sched.switchThread();
     }
 
-    pub fn wake(this : *@This()) void { kernel.noIrq();
+    pub fn wake(this : *@This()) void { kernel.irqSaved();
         const scheduler = &sched.schedData.getLocal().sched.get(this.sched.policy);
         scheduler.onWake(scheduler, this);
-
-        this.state = .RUNNING;
     }
 
     pub fn container(this: *@This()) union(enum) {
@@ -180,6 +200,8 @@ pub const UThread = struct {
         inSyscall : bool = undefined,
     },
     utime : kernel.Time,
+
+    uStack : *vmm.VmArea,
 
     fpuContext : kernel.FpuState,
 };
@@ -339,9 +361,10 @@ pub fn addKtime() void {
 
     const cThread = sched.cThread();
 
-    cThread.timeLock.writeLock();
+    cThread.spinlock.lock();
+    defer cThread.spinlock.unlock();
+
     cThread.ktime.nsec += ktime;
-    cThread.timeLock.writeUnlock();
 }
 
 pub fn addUtime() void {
@@ -350,9 +373,10 @@ pub fn addUtime() void {
     const cThread = sched.cThread();
     const uThread : *UThread = @fieldParentPtr("base", cThread);
 
-    cThread.timeLock.writeLock();
+    cThread.spinlock.lock();
+    defer cThread.spinlock.unlock();
+
     uThread.utime.nsec += utime;
-    cThread.timeLock.writeUnlock();
 }
 
 pub extern fn inKmode(state : *kernel.CpuState) callconv(.c) bool;
@@ -365,7 +389,6 @@ fn setupKernelProc() void {
     kernelProcess.parent = null;
     kernelProcess.threads.init();
     kernelProcess.children.init();
-    kernelProcess.timeLock.init();
 }
 
 pub fn setup() void {
@@ -377,4 +400,6 @@ pub fn setup() void {
     kernel.pm.sched.scheduler.setup();
 
     setupKernelProc();
+
+    kernel.pm.syscall.syscall.setup();
 }

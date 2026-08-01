@@ -248,7 +248,6 @@ pub fn allocPage(order : u8) mem.Paddr {
     if (order == 0)
         return allocPage4k();
 
-
     var out : mem.Paddr = undefined;
 
     orders_lock.lock();

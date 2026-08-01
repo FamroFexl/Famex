@@ -91,6 +91,18 @@ pub fn memcpy(dest : *anyopaque, src : *anyopaque, size : anytype) void {
     @memcpy(destBytes[0..size], srcBytes[0..size]);
 }
 
+pub fn copyToUser(dest : *allowzero anyopaque, src : *const anyopaque, size : anytype) u64 {
+    kernel.util.locks.noLocksHeld();
+    if (@intFromPtr(dest) + size > kernel.mm.memory.USER_MEMORY_END.val) return size;
+    return cpu.memcpyExcp(dest, @constCast(src), size);
+}
+
+pub fn copyFromUser(dest : *anyopaque, src : *const allowzero anyopaque, size : anytype) u64 {
+    kernel.util.locks.noLocksHeld();
+    if (@intFromPtr(src) + size > kernel.mm.memory.USER_MEMORY_END.val) return size;
+    return cpu.memcpyExcp(dest, @constCast(src), size);
+}
+
 pub fn pmallocBytes(size : usize) *anyopaque {
     // Size is larger than max slub size
     if (size > slub.MAX_SLUB_SIZE) {
@@ -195,9 +207,9 @@ pub fn vfreeBytes(addr : *anyopaque) void {
     }
 
     // Flush TLB
-    kernel.SmpRequest.create(kernel.cpuMaskFull(), true, null, .{
+    kernel.SmpCall.create(kernel.cpuMaskFull(), true, null, .{
         .func = paging.flushPages,
-        .args = .{area.start, area.end},
+        .args = .{area.start, area.end, 0, 0, 0, 0},
     });
 
     pfree(vmm.VmArea, area);

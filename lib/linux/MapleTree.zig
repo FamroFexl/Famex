@@ -124,7 +124,7 @@ pub const MaState = struct {
             .node = null,
             .status = maple.ma_start,
             .min = 0,
-            .max = std.math.maxInt(c_ulong),
+            .max = std.math.maxInt(u64),
             .alloc = null,
             .mas_flags = 0,
         }};
@@ -164,5 +164,13 @@ pub const MaState = struct {
 
     pub fn findRange(state : *@This(), max : anytype) ?*anyopaque {
         return maple.mas_find_range(&state.val, max);
+    }
+
+    pub fn next(state : *@This(), max : anytype) ?*anyopaque {
+        return maple.mas_next(&state.val, max);
+    }
+
+    pub fn prev(state : *@This(), min : anytype) ?*anyopaque {
+        return maple.mas_prev(&state.val, min);
     }
 };

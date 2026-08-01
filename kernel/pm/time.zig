@@ -208,12 +208,16 @@ pub const Timer = struct {
         return null;
     }
 
-    pub fn set(this : *@This(), time : Time) void {
+    pub fn set(this : *@This(), time : Time) error{TimerMaxed}!void {
         const ticks = cast.u64((cast.u128(this.tps) * cast.u128(time.nsec) + 500_000_000) / 1_000_000_000);
 
         if (ticks > this.max)
-            @panic("Timer set to longer than max can store!");
+            return error.TimerMaxed;
         this.setRaw(this, ticks);
+    }
+
+    pub fn setMax(this : *@This()) void {
+        this.setRaw(this, this.max);
     }
 
     pub fn get(this : *@This()) Time {
@@ -276,7 +280,10 @@ pub fn setUnixClock(time : Time) void {
 }
 
 pub fn setLocalTimer(time : Time) void {
-    LOCAL_TIMER.set(time);
+    LOCAL_TIMER.set(time) catch {
+        // Max out the local timer and just set it again next time
+        LOCAL_TIMER.setMax();
+    };
 }
 
 pub fn getLocalTimer() Time {
@@ -290,11 +297,11 @@ const monoTimers = kernel.PerCpuStat(TimerTree, opaque {});
 const unixTimers = kernel.PerCpuStat(TimerTree, opaque {});
 
 pub const TimerEvent = struct {
-    expiration : u64,                          // Time the event expires
+    expiration : u64 = undefined,               // Time the event expires
     callback : *const fn (*@This()) void,       // Function to call on expiration
     cpuId : u8 = undefined,                     // Which cpu it was added to
     tag : Type,                                 // Timer is unix/realtime or monotonic
-    slack : u64,                               // How much can the timer be delayed by for purposes of reshuffling
+    slack : u64,                                // How much can the timer be delayed by for purposes of reshuffling
     link : TimerTree.Node = .{},
 
     const Type = enum {
@@ -311,17 +318,30 @@ pub const TimerEvent = struct {
     pub fn create(tag : Type, slack : Time, callback : *const fn (*@This()) void) @This() {
         return .{
             .tag = tag,
-            .slack = slack,
+            .slack = slack.nsec,
             .callback = callback,
         };
+    }
+
+    /// Returns remaining seconds if armed, null if unarmed
+    pub fn remaining(this : *@This()) ?Time {
+        if (this.link.empty()) return null;
+
+        const curTime = switch (this.tag) {
+            .MONOTONIC => kernel.getMonoClock(),
+            .UNIX => kernel.getUnixClock(),
+        };
+
+        return .Nsec(this.expiration - curTime.nsec);
     }
 
     /// Set or reset an initialized timer with relative or absolute time
     pub fn reset(this : *@This(), expiration : Time, absolute : bool) void {
         this.cpuId = kernel.getCpuId();
 
+        const monoClock = getMonoClock().nsec;
         const curTime = switch (this.tag) {
-            .MONOTONIC => getMonoClock().nsec,
+            .MONOTONIC => monoClock,
             .UNIX => getUnixClock().nsec,
         };
 
@@ -345,7 +365,7 @@ pub const TimerEvent = struct {
         if (!this.link.empty())
             tree.erase(&this.link);
 
-        this.expiration = expiration.nsec;
+        this.expiration = newExpiration;
 
         // Coalesce timers together within slack time
         const next = tree.findAfter(this.expiration);
@@ -364,24 +384,24 @@ pub const TimerEvent = struct {
         }
 
         var time : u64 = std.math.maxInt(u64);
-        var node : ?*TimerTree.Node = unixTimers.getLocal().first();
-        if (node) |n| {
-            time = @intCast(@as(i128, n.holder().expiration) - @as(i128, unixOffset.load(.acquire)));
+        const node1 : ?*TimerTree.Node = unixTimers.getLocal().first();
+        if (node1) |n| {
+            time = @intCast(@as(i128, @intCast(n.holder().expiration)) - @as(i128, @intCast(unixOffset.load(.acquire))));
         }
 
-        node = monoTimers.getLocal().first();
-        if (node) |n| {
+        const node2 = monoTimers.getLocal().first();
+        if (node2) |n| {
             kernel.bin.setIfSmaller(u64, &time, n.holder().expiration);
         }
 
         spinlock.unlock();
 
         // No events are waiting. There is no need to set the local timer
-        if (node == null) {
+        if (node1 == null and node2 == null) {
             return;
         }
 
-        setLocalTimer(.Nsec(time - getMonoClock().nsec));
+        setLocalTimer(.Nsec(time - monoClock));
     }
 
     pub fn remove(this : *@This()) void {

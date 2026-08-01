@@ -14,6 +14,8 @@ pub var CPU_STATE_INIT : api.cpu.CpuState = undefined;
 /// Use XSave if true, FXSave if false
 pub var XSAVE_ON : bool = false;
 
+pub var EXECUTE_PAGING_BIT = false;
+
 pub const cpuId = proc.PerCpuStat(u8, opaque {});
 
 ///  AMD:     "AuthenticAMD"

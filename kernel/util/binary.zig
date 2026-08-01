@@ -127,3 +127,16 @@ pub fn SizedType(comptime size: usize, comptime alignment: u29) type {
         data: [size]u8 align(alignment),
     };
 }
+
+/// Convert the same bits to different types
+pub fn convert(comptime T : type, value : anytype) T {
+    var result: T = std.mem.zeroes(T);
+
+    const src = std.mem.asBytes(&value);
+    const dst = std.mem.asBytes(&result);
+
+    const len = @min(src.len, dst.len);
+    @memcpy(dst[0..len], src[0..len]);
+
+    return result;
+}

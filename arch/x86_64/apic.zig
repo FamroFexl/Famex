@@ -97,7 +97,7 @@ pub const IcrReg = packed struct(u64) {
     destShorthand  : DestShorthand,    // Optional shorthand used for destination
     __pad3          : u12 = 0,
     //Only the top 8 bits contain the ID if x2apic is enabled
-    destField      : u32,              // Destination Processor by APIC ID (physical) or MDA (logical)
+    destField      : u32 = undefined,   // Destination Processor by APIC ID (physical) or MDA (logical)
 
     pub const DestMode = enum(u1) {
         PHYSICAL = 0,

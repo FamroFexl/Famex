@@ -41,5 +41,9 @@ pub fn release(semaphore : *@This()) void {
     semaphore.spinlock.unlock();
 
     const thread : *kernel.Thread = @fieldParentPtr("sleepLink", node);
+    thread.spinlock.lock();
+    thread.state = .RUNNING;
+    thread.spinlock.unlock();
+
     thread.wake();
 }

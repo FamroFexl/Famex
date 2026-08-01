@@ -13,6 +13,9 @@ pub const CLOCK = enum(u3) {
     _,
 };
 
+/// Flag for absolute time
+pub const TIMER_ABSTIME = 0;
+
 pub const CLOCKS_PER_SEC = 1_000_000_000;
 
 pub fn getClockFromId(clockId : types.clockid_t) CLOCK {

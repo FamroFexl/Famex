@@ -1,0 +1,18 @@
+pub const SysNum = enum(u64) {
+    PRINT = 1,
+    SCHED_YIELD = 2,
+    TIME = 3,
+    CLOCK_GETCPUCLOCKID = 4,
+    CLOCK_GETRES = 5,
+    CLOCK_GETTIME = 6,
+    CLOCK_SETTIME = 7,
+    MMAP = 8,
+    PTHREAD_SIGMASK = 11,
+    SIGALTSTACK = 12,
+    SIGACTION = 13,
+    SIGQUEUE = 14,
+    _SIGRETURN = 15,
+    CLOCK_NANOSLEEP = 16,
+    ALARM = 17,
+    _,
+};

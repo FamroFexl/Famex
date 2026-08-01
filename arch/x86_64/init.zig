@@ -91,8 +91,7 @@ fn ensureFeatures() void {
     if (cpu.leaf_0x81.page1gb == 1)
         bin.setIfLarger(u3, &api.cpu.FEATURES.MAX_PAGE_SIZE, 2);
 
-    api.cpu.FEATURES.EXECUTE_BIT = cpu.leaf_0x81.nx == 1;
-    api.cpu.FEATURES.READ_BIT = false;
+    cpu.EXECUTE_PAGING_BIT = cpu.leaf_0x81.nx == 1;
 }
 
 fn setupFp() void {
@@ -363,13 +362,16 @@ pub export fn init() void {
         @panic("Invalid elf!\n");
 
     const process = kernel.pmalloc(kernel.Process);
-    process.createTime = kernel.getUnixClock();
+    process.* = .{
+        .parent = kernel.kernelProcess,
+        .createTime = kernel.getUnixClock(),
+        .pid = @intCast(kernel.pids.alloc(0, std.math.maxInt(i32),process)),
+    };
     process.threads.init();
     process.children.init();
-    process.pid = @intCast(kernel.pids.alloc(0, std.math.maxInt(i32),process));
-    process.parent = kernel.kernelProcess;
     process.addrSpace.start = kernel.mm.memory.USER_MEMORY_START;
     process.addrSpace.end = kernel.mm.memory.USER_MEMORY_END;
+    process.addrSpace.cpuMask = bin.setBit(kernel.getCpuId());
     process.addrSpace.rootPt = cast.toPtr(*kernel.mm.paging.Ptable, kernel.zallocPage4k().toVirt().ptr());
     kernel.mm.vmm.mapKernelTables(process.addrSpace.rootPt);
     _ = process.addrSpace.rootPt.switchTo();
@@ -385,40 +387,34 @@ pub export fn init() void {
             continue;
         }
 
-
+        // Text area
         const vmArea = kernel.pmalloc(kernel.mm.vmm.VmArea);
+        vmArea.file = fileAddr.val;
+        vmArea.fileOffset = phdr.offset;
         vmArea.start = .asVirt(phdr.vaddr);
-        vmArea.end = .asVirt(phdr.vaddr + phdr.mem_sz);
-        vmArea.areaType = .USER_PROG;
+        vmArea.end = .asVirt(phdr.vaddr + phdr.file_sz);
+        vmArea.areaType = .USER_TEXT;
         vmArea.flags = .{
             .exec = phdr.flags.execute,
             .read = phdr.flags.read,
             .write = phdr.flags.write,
         };
 
-        bin.setIfLarger(u64, &process.addrSpace.mmapBase.val, vmArea.end.val);
+        bin.setIfLarger(u64, &process.addrSpace.mmapBase.val, phdr.vaddr + phdr.mem_sz);
 
         _ = process.addrSpace.tree.storeRange(vmArea.start.val, vmArea.end.val - 1, vmArea);
 
-        // TODO something is wrong with pteNext or pteInit that causes it to skip the last page (if end is 0x7000->0x7fff, only up to 0x6000 will be mapped)
-        var mapState = kernel.PfeState(.MAP).create(&process.addrSpace, .asVirt(bin.alignDown(vmArea.start.val, types.SIZE_4KB)), .asVirt(bin.alignUp(vmArea.end.val, types.SIZE_4KB) + types.SIZE_4KB), .LEVEL_4KB);
+        // BSS area
+        if (phdr.mem_sz - phdr.file_sz > 0) {
+            const vmArea2 = kernel.pmalloc(kernel.mm.vmm.VmArea);
+            vmArea2.file = fileAddr.val;
+            vmArea2.fileOffset = phdr.offset + phdr.file_sz;
+            vmArea2.start = .asVirt(phdr.vaddr + phdr.file_sz);
+            vmArea2.end = .asVirt(phdr.vaddr + phdr.mem_sz);
+            vmArea2.areaType = .USER_BSS;
+            vmArea2.flags = vmArea.flags;
 
-        var pte = kernel.mm.paging.PFE_DEFAULTS[0];
-        pte.setUser(0, true);
-        while (mapState.next()) |pfe| {
-            if (!pfe.getEmpty(0)) continue;
-            pfe.* = pte;
-            pfe.setEntry(0, kernel.allocPage4k());
-        }
-
-        kernel.mm.memory.memcpy(@ptrFromInt(vmArea.start.val), @ptrFromInt(fileAddr.val + phdr.offset), phdr.file_sz);
-        kernel.mm.memory.memset(@ptrFromInt(vmArea.start.val + phdr.file_sz), phdr.mem_sz - phdr.file_sz, 0);
-
-        var permState = kernel.PfeState(.GET).create(&process.addrSpace, .asVirt(bin.alignDown(vmArea.start.val, types.SIZE_4KB)), .asVirt(bin.alignUp(vmArea.end.val, types.SIZE_4KB) + types.SIZE_4KB), .LEVEL_4KB);
-        while (permState.next()) |pfe| {
-            pfe.setRead(0, vmArea.flags.read);
-            pfe.setWrite(0, vmArea.flags.write);
-            pfe.setExec(0, vmArea.flags.exec);
+            _ = process.addrSpace.tree.storeRange(vmArea2.start.val, vmArea2.end.val - 1, vmArea2);
         }
     }
 
@@ -427,7 +423,6 @@ pub export fn init() void {
     const mainThread = kernel.pmalloc(kernel.UThread);
     process.threads.insertFront(&mainThread.base.link);
     mainThread.fpuContext = api.cpu.FpuState.alloc();
-    //mainThread.base.tid = kernel.tids.alloc(&mainThread.base);
     mainThread.base.tid = kernel.tids.alloc(0, std.math.maxInt(u32), &mainThread.base);
     const base = &mainThread.base;
     base.owner = process;
@@ -440,10 +435,11 @@ pub export fn init() void {
     };
     base.context.init();
     base.context.setPc(hdr.entry);
-    base.context.setStack(bin.alignDown(kernel.mm.memory.USER_MEMORY_END.val, 16));
-    base.timeLock.init();
+    base.context.setStack(bin.alignDown(kernel.mm.memory.USER_MEMORY_END.val - types.SIZE_4KB, 16));
 
-    var stackState = kernel.PfeState(.MAP).create(&process.addrSpace, .asVirt(bin.alignDown(kernel.mm.memory.USER_MEMORY_END.val, types.SIZE_4KB)), .asVirt(bin.alignUp(kernel.mm.memory.USER_MEMORY_END.val, types.SIZE_4KB) + types.SIZE_4KB), .LEVEL_4KB);
+    kernel.pm.process.perCpuStart.getLocal().syscallStack = base.stack.start + base.stack.size;
+
+    var stackState = kernel.PfeState(.MAP).create(&process.addrSpace, .asVirt(bin.alignDown(kernel.mm.memory.USER_MEMORY_END.val - types.SIZE_4KB, types.SIZE_4KB)), .asVirt(bin.alignUp(kernel.mm.memory.USER_MEMORY_END.val, types.SIZE_4KB)), .LEVEL_4KB);
     var pte = kernel.mm.paging.PFE_DEFAULTS[0];
     pte.setUser(0, true);
     pte.setExec(0, execStack);
@@ -452,15 +448,23 @@ pub export fn init() void {
         pfe.setEntry(0, kernel.allocPage4k());
     }
 
-   // print("{x} {x}\n", .{stackState.data.start.val, stackState.data.end.val});
-
-    //const vfr : *volatile u8 = @ptrFromInt(0x7FFFFFFFF990);
-    //_ = vfr.*;
-    kernel.pm.process.perCpuStart.getLocal().syscallStack = base.stack.start + base.stack.size;
     // Add stack area to tree
-    // const stackArea = kernel.pmalloc(kernel.mm.vmm.VmArea);
-    // stackArea.areaType = .USER_STACK
-    //_ = process.addrSpace.tree.storeRange(vmArea.start.val, vmArea.end.val - 1, vmArea);
+    const stackArea = kernel.pmalloc(kernel.mm.vmm.VmArea);
+    mainThread.uStack = stackArea;
+    stackArea.areaType = .USER_STACK;
+    stackArea.end = .asVirt(kernel.mm.memory.USER_MEMORY_END.val + 1);
+    stackArea.start = .asVirt(bin.alignDown(kernel.mm.memory.USER_MEMORY_END.val, types.SIZE_4KB));
+    stackArea.flags.exec = execStack;
+    stackArea.flags.write = true;
+    stackArea.flags.read = true;
+    _ = process.addrSpace.tree.storeRange(stackArea.start.val, stackArea.end.val - 1, stackArea);
+
+    var vdso = kernel.PfeState(.MAP).create(&process.addrSpace, .asVirt(bin.alignDown(kernel.mm.memory.USER_MEMORY_END.val, types.SIZE_4KB)), .asVirt(bin.alignUp(kernel.mm.memory.USER_MEMORY_END.val, types.SIZE_4KB) + types.SIZE_4KB), .LEVEL_4KB);
+    const vdsoPage = vdso.next().?;
+    vdsoPage.* = kernel.mm.paging.PFE_DEFAULTS[0];
+    vdsoPage.setWrite(0, false);
+    vdsoPage.setUser(0, true);
+    vdsoPage.setEntry(0, kernel.pm.syscall.syscall.VDSO_PAGE);
 
     mainThread.base.sched.policy = .FIFO;
     mainThread.base.sched.priority = 0;
@@ -471,7 +475,6 @@ pub export fn init() void {
     kernel.schedData.getLocal().current = &mainThread.base;
     //print("next {*}\n", .{sched.pickNext(sched)});
     //kernel.schedData.getLocal().timer.reset(.Sec(4), false);
-    //
     kernel.irqEnable();
     mainThread.base.context.load();
     while (true) {}

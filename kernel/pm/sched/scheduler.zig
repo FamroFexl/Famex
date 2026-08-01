@@ -49,8 +49,6 @@ pub fn cThread() *kernel.pm.process.Thread {
 }
 
 pub fn switchThread() void { kernel.noIrq();
-    const irqSaveDepth = kernel.io.irq.irqSaveDepth.getLocal().*;
-
     cThread().migrateSave();
 
     var state : kernel.CpuState = undefined;
@@ -69,7 +67,7 @@ pub fn switchThread() void { kernel.noIrq();
         // Get a new thread
         schedule(&state);
 
-        // TODO Check for signals with the current thread
+        kernel.pm.signal.sigHandle(&state);
 
         if (!state.inKmode())
             kernel.pm.ipc.rcu.enterEqs();
@@ -80,9 +78,6 @@ pub fn switchThread() void { kernel.noIrq();
     }
 
     cThread().migrateRestore();
-
-    // Restore interrupt state
-    kernel.io.irq.irqSaveDepth.getLocal().* = irqSaveDepth;
 }
 
 fn loadThread(new : *kernel.Thread, state : *kernel.CpuState) void {
@@ -91,6 +86,8 @@ fn loadThread(new : *kernel.Thread, state : *kernel.CpuState) void {
     data.current.context = state.*;
     data.current = new;
     state.* = new.context;
+
+    kernel.io.irq.irqSaveDepth.getLocal().* = &new.irqSaveDepth;
 
     if(new.container() == .uThread) {
         // Set syscall stack
@@ -107,7 +104,7 @@ pub fn threadFromSched(node : *kernel.List.Node) *kernel.Thread {
     return @fieldParentPtr("schedLink", node);
 }
 
-pub fn schedule(state : *kernel.CpuState) void { kernel.noIrq();
+pub fn schedule(state : *kernel.CpuState) void { kernel.noIrq(); kernel.util.locks.noLocksHeld();
     const data = schedData.getLocal();
     data.flags.reschedule = false;
 
@@ -135,6 +132,14 @@ pub fn schedule(state : *kernel.CpuState) void { kernel.noIrq();
     if (timeslice) |time| {
         data.timer.reset(time, false);
     }
+}
+
+pub fn reschedule() void {
+    const data = schedData.getLocal();
+
+    data.spinlock.lock();
+    data.flags.reschedule = true;
+    data.spinlock.unlock();
 }
 
 fn createIdle(idle : *kernel.KThread) void {

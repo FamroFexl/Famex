@@ -8,7 +8,7 @@ const cpu = if (is_kernel) @import("arch_api").cpu;
 
 const std = @import("std");
 
-pub const CpuState = struct {
+pub const CpuState = extern struct {
     rax : u64,
     rbx : u64,
     rcx : u64,
@@ -111,6 +111,25 @@ pub const CpuState = struct {
 
     pub fn init(state : *@This()) void {
         if (is_kernel) state.* = @import("arch").cpu.CPU_STATE_INIT;
+    }
+
+    /// Used for sanitizing ucontext flags
+    pub fn sanitizeRetFlags(state : *@This()) void {
+        state.rflags.set1 = 1;
+        state.rflags.irq_enable = true;
+        state.rflags.iopl = 0;
+        state.rflags.nested_task = false;
+        state.rflags.sys_resume = false;
+        state.rflags.virt_8086 = false;
+        state.rflags.virt_irq = false;
+        state.rflags.virt_irq_pend = false;
+        state.rflags.access = false;
+        state.rflags.trap = false;
+
+        state.rflags.__pad = 0;
+        state.rflags.__pad2 = 0;
+        state.rflags.__pad3 = 0;
+        state.rflags.__pad4 = 0;
     }
 };
 

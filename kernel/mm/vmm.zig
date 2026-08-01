@@ -7,7 +7,7 @@ const mem = @import("memory.zig");
 
 const arch = @import("arch");
 
-/// Zeroed/empty page used for reads of uninitialized mmaps
+/// Zeroed/empty page used for reads of uninitialized MMAP/BSS
 pub var EMPTY_PAGE : arch.paging.Pte = undefined;
 
 pub const VmArea = struct {
@@ -21,7 +21,8 @@ pub const VmArea = struct {
     const AreaType = enum {
         VMALLOC,
         MMIO,
-        USER_PROG,
+        USER_TEXT,  // text/data sections
+        USER_BSS,   // bss
         USER_STACK,
         USER_HEAP,
         USER_FILE,
@@ -42,8 +43,8 @@ pub const VmSpace = struct {
     rootPt : *paging.Ptable,
     start : Vaddr,
     end : Vaddr,
-    tree : MapleTree,
-    mmapBase : Vaddr,   // Updated base that mmap allocations start at
+    tree : MapleTree = undefined,
+    mmapBase : Vaddr = undefined,   // Updated base that mmap allocations start at
 };
 
 pub fn mapKernelTables(table : *paging.Ptable) void {
@@ -61,7 +62,6 @@ pub fn setup() void {
     EMPTY_PAGE.setExec(0, false);
     EMPTY_PAGE.setUser(0, true);
     EMPTY_PAGE.setEntry(0, kernel.zallocPage4k());
-    EMPTY_PAGE.setGlobal(0, true);
 
     kernel.print("  Initializing kernel vm space\n", .{});
     const vmSpace = &kernel.kernelProcess.addrSpace;

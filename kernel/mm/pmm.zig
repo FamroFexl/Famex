@@ -418,6 +418,8 @@ fn switchToNewPtables() void {
     _ = kernel_root_pt.*.switchTo();
 }
 
+var setupIrqSaveDepth : u64 = 1;
+
 pub fn setup() void {
     print("\nmm: Setting up Physical Memory Management\n", .{});
 
@@ -439,7 +441,7 @@ pub fn setup() void {
 
     // We don't want irqs enabling before they should
     for (0..cpu.FEATURES.NUM_CPU_CORES) |i| {
-        kernel.io.irq.irqSaveDepth.getGlobal(i).* = 1;
+        kernel.io.irq.irqSaveDepth.getGlobal(i).* = &setupIrqSaveDepth;
     }
 
     // Temporary way to set the cpu data of the bootstrap processor

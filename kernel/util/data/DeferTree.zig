@@ -43,10 +43,14 @@ pub fn free(tree : *@This()) void {
 
 /// Wait until the next grace period
 pub fn wait(tree : *@This()) void {
+    disable(tree, kernel.getCpuId());
+
     const oldGp = tree.cpuTree.getPeriod();
     while (oldGp + 2 > tree.cpuTree.getPeriod()) {
         cpu.spinWaitLoop();
     }
+
+    enable(tree, kernel.getCpuId());
 }
 
 // push 2, pop 0   (2 + 1) % 3 = 0
@@ -54,7 +58,7 @@ pub fn wait(tree : *@This()) void {
 // push 1, pop 2    (1 + 1) % 3 = 2
 
 // push == period % 3
-pub fn push(tree : *@This(), state : *State, callback : fn (*State) void) void {
+pub fn push(tree : *@This(), state : *State, callback : *const fn (*State) void) void {
     state.callback = callback;
     const stack = tree.cpuTree.getPeriod() % 3;
 

@@ -204,8 +204,8 @@ FUNC_END irqEntry
  */
 FUNC syscallEntry
     // Direction and alignment check flags are always 0
-    //cld
-    //clac
+    cld
+    clac
 
     /*
      * Switch to cpu_data for kernel-mode (needed for syscall_handler and getting the current

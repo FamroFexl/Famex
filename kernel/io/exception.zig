@@ -41,52 +41,187 @@ pub fn handler(irqNum : u64, data : *ExceptionData, state : *kernel.CpuState) vo
     }
 }
 
-
-
 pub fn pageFault(data : *ExceptionData, state : *kernel.CpuState) void {
-    kernel.print("kmode pfault {} {}\n", .{data.pfault, state.inKmode()});
-    if (state.inKmode()) {
-        // Copy from/to user
+    //kernel.print("kmode pfault {} {}\n", .{data.pfault, state.inKmode()});
+
+    const addr = data.pfault.addr;
+    const vmSpace = &kernel.cThread().owner.addrSpace;
+
+    const area = cast.toPtr(*kernel.mm.vmm.VmArea, vmSpace.tree.find(addr.val, addr.val) orelse {
+        const uThread = kernel.cThread().container().uThread;
+        const uStack = uThread.uStack;
+
+        // Stack fault
+        if (uThread.uStack.start.val - kernel.config.USER_STACK_GUARD_GAP <= data.pfault.addr.val) {
+            const start = bin.alignDown(data.pfault.addr.val, types.SIZE_4KB);
+            const end = uStack.start.val;
+            uStack.start.val = start;
+
+            _ = uThread.base.owner.addrSpace.tree.storeRange(start, uThread.uStack.end.val, uThread.uStack);
+
+            // TODO fix pfe state iterator off by 4kb at end
+            var pfeState = kernel.PfeState(.MAP).create(&uThread.base.owner.addrSpace, .asVirt(start), .asVirt(end + types.SIZE_4KB), .LEVEL_4KB);
+            while (pfeState.next()) |pfe| {
+                pfe.* = paging.PFE_DEFAULTS[0];
+                pfe.setUser(0, true);
+                pfe.setExec(0, uStack.flags.exec);
+
+                pfe.setEntry(0, kernel.allocPage4k());
+            }
+
+            return;
+        }
+
+        // User copy fault
         for (pfaultLUT) |lut| {
             if (state.getPc() == lut.fault) {
-               // kernel.print("{x}\n", .{lut.fault});
                 state.setPc(lut.handler);
                 return;
             }
         }
-        @panic("Page fault in kernel mode!");
-    }
 
-    const addr = data.pfault.addr;
-    const vmSpace = &kernel.cThread().owner.addrSpace;
-    const area = cast.toPtr(*kernel.mm.vmm.VmArea, vmSpace.tree.find(addr.val, addr.val) orelse undefined);
+        if (state.inKmode())
+            @panic("Page fault in kernel mode!");
+
+        // Kill thread
+
+        return;
+    });
+
+
+    // Invalid access fault
+    if ((!area.flags.read and data.pfault.access == .READ) or
+        (!area.flags.write and data.pfault.access == .WRITE) or
+        (!area.flags.exec and data.pfault.access == .EXECUTE)
+    ) {
+        // User copy fault
+        for (pfaultLUT) |lut| {
+            if (state.getPc() == lut.fault) {
+                state.setPc(lut.handler);
+                return;
+            }
+        }
+
+        if (state.inKmode())
+            @panic("Page fault in kernel mode!");
+
+        // Kill thread
+    }
 
     const start = bin.alignDown(addr.val, types.SIZE_4KB);
     const end = bin.alignUp(addr.val, types.SIZE_4KB);
 
-    if (area.areaType == .USER_HEAP) {
-        var pfeState = kernel.PfeState(.MAP).create(vmSpace, .asVirt(start), .asVirt(end + types.SIZE_4KB), .LEVEL_4KB);
-        const pfe = pfeState.next().?;
-        if (data.pfault.access == .READ) {
-            //while (true) {}
-            // bad read
-            //if (!area.flags.read)
-            if (!pfe.getEmpty(0)) {
-                // Is swapped out page?
+    var pfeState = kernel.PfeState(.MAP).create(vmSpace, .asVirt(start), .asVirt(end + types.SIZE_4KB), .LEVEL_4KB);
+    const pfe = pfeState.next().?;
 
+    var pageFlush = false;
+
+    if (!pfe.getEmpty(0)) {
+        // Permissions update fault
+        if (pfe.getPresent(0)) {
+            // Zero page
+            if (pfe.getEntry(0).val == kernel.mm.vmm.EMPTY_PAGE.getEntry(0).val) {
             }
+            else if (area.flags.read and !pfe.getRead(0)) {
+                pfe.setRead(0, true);
+            }
+            else if (area.flags.write and !pfe.getWrite(0)) {
+                pfe.setWrite(0, true);
+            }
+            else if (area.flags.exec and !pfe.getExec(0)) {
+                pfe.setExec(0, true);
+            }
+
+            pageFlush = true;
+        }
+        // Swapped page fault
+        else {
+
+        }
+    }
+
+    // Demand paging fault
+    if (area.areaType == .USER_TEXT or area.areaType == .USER_BSS) {
+        // Other areas may exist in the same page, we have to OR their permissions
+        if (area.start.val > start or area.end.val < end) {
+            var read = false;
+            var write = false;
+            var exec = false;
+
+            pfe.* = paging.PFE_DEFAULTS[0];
+            pfe.setEntry(0, kernel.allocPage4k());
+
+            // TODO mas.next doesn't work
+            var mas = lib.linux.MapleTree.MaState.create(&vmSpace.tree, start - 1, end - 1);
+            mas.lock();
+
+            //while (mas.next(end - 1)) |link| {
+            while (mas.find(end - 1)) |link| {
+                const newArea = cast.toPtr(*kernel.mm.vmm.VmArea, link);
+                read = newArea.flags.read or read;
+                write = newArea.flags.write or write;
+                exec = newArea.flags.exec or exec;
+
+                const newStart = bin.max(newArea.start.val, start);
+                const newEnd = bin.min(newArea.end.val, end);
+
+                if (newArea.areaType == .USER_BSS) {
+                    kernel.memset(@ptrFromInt(newStart), newEnd - newStart, 0);
+                }
+                else {
+                    const page = kernel.Vaddr.asVirt(newArea.file + newArea.fileOffset + newStart - newArea.start.val);
+                    kernel.memcpy(@ptrFromInt(newStart), page.ptr(), newEnd - newStart);
+                }
+            }
+
+            //while (true) {}
+
+            mas.unlock();
+
+            pfe.setUser(0, true);
+            pfe.setRead(0, read);
+            pfe.setWrite(0, write);
+            pfe.setExec(0, exec);
+        }
+        else {
+            if (area.areaType == .USER_BSS) {
+                if (data.pfault.access == .READ) {
+                    pfe.* = kernel.mm.vmm.EMPTY_PAGE;
+                }
+                else {
+                    pfe.* = paging.PFE_DEFAULTS[0];
+                    pfe.setUser(0, true);
+                    pfe.setRead(0, area.flags.read);
+                    pfe.setWrite(0, area.flags.write);
+                    pfe.setExec(0, area.flags.exec);
+
+                    pfe.setEntry(0, kernel.zallocPage4k());
+                }
+            }
+            else {
+                pfe.* = paging.PFE_DEFAULTS[0];
+                pfe.setUser(0, true);
+                pfe.setRead(0, area.flags.read);
+                pfe.setWrite(0, area.flags.write);
+                pfe.setExec(0, area.flags.exec);
+
+                const newPage = kernel.allocPage4k();
+
+                const page = kernel.Vaddr.asVirt(area.file + area.fileOffset + start - area.start.val);
+
+                kernel.memcpy(newPage.toVirt().ptr(), page.ptr(), types.SIZE_4KB);
+
+                pfe.setEntry(0, newPage);
+            }
+        }
+    }
+    // Demand paging fault
+    else if (area.areaType == .USER_HEAP) {
+        if (data.pfault.access == .READ) {
             // Set to read-only zeroed page
             pfe.* = kernel.mm.vmm.EMPTY_PAGE;
         }
-        else if (data.pfault.access == .WRITE) {
-            // bad write
-            // if (!area.flags.write)
-            if (!pfe.getEmpty(0)) {
-                // Is swapped out page?
-
-                //else is 0-set page
-            }
-
+        else {
             pfe.* = paging.PFE_DEFAULTS[0];
             pfe.setUser(0, true);
             pfe.setRead(0, area.flags.read);
@@ -95,40 +230,22 @@ pub fn pageFault(data : *ExceptionData, state : *kernel.CpuState) void {
 
             pfe.setEntry(0, kernel.zallocPage4k());
         }
-        else if (data.pfault.access == .EXECUTE) {
-            // bad exec
-            // if (!area.flags.exec)
-            if (!pfe.getEmpty(0)) {
-                // Is swapped out page?
-
-            }
-        }
     }
 
     // File Paging
-    // if (area.areaType == .USER_PROG) {
-    //     const pfe = kernel.PfeState(.MAP).create(vmSpace, start, end, .LEVEL_4KB).next();
-    //     if (!pfe.getEmpty(0)) {
-    //
-    //     }
-    //     pfe.* = pteDef;
-    //     pfe.setRead(0, area.flags.read);
-    //     pfe.setExec(0, area.flags.exec);
-    //
-    //     // Copy on write
-    //     if (!(data.pfault.access == .WRITE) or !area.flags.write) {
-    //         pfe.setEntry(0, .asPhys(start - area.start.val)(area.file + area.fileOffset));
-    //     }
-    //
-    // }
 
-    // Zero fill
-    // Page swap
-
-    // Invalid mapping
-    // No execute
-    // Write to read only
-    // Access from user to kernel page
+    // Flush the page if needed
+    if (pageFlush) {
+        kernel.SmpCall.create(
+            kernel.cThread().owner.addrSpace.cpuMask,
+            false,
+            null,
+            .{
+                    .func = kernel.mm.paging.flushPages,
+                    .args = .{start, end, 0, 0, 0, 0},
+            }
+        );
+    }
 }
 
 pub fn setup() void {

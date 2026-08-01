@@ -51,6 +51,7 @@ pub const Limine = struct {
 pub const irqSave = io.irq.irqSave;
 pub const irqRestore = io.irq.irqRestore;
 pub const inIrq = io.irq.inIrq;
+pub const irqSaved = io.irq.irqSaved;
 pub const noIrq = io.irq.noIrq;
 pub const CpuMask = pm.process.CpuMask;
 pub const cpuMaskFull = pm.process.cpuMaskFull;
@@ -63,7 +64,7 @@ pub const KThread = pm.process.KThread;
 pub const UThread = pm.process.UThread;
 pub const pids = &pm.process.pids;
 pub const tids = &pm.process.tids;
-pub const SmpRequest = io.irq.SmpRequest;
+pub const SmpCall = io.irq.SmpCall;
 
 pub const RcuAsync = pm.ipc.rcu.RcuAsync;
 pub const RcuPtr = pm.ipc.rcu.RcuPtr;
@@ -76,6 +77,7 @@ pub const getUnixClock = pm.time.getUnixClock;
 pub const getMonoClock = pm.time.getMonoClock;
 
 pub const cast = util.cast;
+pub const lockHeld = util.locks.lockHeld;
 
 pub const pmalloc = mm.memory.pmalloc;
 pub const pmallocBytes = mm.memory.pmallocBytes;
@@ -115,6 +117,7 @@ pub const print = log.print;
 
 pub const cThread = pm.sched.scheduler.cThread;
 pub const schedData = pm.sched.scheduler.schedData;
+pub const reschedule = pm.sched.scheduler.reschedule;
 
 pub const irqEnable = arch.cpu.irqEnable;
 pub const irqDisable = arch.cpu.irqDisable;

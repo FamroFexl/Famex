@@ -4,3 +4,6 @@ pub const times = @import("times.zig");
 pub const types = @import("types.zig");
 pub const sched = @import("sched.zig");
 pub const mman = @import("mman.zig");
+pub const signal = @import("signal.zig");
+pub const limits = @import("limits.zig");
+pub const sysnum = @import("sysnum.zig");

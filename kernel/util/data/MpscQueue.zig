@@ -46,3 +46,24 @@ pub fn pop(this : *@This()) ?*Node {
         return next;
     }
 }
+
+pub fn peek(this : *@This()) ?*Node {
+    const head = this.head;
+
+    if (head.next) |n| {
+        return n;
+    }
+
+    if (head == this.tail.load(.acquire)) {
+        return null;
+    }
+
+    while (true) {
+        const next = head.next orelse {
+            cpu.spinWaitLoop();
+            continue;
+        };
+
+        return next;
+    }
+}
