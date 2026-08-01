@@ -123,6 +123,9 @@ FUNC irqEntry
 
     // Stack: irq_frame, irq_num, cpu_state
 
+    // Conditionally disable fpu instructions
+    call fpuDisableCond
+
     // Transfer RFLAGS from cpu_state back into frame
     mov rax, [rsp + RFLAGS_OFST]
     mov qword ptr [rsp + CPU_STATE_SIZE + 8 + INT_SFRAME_RFLAGS], rax

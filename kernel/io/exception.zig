@@ -12,6 +12,7 @@ const arch = @import("arch");
 
 pub const ExceptionType = enum {
     MATH_ERROR,
+    NO_FPU_STATE,
 
     PAGE_FAULT,
     ALIGN_FAULT,
@@ -28,7 +29,8 @@ pub const ExceptionData = union {
         addr : kernel.Vaddr,
         present : bool,
         access : enum { READ, WRITE, EXECUTE }
-    }
+    },
+    mathFault : lib.posix.signal.SigCode,
 };
 
 /// Page fault handler lookup table
@@ -37,11 +39,10 @@ var pfaultLUT : []struct {fault : u64, handler : u64} = undefined;
 pub fn handler(irqNum : u64, data : *ExceptionData, state : *kernel.CpuState) void {
     switch (arch.irq.getExceptionType(irqNum)) {
         .PAGE_FAULT => pageFault(data, state),
+        .MATH_ERROR => mathFault(data, state),
+        .NO_FPU_STATE => noFpuFault(),
         else => @panic("unhandled handler!"),
     }
-    //kernel.print("done\n", .{});
-    //var cre : u16 = 0;
-    //cre = 1;
 }
 
 pub fn pageFault(data : *ExceptionData, state : *kernel.CpuState) void {
@@ -247,6 +248,24 @@ pub fn pageFault(data : *ExceptionData, state : *kernel.CpuState) void {
             }
         );
     }
+}
+
+pub fn mathFault(data : *ExceptionData, state : *kernel.CpuState) void {
+    if (state.inKmode())
+        @panic("Math fault in kmode!");
+
+    const thread = kernel.cThread();
+
+    kernel.pm.signal.sigSend(.THREAD, thread, .{
+        .si_signo = .SIGFPE,
+        .si_code = data.mathFault,
+        .si_addr = @ptrFromInt(state.getPc()),
+    }) catch undefined;
+}
+
+/// Allocate an fpu state if the thread tries to use fpu instructions
+pub fn noFpuFault() void {
+    kernel.cThread().fpuContext = arch.cpu.FpuState.alloc();
 }
 
 pub fn setup() void {

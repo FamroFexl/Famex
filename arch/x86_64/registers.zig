@@ -150,6 +150,7 @@ pub const Cr0 = packed struct(u64) {
     nw : bool,      //Not Write Through
     cd : bool,      //Cache Disable
     pg : bool,      //Paging
+    __pad4 : u32,
 
     extern fn getCr0() callconv(.c) Cr0;
     pub const get = getCr0;
@@ -261,6 +262,59 @@ pub const Xcr0 = packed struct(u64) {
     pub fn set(val : Xcr0) void {
         setXCr(0, @bitCast(val));
     }
+};
+
+// Vol 1, Chapter 8.1.3, Intel SDM
+pub const X87Status = packed struct(u16) {
+    // Exception flags
+    invalidOperation        : bool,
+    denormalizedOperand     : bool,
+    zeroDivide              : bool,
+    overflow                : bool,
+    underflow               : bool,
+    precision               : bool,
+
+    stackFault              : bool,
+    xcpSumStat              : bool,  // Exception summary status
+    code1                   : u3,
+    tosPtr                  : u3,    // Top of stack pointer
+    code2                   : u1,
+    fpuBusy                 : bool,
+
+    extern fn getX87Status() callconv(.c) @This();
+    pub const get = getX87Status;
+
+    extern fn clearX87Status() callconv(.c) void;
+    pub const clear = clearX87Status;
+};
+
+// Vol 1, Chapter 10.2.3, Intel SDM
+pub const MxcsrStatus = packed struct(u32) {
+    // Exception flags
+    invalidOperation        : bool,
+    denormalizedOperand     : bool,
+    zeroDivide              : bool,
+    overflow                : bool,
+    underflow               : bool,
+    precision               : bool,
+
+    denormalsAreZero        : bool,
+    invalidOperationMask    : bool,
+    denormalizedOperandMask : bool,
+    zeroDivideMask          : bool,
+    overflowMask            : bool,
+    underflowMask           : bool,
+    precisionMask           : bool,
+
+    roundingCtrl            : u2,
+    flushToZero             : bool,
+    __pad1                  : u16,
+
+    extern fn getMxcsrStatus() callconv(.c) @This();
+    pub const get = getMxcsrStatus;
+
+    extern fn clearMxcsrStatus() callconv(.c) void;
+    pub const clear = clearMxcsrStatus;
 };
 
 pub const Rflags = packed struct(u64) {

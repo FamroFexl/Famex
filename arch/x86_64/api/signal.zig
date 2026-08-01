@@ -5,16 +5,8 @@ const kernel = @import("kernel");
 const bin = kernel.bin;
 const mem = kernel.mm.memory;
 
-pub const SigFrame = struct {
-    stackTop : u64,
-    ucontext : posix.signal.ucontext_t,
-    siginfo : posix.signal.siginfo_t,
-    savedMask : posix.signal.sigset_t,
-    retAddr : u64,
-};
-
 /// Push a signal frame onto the stack
-pub fn pushSigFrame(state : *cpu.CpuState, sigFrame : *const SigFrame) error{CopyToUserFailed}!void {
+pub fn pushSigFrame(state : *cpu.CpuState, sigFrame : *const kernel.pm.signal.SigFrame) error{CopyToUserFailed}!void {
     // Signo in arg 0
     state.getArg(0).* = bin.convert(u64, sigFrame.siginfo.si_signo);
 
@@ -56,7 +48,7 @@ pub fn pushSigFrame(state : *cpu.CpuState, sigFrame : *const SigFrame) error{Cop
 }
 
 /// Pop a signal frame from the stack
-pub fn popSigFrame(state : *cpu.CpuState, sigFrame : *SigFrame) error{CopyFromUserFailed}!void {
+pub fn popSigFrame(state : *cpu.CpuState, sigFrame : *kernel.pm.signal.SigFrame) error{CopyFromUserFailed}!void {
     var stackTop = state.getStack();
 
     if (mem.copyFromUser(&sigFrame.ucontext, @ptrFromInt(stackTop), @sizeOf(posix.signal.ucontext_t)) != 0) {

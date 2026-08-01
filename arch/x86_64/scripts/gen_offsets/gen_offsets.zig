@@ -13,6 +13,7 @@ pub fn main(init: std.process.Init) !void {
     writer = std.Io.File.stdout().writerStreaming(init.io, &buf);
 
     gen_pair("SYSCALL_STACK_OFST", @offsetOf(asmLayout.PerCpuStart, "syscallStack"));
+    gen_pair("HAS_FPU_STATE", @offsetOf(asmLayout.PerCpuStart, "hasFpuState"));
 
     gen_pair("KERNEL_GS_BASE", reg.KernelGsBase.addr);
     gen_pair("GS_BASE", reg.GsBase.addr);

@@ -135,7 +135,7 @@ pub fn sigqueue(state : *cpu.CpuState) SysRet {
         return .fail(posix.errno.EINVAL);
 
     const siginfo : posix.signal.siginfo_t = .{
-        .si_signo = signo,
+        .si_signo = @enumFromInt(signo),
         .si_pid = kernel.cThread().owner.pid,
         .si_uid = kernel.cThread().owner.creds.ruid,
         .si_value = value,

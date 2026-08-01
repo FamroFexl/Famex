@@ -89,13 +89,16 @@ fn loadThread(new : *kernel.Thread, state : *kernel.CpuState) void {
 
     kernel.io.irq.irqSaveDepth.getLocal().* = &new.irqSaveDepth;
 
+    const perCpuStart = kernel.pm.process.perCpuStart.getLocal();
     if(new.container() == .uThread) {
         // Set syscall stack
-        kernel.pm.process.perCpuStart.getLocal().syscallStack = kernel.bin.alignDown(cast.toInt(new.stack.start) + new.stack.size, 16);
+        perCpuStart.syscallStack = kernel.bin.alignDown(cast.toInt(new.stack.start) + new.stack.size, 16);
     }
     else {
 
     }
+
+    perCpuStart.hasFpuState = new.fpuContext != null;
 
     _ = new.owner.addrSpace.rootPt.switchTo();
 }

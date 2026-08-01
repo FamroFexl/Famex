@@ -78,6 +78,7 @@ pub const Thread = struct {
     } = undefined,
 
     context : kernel.CpuState = undefined,
+    fpuContext : ?kernel.FpuState = null,
     tid : Tid = undefined,
 
     ktime : kernel.Time = .zero(),

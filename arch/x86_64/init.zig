@@ -97,6 +97,11 @@ fn ensureFeatures() void {
 fn setupFp() void {
     print("arch: Setting up Floating Point (X87, SSE", .{});
 
+    var cr0 = reg.Cr0.get();
+    cr0.et = true;
+    cr0.ne = true;
+    reg.Cr0.set(cr0);
+
     var cr4 = reg.Cr4.get();
     cr4.osfxcr = true;
     cr4.osxmmexcpt = true;
@@ -439,6 +444,7 @@ pub export fn init() void {
     base.context.setStack(bin.alignDown(kernel.mm.memory.USER_MEMORY_END.val - types.SIZE_4KB, 16));
 
     kernel.pm.process.perCpuStart.getLocal().syscallStack = base.stack.start + base.stack.size;
+    kernel.pm.process.perCpuStart.getLocal().hasFpuState = base.fpuContext != null;
 
     var stackState = kernel.PfeState(.MAP).create(&process.addrSpace, .asVirt(bin.alignDown(kernel.mm.memory.USER_MEMORY_END.val - types.SIZE_4KB, types.SIZE_4KB)), .asVirt(bin.alignUp(kernel.mm.memory.USER_MEMORY_END.val, types.SIZE_4KB)), .LEVEL_4KB);
     var pte = kernel.mm.paging.PFE_DEFAULTS[0];

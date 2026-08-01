@@ -21,20 +21,25 @@ const SigRTLink = struct {
     link : kernel.Queue.Node,
 };
 
+pub const SigFrame = struct {
+    stackTop : u64,
+    ucontext : posix.signal.ucontext_t,
+    siginfo : posix.signal.siginfo_t,
+    savedMask : posix.signal.sigset_t,
+    retAddr : u64,
+};
+
 pub fn sigAlarmCallback(event : *kernel.TimerEvent) void {
     const process : *kernel.Process = @fieldParentPtr("sigAlarm", event);
 
     sigSend(.PROCESS, process, .{
-        .si_signo = @intFromEnum(posix.signal.Signal.SIGALRM),
-        .si_pid = process.pid,
-        .si_uid = process.creds.ruid,
+        .si_signo = .SIGALRM,
     }) catch undefined;
 }
 
 /// SIG_DFL actions
 fn sigDefault(signo : anytype) enum {TERMINATE, ABORT, IGNORE, STOP, CONTINUE} {
-    const signal = @as(posix.signal.Signal, @enumFromInt(signo));
-    return switch (signal) {
+    return switch (signo) {
         .SIGALRM, .SIGHUP, .SIGINT, .SIGKILL, .SIGPIPE, .SIGTERM, .SIGUSR1, .SIGUSR2, .SIGVTALRM
         => .TERMINATE,
         .SIGABRT, .SIGBUS, .SIGFPE, .SIGILL, .SIGQUIT, .SIGSEGV, .SIGSYS, .SIGTRAP, .SIGXCPU, .SIGXFSZ
@@ -70,7 +75,7 @@ pub fn checkForWake(thread : *kernel.Thread) bool {
 }
 
 pub fn sigSend(recType : enum {THREAD, PROCESS}, receiver : *anyopaque, signal : posix.signal.siginfo_t) error{RTQueueFull}!void {
-    const signo = signal.si_signo;
+    const signo = @intFromEnum(signal.si_signo);
 
     if (!posix.signal.sigValid(signo))
         @panic("Invalid signal number sent!");
@@ -206,7 +211,7 @@ pub fn sigHandle(state : *cpu.CpuState) void {
         orelse return;
 
     process.spinlock.lock();
-    const sigActionAddr = &process.sigAction[@intCast(signal.si_signo)];
+    const sigActionAddr = &process.sigAction[@intCast(@intFromEnum(signal.si_signo))];
     const sigAction = sigActionAddr.*;
 
     if (sigAction.sa_flags.SA_RESETHAND)
@@ -263,7 +268,7 @@ pub fn sigHandle(state : *cpu.CpuState) void {
     thread.spinlock.lock();
     thread.sigMask |= sigAction.sa_mask;
     if (!sigAction.sa_flags.SA_NODEFER)
-        thread.sigMask |= bin.setBit(signal.si_signo);
+        thread.sigMask |= bin.setBit(@intFromEnum(signal.si_signo));
     thread.spinlock.unlock();
 
     const stackTop = cast.toInt(curStack.ss_sp) + curStack.ss_size;
@@ -289,7 +294,7 @@ pub fn sigHandle(state : *cpu.CpuState) void {
 }
 
 pub fn sigreturn(state : *cpu.CpuState) kernel.pm.syscall.syscall.SysRet {
-    var sigFrame : arch.signal.SigFrame = undefined;
+    var sigFrame : SigFrame = undefined;
 
     arch.signal.popSigFrame(state, &sigFrame) catch {
         // Try SIGSEGV signal, else terminate process

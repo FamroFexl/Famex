@@ -3,6 +3,8 @@ const bin = kernel.util.bin;
 const mm = kernel.mm;
 const print = kernel.util.log.print;
 
+const lib = @import("lib");
+
 const reg = @import("registers.zig");
 const cpu = @import("arch_api").cpu;
 const apic = @import("apic.zig");
@@ -54,6 +56,23 @@ const PfaultError = packed struct(u64) {
     __pad1      : u55,
 };
 
+fn fpuStatusToPosix(status : reg.X87Status) lib.posix.signal.SigCode {
+    if (status.invalidOperation)
+        return .FPE_FLTINV;
+    if (status.denormalizedOperand)
+        return .FPE_FLTINV;
+    if (status.zeroDivide)
+        return .FPE_FLTDIV;
+    if (status.overflow)
+        return .FPE_FLTOVF;
+    if (status.underflow)
+        return .FPE_FLTUND;
+    if (status.precision)
+        return .FPE_FLTRES;
+
+    return .FPE_FLTINV;
+}
+
 /// Interrupt handler (called by asm)
 ///
 /// state: used to save and restore registers for a task
@@ -79,6 +98,39 @@ pub export fn interruptVectorHandler(state : *reg.CpuState, err : u64, vec_num :
             .access = if (pfault.instr_ftch) .EXECUTE else if (pfault.write) .WRITE else .READ,
         }};
     }
+
+    const vector : VecNum = @enumFromInt(vec_num);
+
+    if (vector == .NO_MATH_CPU) {
+
+    }
+
+    data = switch (vector) {
+        .PAGE_FAULT => brk: {
+            const pfault : PfaultError = @bitCast(err);
+            break :brk .{.pfault = .{
+                .addr = .asVirt(reg.Cr2.get()),
+                .present = pfault.present,
+                .access = if (pfault.instr_ftch) .EXECUTE else if (pfault.write) .WRITE else .READ,
+            }};
+        },
+        .DIVIDE_ERROR => .{.mathFault = .FPE_INTDIV},
+        .OVERFLOW => .{.mathFault = .FPE_INTOVF},
+        .FPU_ERROR => .{.mathFault = brk: {
+            const status = reg.X87Status.get();
+            defer reg.X87Status.clear();
+
+            break :brk fpuStatusToPosix(status);
+        }},
+        .SIMD_FP_XCP => .{.mathFault = brk: {
+            const status = reg.MxcsrStatus.get();
+            defer reg.MxcsrStatus.clear();
+
+            // This reg has the same exception format, so we just convert it to x87 status
+            break :brk fpuStatusToPosix(@bitCast(kernel.bin.convert(u16, status)));
+        }},
+        else => null,
+    };
 
     const irqData : kernel.io.irq.IrqData = .{
         .irqNum = vec_num,

@@ -19,7 +19,8 @@ pub fn getExceptionType(irqNum : u64) kernel.io.exception.ExceptionType {
     const vecNum = @as(irq.VecNum, @enumFromInt(irqNum));
     return switch (vecNum) {
         .PAGE_FAULT => .PAGE_FAULT,
-        .DIVIDE_ERROR, .OVERFLOW, .NO_MATH_CPU, .FPU_ERROR, .SIMD_FP_XCP => .MATH_ERROR,
+        .NO_MATH_CPU => .NO_FPU_STATE,
+        .DIVIDE_ERROR, .OVERFLOW, .FPU_ERROR, .SIMD_FP_XCP => .MATH_ERROR,
         .BOUND_RANGE, .BAD_TSS, .BAD_SEG, .BAD_STACK_SEG => .BAD_ADDR,
         .ALIGN_CHECK => .ALIGN_FAULT,
         .DEBUG_XCP, .BREAKPOINT => .TRAP,

@@ -137,6 +137,51 @@ FUNC fpStateReset
     ret
 FUNC_END fpStateReset
 
+FUNC getX87Status
+    mov rax, 0
+    fnstsw ax
+    ret
+FUNC_END getX87Status
+
+FUNC clearX87Status
+    fnclex
+    ret
+FUNC_END clearX87Status
+
+FUNC getMxcsrStatus
+    sub rsp, 8
+    stmxcsr [rsp]
+    mov eax, [rsp]
+    add rsp, 8
+FUNC_END getMxcsrStatus
+
+FUNC clearMxcsrStatus
+    sub rsp, 8
+    stmxcsr [rsp]
+    and dword ptr [rsp], 0xffffffc0
+    ldmxcsr [rsp]
+    add rsp, 8
+    ret
+FUNC_END clearMxcsrStatus
+
+// Disable FPU instructions if the thread hasn't used them yet
+FUNC fpuDisableCond
+    push rax
+    mov rax, gs:[HAS_FPU_STATE]
+    cmp rax, 1
+    mov rax, cr0
+    je 1f
+        and eax, ~(1 << 3)
+        jmp 2f
+    1:
+        or eax, (1 << 3)
+    2:
+
+    mov cr0, rax
+    pop rax
+    ret
+FUNC_END fpuDisableCond
+
 FUNC getRflags
     pushfq
     pop rax
@@ -385,6 +430,9 @@ FUNC_END saveState
  */
 FUNC loadState
     // Setup interrupt frame for return
+
+    // Conditionally disable fpu instructions
+    call fpuDisableCond
 
     push rdi
 

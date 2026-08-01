@@ -10,7 +10,7 @@ const limits = @import("limits.zig");
 
 const RTMIN = 32;
 
-pub const Signal = enum(u8) {
+pub const Signal = enum(i32) {
     // Signal cannot be 0
     SIGABRT = 1,    // (A) Process abort signal
     SIGALRM = 2,    // (T) Alarm clock
@@ -39,8 +39,7 @@ pub const Signal = enum(u8) {
     SIGVTALRM = 25, // (T) Virtual timer expired
     SIGXCPU = 26,   // (A) CPU time limit exceeded
     SIGXFSZ = 27,   // (A) File size limit exceeded
-    SIGRTMIN = RTMIN,
-    SIGRTMAX = RTMIN + limits.RTSIG_MAX - 1,
+    _,
 };
 
 pub const SIGRTMIN = 32;
@@ -65,8 +64,8 @@ pub const SIG_ERR : i32 = -1;
 
 pub fn sigValid(sig : anytype) bool {
     return sig != 0
-        and (sig <= @intFromEnum(Signal.SIGXFSZ) or sig >= @intFromEnum(Signal.SIGRTMIN))
-        and sig <= @intFromEnum(Signal.SIGRTMAX);
+        and (sig <= @intFromEnum(Signal.SIGXFSZ) or sig >= SIGRTMIN)
+        and sig <= SIGRTMAX;
 }
 
 pub fn sigIgnorable(sig : anytype) bool {
@@ -94,7 +93,7 @@ pub const SigStatus = packed struct(i32) {
     __pad1 : u30 = undefined,
 };
 
-pub const SigCode = enum {
+pub const SigCode = enum(i32) {
     // Other
     SI_USER,            // Signal sent by kill()
     SI_QUEUE,           // Signal sent by sigqueue()
@@ -135,7 +134,8 @@ pub const SigCode = enum {
     CLD_DUMPED,         // Child has terminated abnormally and additional actions may have been taken
     CLD_TRAPPED,        // Traced child has trapped
     CLD_STOPPED,        // Child has stopped
-    CLD_CONTINUED       // Stopped child has continued
+    CLD_CONTINUED,      // Stopped child has continued
+    _,
 };
 
 pub const SigSet = enum(i32) {
@@ -151,11 +151,11 @@ pub const sigval = extern union {
 };
 
 pub const siginfo_t = extern struct {
-    si_signo : i32,         // Signal number
-    si_code : i32 = 0,          // Signal code
+    si_signo : Signal,         // Signal number
+    si_code : SigCode = @enumFromInt(0),          // Signal code
     si_errno : i32 = 0,         // If non-zero, an errno value associated with this signal, as described in <errnoh>
-    si_pid : types.pid_t,   // Sending process ID
-    si_uid : types.uid_t,   // Real user ID of sending process
+    si_pid : types.pid_t = 0,   // Sending process ID
+    si_uid : types.uid_t = 0,   // Real user ID of sending process
     si_addr : *allowzero anyopaque = @ptrFromInt(0),   // Address that caused fault
     si_status : i32 = 0,        // Exit value or signal
     si_value : sigval = .{.sival_int = 0},      // Signal value
