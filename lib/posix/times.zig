@@ -22,8 +22,8 @@ pub fn getClockFromId(clockId : types.clockid_t) CLOCK {
     return @enumFromInt(clockId & 0x7);
 }
 
-pub fn getPidFromId(clockId : types.clockid_t) u32 {
-    return clockId >> 3;
+pub fn getPidFromId(clockId : types.clockid_t) i32 {
+    return @intCast(clockId >> 3);
 }
 
 pub fn getTidFromId(clockId : types.clockid_t) u32 {

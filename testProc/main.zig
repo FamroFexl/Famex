@@ -15,9 +15,7 @@ pub export fn _start() noreturn {
 
 // fn (i32) void
 // fn (i32, *siginfo_t, *ucontext)
-var siggot = false;
 fn sighandler(signo : i32, siginfo : *posix.signal.siginfo_t, ucontext : *posix.signal.ucontext_t) callconv(.c) void {
-    siggot = true;
     _ = signo;
     _ = siginfo;
     _ = ucontext;
@@ -46,12 +44,14 @@ export fn main() void {
 
     sys.print("time {}\n", .{sys.time(@ptrFromInt(0))});
 
-    _ = sys.alarm(4);
+    _ = sys.alarm(2);
     //_ = sys.alarm(0);
 
     sys.print("hello2\n", .{});
 
-    while (!siggot) {}
+    const sigset : posix.signal.sigset_t = 0;
+    const out = sys.sigsuspend(&sigset);
+    sys.print("out {}\n", .{out});
 
     sys.print("time {}\n", .{sys.time(@ptrFromInt(0))});
 

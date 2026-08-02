@@ -35,6 +35,8 @@ pub const Process = struct {
     createTime : kernel.Time,           // Process creation time
     termUTime : kernel.Time = .zero(),  // User-mode time of all terminated child processes
     termKTime : kernel.Time = .zero(),  // Kernel-mode time of all terminated child processes
+    utime : kernel.Time = .zero(),      // User-mode time of all threads
+    ktime : kernel.Time = .zero(),      // Kernel-mode time of all threads
 
     pid : Pid,
 
@@ -46,6 +48,8 @@ pub const Process = struct {
     sigData : signal.SigData = undefined,
 
     sigAlarm : kernel.TimerEvent = .create(.MONOTONIC, .Msec(100), kernel.pm.signal.sigAlarmCallback),
+    timers : [lib.posix.limits.TIMER_MAX]kernel.pm.syscall.syscall.ProcTimer = [_]kernel.pm.syscall.syscall.ProcTimer{.{}} ** lib.posix.limits.TIMER_MAX,   // Process timers
+    timersLock : kernel.Spinlock = .create(),   // Process timers lock
 
     threads : util.data.List = undefined,
     children : util.data.List = undefined,
@@ -96,14 +100,6 @@ pub const Thread = struct {
         priority : u8,  // FIFO/RR real-time priority
         nice : i8,      // Nice value for NORMAL policy
     } = undefined,
-
-    sigMask : lib.posix.signal.sigset_t = 0,
-    sigAltStack : lib.posix.signal.stack_t = .{
-        .ss_flags = .{ .SS_DISABLE = true, .SS_ONSTACK = false},
-        .ss_size = undefined,
-        .ss_sp = undefined,
-    },
-    sigData : signal.SigData = undefined,
 
     /// Semaphore and mutex sleep link
     sleepLink : util.data.Queue.Node = undefined,
@@ -178,6 +174,7 @@ pub const Thread = struct {
     pub fn wake(this : *@This()) void { kernel.irqSaved();
         const scheduler = &sched.schedData.getLocal().sched.get(this.sched.policy);
         scheduler.onWake(scheduler, this);
+        sched.reschedule();
     }
 
     pub fn container(this: *@This()) union(enum) {
@@ -203,6 +200,14 @@ pub const UThread = struct {
     utime : kernel.Time,
 
     uStack : *vmm.VmArea,
+
+    sigMask : lib.posix.signal.sigset_t = 0,
+    sigAltStack : lib.posix.signal.stack_t = .{
+        .ss_flags = .{ .SS_DISABLE = true, .SS_ONSTACK = false},
+        .ss_size = undefined,
+        .ss_sp = undefined,
+    },
+    sigData : signal.SigData = undefined,
 
     fpuContext : kernel.FpuState,
 };
@@ -357,15 +362,67 @@ pub fn startTimeReset() u64 {
     return out;
 }
 
+fn checkCpuTimers(thread : *Thread) void {
+    const process = thread.owner;
+
+    process.timersLock.lock();
+    defer process.timersLock.unlock();
+
+    // Iterate through all timers
+    for (&thread.owner.timers) |*timer| {
+        if (timer.inUse and timer.timerType == .cpuTimer) {
+            const cpuTimer = &timer.timerType.cpuTimer;
+            if (!cpuTimer.armed)
+                continue;
+
+            var threadTime : u64 = undefined;
+
+            const clock = lib.posix.times.getClockFromId(timer.timerType.cpuTimer.clockId);
+            if (clock == .THREAD_CPUTIME_ID) {
+                thread.spinlock.lock();
+                defer thread.spinlock.unlock();
+
+                threadTime = thread.ktime.nsec + switch (thread.container()) {
+                    .uThread => |uThread| brk: {break :brk uThread.utime.nsec;},
+                    .kThread => 0
+                };
+            }
+            else if (clock == .PROCESS_CPUTIME_ID) {
+                process.spinlock.lock();
+                defer process.spinlock.unlock();
+
+                threadTime = process.utime.nsec + process.ktime.nsec;
+            }
+
+            if (threadTime >= cpuTimer.expiration) {
+                if (timer.sigevent.sigev_notify == .SIGEV_SIGNAL) {
+                    kernel.pm.signal.sigSend(.PROCESS, process, .{
+                        .si_signo = timer.sigevent.sigev_signo,
+                        .si_value = timer.sigevent.sigev_value,
+                    }) catch {};
+                }
+                else if (timer.sigevent.sigev_notify == .SIGEV_THREAD) {
+
+                }
+            }
+        }
+    }
+}
+
 pub fn addKtime() void {
     const ktime = startTimeReset();
 
     const cThread = sched.cThread();
 
     cThread.spinlock.lock();
-    defer cThread.spinlock.unlock();
-
     cThread.ktime.nsec += ktime;
+    cThread.spinlock.unlock();
+
+    cThread.owner.spinlock.lock();
+    cThread.owner.ktime.nsec += ktime;
+    cThread.owner.spinlock.unlock();
+
+    checkCpuTimers(cThread);
 }
 
 pub fn addUtime() void {
@@ -375,9 +432,14 @@ pub fn addUtime() void {
     const uThread : *UThread = @fieldParentPtr("base", cThread);
 
     cThread.spinlock.lock();
-    defer cThread.spinlock.unlock();
-
     uThread.utime.nsec += utime;
+    cThread.spinlock.unlock();
+
+    cThread.owner.spinlock.lock();
+    cThread.owner.utime.nsec += utime;
+    cThread.owner.spinlock.unlock();
+
+    checkCpuTimers(cThread);
 }
 
 pub extern fn inKmode(state : *kernel.CpuState) callconv(.c) bool;

@@ -1,4 +1,4 @@
-pub const SysNum = enum(u64) {
+pub const SysNum = enum(u8) {
     PRINT = 1,
     SCHED_YIELD = 2,
     TIME = 3,
@@ -14,5 +14,6 @@ pub const SysNum = enum(u64) {
     _SIGRETURN = 15,
     CLOCK_NANOSLEEP = 16,
     ALARM = 17,
+    SIGSUSPEND = 18,
     _,
 };

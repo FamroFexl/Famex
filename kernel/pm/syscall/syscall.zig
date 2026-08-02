@@ -4,8 +4,8 @@ const kernel = @import("kernel");
 const cast = kernel.cast;
 const mem = kernel.mm.memory;
 
-const lib = @import("lib");
-const errno = lib.posix.errno;
+const posix = @import("lib").posix;
+const errno = posix.errno;
 
 const cpu = @import("arch").cpu;
 
@@ -25,6 +25,19 @@ pub const Vdso = struct {
     comptime {
         std.debug.assert(@alignOf(Vdso) == 8);
     }
+};
+
+pub const ProcTimer = struct {
+    inUse : bool = false,   // Timer has been allocated
+    sigevent : posix.signal.sigevent = undefined,
+    timerType : union(enum) {
+        normalTimer : kernel.TimerEvent,
+        cpuTimer : struct {
+            clockId : posix.types.clockid_t,
+            expiration : posix.types.time_t = undefined,
+            armed : bool = false,   // CPU Timer is currently active
+        }
+    } = undefined,
 };
 
 pub const SysRet = struct {
@@ -92,7 +105,7 @@ fn print(state : *cpu.CpuState) SysRet {
 }
 
 fn syscall(state : *cpu.CpuState) void {
-    const num : lib.posix.sysnum.SysNum = @enumFromInt(state.getRetSys().*);
+    const num : posix.sysnum.SysNum = @enumFromInt(state.getRetSys().*);
     state.getRetSys().* = (switch (num) {
         .PRINT => print(state),
         .SCHED_YIELD => sched.sched_yield(state),
@@ -109,7 +122,8 @@ fn syscall(state : *cpu.CpuState) void {
         ._SIGRETURN => kernel.pm.signal.sigreturn(state),
         .CLOCK_NANOSLEEP => time.clock_nanosleep(state),
         .ALARM => signal.alarm(state),
-        else => SysRet.fail(lib.posix.errno.ENOSYS),
+        .SIGSUSPEND => signal.sigsuspend(state),
+        else => SysRet.fail(posix.errno.ENOSYS),
     }).ret;
 }
 

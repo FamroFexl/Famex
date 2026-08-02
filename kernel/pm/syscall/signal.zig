@@ -44,11 +44,11 @@ pub fn sigaltstack(state : *cpu.CpuState) SysRet {
     const ss = cast.toPtr(*allowzero posix.signal.stack_t, state.getArgSys(0).*);
     const oss = cast.toPtr(*allowzero posix.signal.stack_t, state.getArgSys(1).*);
 
-    const thread = kernel.cThread();
+    const uThread = kernel.cThread().container().uThread;
 
-    thread.spinlock.lock();
-    var sigAltStack = thread.sigAltStack;
-    thread.spinlock.unlock();
+    uThread.base.spinlock.lock();
+    var sigAltStack = uThread.sigAltStack;
+    uThread.base.spinlock.unlock();
 
     if (@intFromPtr(oss) != 0) {
         if (mem.copyToUser(oss, &sigAltStack, @sizeOf(posix.signal.stack_t)) > 0)
@@ -60,7 +60,7 @@ pub fn sigaltstack(state : *cpu.CpuState) SysRet {
             return .fail(posix.errno.EINVAL);
         if (ss.ss_size < posix.signal.MINSIGSTKSZ)
             return .fail(posix.errno.ENOMEM);
-        if (thread.sigAltStack.ss_flags.SS_ONSTACK)
+        if (uThread.sigAltStack.ss_flags.SS_ONSTACK)
             return .fail(posix.errno.EPERM);
 
         // Check for invalid stack. Very important since stack address determines operating mode.
@@ -71,9 +71,9 @@ pub fn sigaltstack(state : *cpu.CpuState) SysRet {
         if (mem.copyFromUser(&sigAltStack, ss, @sizeOf(posix.signal.stack_t)) > 0)
             return .fail(posix.errno.EFAULT);
 
-        thread.spinlock.lock();
-        thread.sigAltStack = sigAltStack;
-        thread.spinlock.unlock();
+        uThread.base.spinlock.lock();
+        uThread.sigAltStack = sigAltStack;
+        uThread.base.spinlock.unlock();
     }
 
     return .ok(0);
@@ -84,11 +84,11 @@ pub fn pthread_sigmask(state : *cpu.CpuState) SysRet {
     const set = cast.toPtr(*allowzero posix.signal.sigset_t, state.getArgSys(1).*);
     const oset = cast.toPtr(*allowzero posix.signal.sigset_t, state.getArgSys(2).*);
 
-    const thread = kernel.cThread();
+    const uThread = kernel.cThread().container().uThread;
 
-    thread.spinlock.lock();
-    const sigMask = thread.sigMask;
-    thread.spinlock.unlock();
+    uThread.base.spinlock.lock();
+    const sigMask = uThread.sigMask;
+    uThread.base.spinlock.unlock();
 
     if (@intFromPtr(oset) != 0) {
         if (mem.copyToUser(oset, &sigMask, @sizeOf(posix.signal.sigset_t)) > 0)
@@ -100,13 +100,13 @@ pub fn pthread_sigmask(state : *cpu.CpuState) SysRet {
         if (mem.copyFromUser(&userSet, set, @sizeOf(posix.signal.sigset_t)) > 0)
             return .fail(posix.errno.EFAULT);
 
-        thread.spinlock.lock();
-        defer thread.spinlock.unlock();
+        uThread.base.spinlock.lock();
+        defer uThread.base.spinlock.unlock();
 
-        thread.sigMask = switch (how) {
-            .SIG_BLOCK => thread.sigMask | userSet,
+        uThread.sigMask = switch (how) {
+            .SIG_BLOCK => uThread.sigMask | userSet,
             .SIG_SETMASK => userSet,
-            .SIG_UNBLOCK => thread.sigMask & (~userSet),
+            .SIG_UNBLOCK => uThread.sigMask & (~userSet),
             _ => return .fail(posix.errno.EINVAL),
         };
     }
@@ -155,25 +155,27 @@ pub fn sigsuspend(state : *cpu.CpuState) SysRet {
     if (mem.copyFromUser(&outMask, sigmask, @sizeOf(posix.signal.sigset_t)) != 0)
         return .fail(posix.errno.EFAULT);
 
-    const thread = kernel.cThread();
+    const uThread = kernel.cThread().container().uThread;
 
     const curMask = brk: {
-        thread.spinlock.lock();
-        defer thread.spinlock.unlock();
+        uThread.base.spinlock.lock();
+        defer uThread.base.spinlock.unlock();
 
-        const curMask = thread.sigMask;
-        thread.sigMask = outMask;
-        thread.state == .INTERRUPTABLE;
+        const curMask = uThread.sigMask;
+        uThread.sigMask = outMask;
+        uThread.base.state = .INTERRUPTABLE;
         break :brk curMask;
     };
 
-    thread.sleep();
+    kernel.irqSave();
+    uThread.base.sleep();
+    kernel.irqRestore();
 
     {
-        thread.spinlock.lock();
-        defer thread.spinlock.unlock();
+        uThread.base.spinlock.lock();
+        defer uThread.base.spinlock.unlock();
 
-        thread.sigMask = curMask;
+        uThread.sigMask = curMask;
     }
 
     return .fail(posix.errno.EINTR);

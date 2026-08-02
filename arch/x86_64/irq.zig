@@ -80,7 +80,7 @@ fn fpuStatusToPosix(status : reg.X87Status) lib.posix.signal.SigCode {
 /// vec_num: what needs to be done depending on interrupt vector type
 pub export fn interruptVectorHandler(state : *reg.CpuState, err : u64, vec_num : u64) void {
     if (vec_num != 14) {
-        kernel.print("VecNum {}", .{vec_num});
+        kernel.print("VecNum {} {x} {x} ", .{vec_num, state.rip, state.rsp});
         if (err != 0) {
             kernel.print(" {b}\n", .{err});
         }
@@ -132,12 +132,7 @@ pub export fn interruptVectorHandler(state : *reg.CpuState, err : u64, vec_num :
         else => null,
     };
 
-    const irqData : kernel.io.irq.IrqData = .{
-        .irqNum = vec_num,
-        .data = &data,
-    };
-
-    kernel.io.irq.handler(&irqData, state);
+    kernel.io.irq.handler(&.{ .irqNum = vec_num, .data = &data, }, state);
 
     if (vec_num >= @intFromEnum(VecNum.UINT_START))
         apic.set(.eoi, 0);

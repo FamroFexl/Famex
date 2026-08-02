@@ -36,15 +36,6 @@ pub const ExceptionData = union {
 /// Page fault handler lookup table
 var pfaultLUT : []struct {fault : u64, handler : u64} = undefined;
 
-pub fn handler(irqNum : u64, data : *ExceptionData, state : *kernel.CpuState) void {
-    switch (arch.irq.getExceptionType(irqNum)) {
-        .PAGE_FAULT => pageFault(data, state),
-        .MATH_ERROR => mathFault(data, state),
-        .NO_FPU_STATE => noFpuFault(),
-        else => @panic("unhandled handler!"),
-    }
-}
-
 pub fn pageFault(data : *ExceptionData, state : *kernel.CpuState) void {
     const addr = data.pfault.addr;
     const vmSpace = &kernel.cThread().owner.addrSpace;
@@ -266,6 +257,15 @@ pub fn mathFault(data : *ExceptionData, state : *kernel.CpuState) void {
 /// Allocate an fpu state if the thread tries to use fpu instructions
 pub fn noFpuFault() void {
     kernel.cThread().fpuContext = arch.cpu.FpuState.alloc();
+}
+
+pub fn handler(irqNum : u64, data : *ExceptionData, state : *kernel.CpuState) void {
+    switch (arch.irq.getExceptionType(irqNum)) {
+        .PAGE_FAULT => pageFault(data, state),
+        .MATH_ERROR => mathFault(data, state),
+        .NO_FPU_STATE => noFpuFault(),
+        else => @panic("unhandled handler!"),
+    }
 }
 
 pub fn setup() void {

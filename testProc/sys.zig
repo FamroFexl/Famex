@@ -35,8 +35,8 @@ fn asU64(value: anytype) u64 {
     return result;
 }
 
-fn syscallRet(number : u64, arg0 : anytype, arg1 : anytype, arg2 : anytype, arg3 : anytype, arg4 : anytype, arg5 : anytype) u64 {
-    return syscall(number, .{
+fn syscallRet(sysnum : posix.sysnum.SysNum, arg0 : anytype, arg1 : anytype, arg2 : anytype, arg3 : anytype, arg4 : anytype, arg5 : anytype) u64 {
+    return syscall(@intFromEnum(sysnum), .{
         asU64(arg0), asU64(arg1), asU64(arg2), asU64(arg3), asU64(arg4), asU64(arg5),
     });
 }
@@ -49,45 +49,49 @@ pub fn print(comptime str : []const u8, args: anytype) void {
     var buf : [1000]u8 = undefined;
     const out = std.fmt.bufPrint(&buf, str, args) catch {
         const err = "bufPrint overflow\n";
-        _ = syscallRet(@intFromEnum(SysNum.PRINT), err[0..].ptr, err.len, 0, 0, 0, 0);
+        _ = syscallRet(.PRINT, err[0..].ptr, err.len, 0, 0, 0, 0);
         return;
     };
-    _ = syscallRet(@intFromEnum(SysNum.PRINT),out.ptr, out.len, 0, 0, 0, 0);
+    _ = syscallRet(.PRINT,out.ptr, out.len, 0, 0, 0, 0);
 }
 
 pub fn mmap(addr : *anyopaque, len : u64, prot : posix.mman.PROT, flags : posix.mman.MAP, fildes : i32, off : posix.types.off_t) *anyopaque {
-    return @ptrFromInt(syscallRet(@intFromEnum(SysNum.MMAP), addr, len, prot, flags, fildes, off));
+    return @ptrFromInt(syscallRet(.MMAP, addr, len, prot, flags, fildes, off));
 }
 
 pub fn sigaction(sig : i32, act : *allowzero posix.signal.sigaction, oact : *allowzero posix.signal.sigaction) i32 {
-    return syscallReg(syscallRet(@intFromEnum(SysNum.SIGACTION), sig, act, oact, 0, 0, 0));
+    return syscallReg(syscallRet(.SIGACTION, sig, act, oact, 0, 0, 0));
 }
 
 pub fn sigaltstack(ss : *const allowzero posix.signal.stack_t, oss : *allowzero posix.signal.stack_t) i32 {
-    return syscallReg(syscallRet(@intFromEnum(SysNum.SIGALTSTACK), ss, oss, 0, 0, 0, 0));
+    return syscallReg(syscallRet(.SIGALTSTACK, ss, oss, 0, 0, 0, 0));
 }
 
 pub fn sigqueue(pid : posix.types.pid_t, signo : i32, value : posix.signal.sigval) i32 {
-    return syscallReg(syscallRet(@intFromEnum(SysNum.SIGQUEUE), pid, signo, value, 0, 0, 0));
+    return syscallReg(syscallRet(.SIGQUEUE, pid, signo, value, 0, 0, 0));
+}
+
+pub fn sigsuspend(sigmask : *const posix.signal.sigset_t) i32 {
+    return syscallReg(syscallRet(.SIGSUSPEND, sigmask, 0, 0, 0, 0, 0));
 }
 
 pub fn pthread_sigmask(how : posix.signal.SigSet, set : *const posix.signal.sigset_t, oset : *allowzero posix.signal.sigset_t) i32 {
-    return syscallReg(syscallRet(@intFromEnum(SysNum.PTHREAD_SIGMASK), how, set, oset, 0, 0, 0));
+    return syscallReg(syscallRet(.PTHREAD_SIGMASK, how, set, oset, 0, 0, 0));
 }
 
 pub fn sched_yield() i32 {
-    _ = syscallRet(@intFromEnum(SysNum.SCHED_YIELD), 0, 0, 0, 0, 0, 0);
+    _ = syscallRet(.SCHED_YIELD, 0, 0, 0, 0, 0, 0);
     return 0;
 }
 
 pub fn clock_nanosleep(clockId : posix.types.clockid_t, flags : i32, rqtp : *posix.times.timespec, rmtp : *posix.times.timespec) i32 {
-    return syscallReg(syscallRet(@intFromEnum(SysNum.CLOCK_NANOSLEEP), clockId, flags, rqtp, rmtp, 0, 0));
+    return syscallReg(syscallRet(.CLOCK_NANOSLEEP, clockId, flags, rqtp, rmtp, 0, 0));
 }
 
 pub fn time(tloc : *allowzero posix.types.time_t) u64 {
-    return syscallRet(@intFromEnum(SysNum.TIME), tloc, 0, 0, 0, 0, 0);
+    return syscallRet(.TIME, tloc, 0, 0, 0, 0, 0);
 }
 
 pub fn alarm(seconds : u32) u32 {
-    return @truncate(syscallRet(@intFromEnum(SysNum.ALARM), seconds, 0, 0, 0, 0, 0));
+    return @truncate(syscallRet(.ALARM, seconds, 0, 0, 0, 0, 0));
 }

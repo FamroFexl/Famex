@@ -4,6 +4,7 @@ const reg = @import("arch").reg;
 const cpu = @import("arch").cpu;
 
 const kernel = @import("kernel");
+const lib = @import("lib");
 
 const proc = @import("kernel").pm.process;
 
@@ -129,7 +130,7 @@ pub fn getCpuId() u8 {
 }
 
 const sigRetBytes = [_]u8{
-    0x48, 0xc7, 0xc0, 0x0f, 0x00, 0x00, 0x00,   // mov rax, 15
+    0x48, 0xc7, 0xc0, @intFromEnum(lib.posix.sysnum.SysNum._SIGRETURN), 0x00, 0x00, 0x00,   // mov rax, _SIGRETURN
     0x0f, 0x05,                                 // syscall
 };
 

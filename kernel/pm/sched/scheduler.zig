@@ -67,10 +67,10 @@ pub fn switchThread() void { kernel.noIrq();
         // Get a new thread
         schedule(&state);
 
-        kernel.pm.signal.sigHandle(&state);
-
-        if (!state.inKmode())
+        if (!state.inKmode()) {
+            kernel.pm.signal.sigHandle(&state);
             kernel.pm.ipc.rcu.enterEqs();
+        }
 
         // Switch to the new thread
         state.load();
@@ -152,6 +152,7 @@ fn createIdle(idle : *kernel.KThread) void {
     idle.base.context.init();
     idle.base.context.setPc(@intFromPtr(&cpu.idleEntry));
     idle.base.context.setStack(kernel.mm.memory.KERNEL_MEMORY.val);
+    idle.base.context.setStack(@intFromPtr(kernel.pmallocBytes(kernel.config.IRQ_STACK_SIZE)) + kernel.config.IRQ_STACK_SIZE);
     idle.base.sched.policy = .IDLE;
 }
 

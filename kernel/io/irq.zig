@@ -204,9 +204,8 @@ fn threadHandler(data : *const IrqData, state : *cpu.CpuState) void { kernel.uti
         rcu.reportQs();
     }
 
-    kernel.pm.signal.sigHandle(state);
-
     if (!sched.cThread().context.inKmode()) {
+        kernel.pm.signal.sigHandle(state);
         rcu.enterEqs();
     }
 

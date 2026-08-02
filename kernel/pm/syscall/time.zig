@@ -167,7 +167,7 @@ pub fn clock_gettime(state : *cpu.CpuState) SysRet {
         .REALTIME => kernel.getUnixClock(),
         .PROCESS_CPUTIME_ID => brk: {
             const pid = posix.times.getPidFromId(clockId);
-            const process = cast.toPtr(*kernel.Process, kernel.pids.get(pid) orelse return .fail(posix.errno.EINVAL));
+            const process = cast.toPtr(*kernel.Process, kernel.pids.get(@intCast(pid)) orelse return .fail(posix.errno.EINVAL));
 
             var out : u64 = 0;
 
@@ -245,11 +245,94 @@ pub fn clock_settime(state : *cpu.CpuState) SysRet {
     return .ok(0);
 }
 
+fn timerCallback(event : *kernel.TimerEvent) void {
+    _ = event;
+}
+
 pub fn timer_create(state : *cpu.CpuState) SysRet {
     const clockid : posix.types.clockid_t = kernel.bin.convert(u32, state.getArgSys(0).*);
     const evp = cast.toPtr(*allowzero posix.signal.sigevent, state.getArgSys(1).*);
     const timerid = cast.toPtr(*allowzero posix.types.timer_t, state.getArgSys(2).*);
-    _ = clockid;
-    _ = evp;
-    _ = timerid;
+
+    const sigevent : posix.signal.sigevent = undefined;
+    if (@intFromPtr(evp) != 0 and mem.copyFromUser(&sigevent, evp, @sizeOf(posix.signal.sigevent)) != 0) {
+        return .fail(posix.errno.EFAULT);
+    }
+
+    const process = kernel.cThread().owner;
+
+    // Check for invalid clockid
+    switch (posix.times.getClockFromId(clockid)) {
+        .THREAD_CPUTIME_ID => {
+            if (posix.times.getTidFromId(clockid) != kernel.cThread().tid)
+                return .fail(posix.errno.ENOTSUP);
+        },
+        .PROCESS_CPUTIME_ID => {
+            if (posix.times.getPidFromId(clockid) != process.pid)
+                return .fail(posix.errno.ENOTSUP);
+        },
+        else => {},
+    }
+
+    process.timersLock.lock();
+    defer process.timersLock.unlock();
+
+    const timer = brk: {
+        for (0..process.timers.len) |i| {
+            const timer = &process.timers[i];
+            if (!timer.inUse) {
+                timer.inUse = true;
+                break :brk .{timer, i};
+            }
+        }
+
+        return .fail(posix.errno.EAGAIN);
+    };
+
+    if (mem.copyToUser(timerid, &timer[1], @sizeOf(usize)) != 0) {
+        // Free the allocated timer
+        process.timers[timer[1]].inUse = false;
+
+        return .fail(posix.errno.EFAULT);
+    }
+
+    if (@intFromPtr(evp) == 0) {
+        sigevent = .{
+            .sigev_notify = .SIGEV_SIGNAL,
+            .sigev_signo = .SIGALRM,
+            .sigev_value = .{.sival_int = timer[1]},
+        };
+    }
+
+    timer[0].sigevent = sigevent;
+
+    switch (posix.times.getClockFromId(clockid)) {
+        .MONOTONIC => timer[0].timerType.normalTimer = .create(.MONOTONIC, .zero(), timerCallback),
+        .REALTIME => timer[0].timerType.normalTimer = .create(.UNIX, .zero(), timerCallback),
+        .THREAD_CPUTIME_ID, .PROCESS_CPUTIME_ID => timer[0].timerType.cpuTimer = .{ .clockId = clockid, },
+        else => return .fail(posix.errno.EINVAL),
+    }
+
+    return .ok(0);
+}
+
+pub fn timer_delete(state : *cpu.CpuState) SysRet {
+    const timerid : posix.types.timer_t = state.getArgSys(0).*;
+
+    // TimerId out of range
+    if (timerid >= posix.limits.TIMER_MAX)
+        return .fail(posix.errno.EINVAL);
+
+    const process = kernel.cThread().owner;
+    process.timersLock.lock();
+    defer process.timersLock.unlock();
+
+    const timer = &process.timers[timerid];
+    // TimerId already free
+    if (!timer.inUse)
+        return .fail(posix.errno.EINVAL);
+
+    timer.inUse = false;
+
+    return .ok(0);
 }

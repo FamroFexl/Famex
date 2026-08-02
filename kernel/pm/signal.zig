@@ -55,18 +55,18 @@ fn sigDefault(signo : anytype) enum {TERMINATE, ABORT, IGNORE, STOP, CONTINUE} {
 }
 
 /// Only wake the thread on a signal if it can receive it
-pub fn checkForWake(thread : *kernel.Thread) bool {
-    thread.sigData.spinlock.lock();
-    const threadPending = thread.sigData.pendingMask;
-    const mask = thread.sigMask;
-    thread.sigData.spinlock.unlock();
+pub fn checkForWake(uThread : *kernel.UThread) bool {
+    uThread.sigData.spinlock.lock();
+    const threadPending = uThread.sigData.pendingMask;
+    const mask = uThread.sigMask;
+    uThread.sigData.spinlock.unlock();
 
     if ((threadPending | ~mask) != 0)
         return true;
 
-    thread.owner.sigData.spinlock.lock();
-    const procPending = thread.owner.sigData.pendingMask;
-    thread.owner.sigData.spinlock.unlock();
+    uThread.base.owner.sigData.spinlock.lock();
+    const procPending = uThread.base.owner.sigData.pendingMask;
+    uThread.base.owner.sigData.spinlock.unlock();
 
     if ((procPending | ~mask) != 0)
         return true;
@@ -80,7 +80,7 @@ pub fn sigSend(recType : enum {THREAD, PROCESS}, receiver : *anyopaque, signal :
     if (!posix.signal.sigValid(signo))
         @panic("Invalid signal number sent!");
 
-    const sigData = if (recType == .THREAD) &cast.toPtr(*kernel.Thread, receiver).sigData else &cast.toPtr(*kernel.Process, receiver).sigData;
+    const sigData = if (recType == .THREAD) &cast.toPtr(*kernel.Thread, receiver).container().uThread.sigData else &cast.toPtr(*kernel.Process, receiver).sigData;
 
     if (signo >= posix.signal.SIGRTMIN) {
         const link = kernel.pmalloc(SigRTLink);
@@ -116,16 +116,16 @@ pub fn sigSend(recType : enum {THREAD, PROCESS}, receiver : *anyopaque, signal :
 
     switch (recType) {
         .THREAD => {
-            const thread = cast.toPtr(*kernel.Thread, receiver);
-            const check = checkForWake(thread);
+            const uThread = cast.toPtr(*kernel.Thread, receiver).container().uThread;
+            const check = checkForWake(uThread);
 
-            thread.spinlock.lock();
-            defer thread.spinlock.unlock();
+            uThread.base.spinlock.lock();
+            defer uThread.base.spinlock.unlock();
 
-            if (thread.state == .INTERRUPTABLE and check) {
-                thread.state = .RUNNING;
-                thread.wakeReason = .SIGNAL_RECEIVED;
-                thread.wake();
+            if (uThread.base.state == .INTERRUPTABLE and check) {
+                uThread.base.state = .RUNNING;
+                uThread.base.wakeReason = .SIGNAL_RECEIVED;
+                uThread.base.wake();
             }
         },
         .PROCESS => {
@@ -136,16 +136,16 @@ pub fn sigSend(recType : enum {THREAD, PROCESS}, receiver : *anyopaque, signal :
 
             var threads = process.threads.iterator();
             while (threads.next()) |link| {
-                const thread : *kernel.Thread = @fieldParentPtr("link", link);
+                const uThread = @as(*kernel.Thread, @fieldParentPtr("link", link)).container().uThread;
 
-                const check = checkForWake(thread);
-                thread.spinlock.lock();
-                defer thread.spinlock.unlock();
+                const check = checkForWake(uThread);
+                uThread.base.spinlock.lock();
+                defer uThread.base.spinlock.unlock();
 
-                if (thread.state == .INTERRUPTABLE and check) {
-                    thread.state = .RUNNING;
-                    thread.wakeReason = .SIGNAL_RECEIVED;
-                    thread.wake();
+                if (uThread.base.state == .INTERRUPTABLE and check) {
+                    uThread.base.state = .RUNNING;
+                    uThread.base.wakeReason = .SIGNAL_RECEIVED;
+                    uThread.base.wake();
                 }
             }
         }
@@ -198,15 +198,15 @@ fn getSignal(sigData : *SigData, blocked : posix.signal.sigset_t) ?posix.signal.
 
 /// Check for pending signals and handle them
 pub fn sigHandle(state : *cpu.CpuState) void {
-    const thread = kernel.cThread();
-    const process = thread.owner;
+    const uThread = kernel.cThread().container().uThread;
+    const process = uThread.base.owner;
 
-    thread.spinlock.lock();
-    const threadMask = thread.sigMask;
-    var sigAltStack = thread.sigAltStack;
-    thread.spinlock.unlock();
+    uThread.base.spinlock.lock();
+    const threadMask = uThread.sigMask;
+    var sigAltStack = uThread.sigAltStack;
+    uThread.base.spinlock.unlock();
 
-    const signal = getSignal(&thread.sigData, threadMask)
+    const signal = getSignal(&uThread.sigData, threadMask)
         orelse getSignal(&process.sigData, threadMask)
         orelse return;
 
@@ -247,9 +247,9 @@ pub fn sigHandle(state : *cpu.CpuState) void {
         sigAltStack.ss_flags.SS_ONSTACK = true;
 
         // Update thread stack
-        thread.spinlock.lock();
-        thread.sigAltStack.ss_flags.SS_ONSTACK = true;
-        thread.spinlock.unlock();
+        uThread.base.spinlock.lock();
+        uThread.sigAltStack.ss_flags.SS_ONSTACK = true;
+        uThread.base.spinlock.unlock();
 
         curStack = sigAltStack;
     }
@@ -265,11 +265,11 @@ pub fn sigHandle(state : *cpu.CpuState) void {
     }
 
     // Update signal mask
-    thread.spinlock.lock();
-    thread.sigMask |= sigAction.sa_mask;
+    uThread.base.spinlock.lock();
+    uThread.sigMask |= sigAction.sa_mask;
     if (!sigAction.sa_flags.SA_NODEFER)
-        thread.sigMask |= bin.setBit(@intFromEnum(signal.si_signo));
-    thread.spinlock.unlock();
+        uThread.sigMask |= bin.setBit(@intFromEnum(signal.si_signo));
+    uThread.base.spinlock.unlock();
 
     const stackTop = cast.toInt(curStack.ss_sp) + curStack.ss_size;
 
@@ -296,6 +296,8 @@ pub fn sigHandle(state : *cpu.CpuState) void {
 pub fn sigreturn(state : *cpu.CpuState) kernel.pm.syscall.syscall.SysRet {
     var sigFrame : SigFrame = undefined;
 
+    kernel.print("cur thread {*}\n", .{kernel.cThread()});
+
     arch.signal.popSigFrame(state, &sigFrame) catch {
         // Try SIGSEGV signal, else terminate process
     };
@@ -303,17 +305,17 @@ pub fn sigreturn(state : *cpu.CpuState) kernel.pm.syscall.syscall.SysRet {
     const newState : *cpu.CpuState = cast.toPtr(*cpu.CpuState, &sigFrame.ucontext.uc_mcontext);
     if (newState.getStack() > mem.USER_MEMORY_END.val) {
         // Try SIGSEGV signal, else terminate process
-        kernel.print("stack error!\n", .{});
+        @panic("sigreturn stack error!");
     }
 
     newState.sanitizeRetFlags();
 
     state.* = newState.*;
 
-    const thread = kernel.cThread();
-    thread.spinlock.lock();
-    thread.sigMask = sigFrame.savedMask;
-    thread.spinlock.unlock();
+    const uThread = kernel.cThread().container().uThread;
+    uThread.base.spinlock.lock();
+    uThread.sigMask = sigFrame.savedMask;
+    uThread.base.spinlock.unlock();
 
     return .ok(0);
 }
