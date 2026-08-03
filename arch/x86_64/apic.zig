@@ -250,20 +250,20 @@ fn getRegInfo(comptime reg : ApicReg) RegInfo {
 }
 
 fn getApicOffset(offset : anytype) u64 {
-    return apicRegMap.val + offset;
+    return apicRegMap.val + offset * 4;
 }
 
 fn getApicMsrOffset(offset : anytype) u32 {
     return @intFromEnum(regs.Msr.X2APIC_MSR_BASE) + offset/4;
 }
 
-fn assign4To16(in : [*]const u32, out : [*]u32, num : usize) void {
+fn assign4To16(in : [*]const u32, out : [*]volatile u32, num : usize) void {
     for (0..num) |i| {
         out[i*4] = in[i];
     }
 }
 
-fn assign16To4(in : [*]const u32, out : [*]u32, num : usize) void {
+fn assign16To4(in : [*]volatile const u32, out : [*]u32, num : usize) void {
     for (0..num) |i| {
         out[i] = in[i*4];
     }
@@ -308,7 +308,7 @@ fn apicSetReg(comptime T : type, offset : anytype, val : T) void {
         // Because ICR is the only 64-bit register, and because setting the lower 32 bits triggers
         // it to send an IPI, we must set the top 32 bits first if it is xAPIC MMIO
         if (num == 2) {
-            assign4To16(in[1..2].ptr, @ptrFromInt(getApicOffset(offset + 4)), 1);
+            assign4To16(in[1..2].ptr, @ptrFromInt(getApicOffset(offset + 16)), 1);
             assign4To16(in[0..1].ptr, @ptrFromInt(getApicOffset(offset)), 1);
         }
         else {
