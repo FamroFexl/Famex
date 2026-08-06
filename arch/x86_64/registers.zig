@@ -32,6 +32,9 @@ pub const CpuState = extern struct {
     fs_base : u64,  // User FS.Base
     gs_base : u64,  // User GS.Base
 
+    cs : u64,       // CS execution mode
+    ss : u64,
+
     extern fn saveState(state : *CpuState) callconv(.c) bool;
     /// Save general registers from the CPU
     /// If it returns true, we are saving state, otherwise
@@ -102,15 +105,21 @@ pub const CpuState = extern struct {
         return getRet(state);
     }
 
-    pub inline fn inKmode(this : *@This()) bool {
-        if (is_kernel)
-            return @import("kernel").pm.process.inKmode(this);
-
-        return false;
+    pub export fn inKmode(this : *@This()) bool {
+        return this.cs & 3 == 0;
     }
 
-    pub fn init(state : *@This()) void {
+    pub fn init(state : *@This(), kmode : bool) void {
         if (is_kernel) state.* = @import("arch").cpu.CPU_STATE_INIT;
+
+        if (kmode) {
+            state.cs = @offsetOf(Gdtr.Layout, "kmode_code") | 0;
+            state.ss = @offsetOf(Gdtr.Layout, "kmode_data") | 0;
+        }
+        else {
+            state.cs = @offsetOf(Gdtr.Layout, "umode_code") | 3;
+            state.ss = @offsetOf(Gdtr.Layout, "umode_data") | 3;
+        }
     }
 
     /// Used for sanitizing ucontext flags

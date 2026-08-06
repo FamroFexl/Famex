@@ -26,21 +26,6 @@
 // return RAX
 // arguments RDI, RSI, RDX, RCX, R8, R9
 
-/*
- * Uses stack to determine if a state is in kernel mode.
- *
- * RDI must point to a CpuState
- */
-FUNC inKmode
-    mov rdi, [rdi + RSP_OFST]
-    test rdi, rdi
-    js end
-        mov rax, 0
-        ret
-    end:
-    mov rax, 1
-    ret
-FUNC_END inKmode
 
 FUNC getCr0
     mov rax, cr0
@@ -394,7 +379,6 @@ FUNC_END loadRegs
  *
  * Returns true if saving, false if loading
  */
-.globl bpoint1
 FUNC saveState
     // Returned when loading
     mov rax, 0
@@ -405,6 +389,10 @@ FUNC saveState
 
     // Returned when saving
     mov rax, 1
+
+    // Save current CS and SS
+    mov [rdi + CS_OFST], cs
+    mov [rdi + SS_OFST], ss
 
     // Save RFLAGS
     pushfq
@@ -434,30 +422,9 @@ FUNC loadState
     // Conditionally disable fpu instructions
     call fpuDisableCond
 
-    push rdi
-
-    // Stack: rdi
-
-    // RDI contains cpu_state, as required by in_kmode
-    call inKmode
-
-    // Restore rdi
-    pop rdi
-
-    // Stack:
-
-    // Set correct segments
-    mov r10, SS_0
-    mov r11, CS_0
-
-    cmp rax, 1
-    je 1f
-        mov r10, SS_3
-        mov r11, CS_3
-    1:
-
     // Push correct Data Segment
-    push r10
+    mov rdx, [rdi + SS_OFST]
+    push rdx
 
     // Push RSP
     mov rdx, [rdi + RSP_OFST]
@@ -465,20 +432,17 @@ FUNC loadState
 
     // Push RFLAGS
     mov rdx, [rdi + RFLAGS_OFST]
-
     push rdx
 
     // Push correct Code Segment
-    push r11
+    mov rdx, [rdi + CS_OFST]
+    push rdx
 
     // Push RIP
     mov rdx, [rdi + RIP_OFST]
     push rdx
 
     // Stack: data_seg, rsp, rflags, code_seg, rip
-
-    // Save in_kmode
-    push rax
 
     // Stack: data_seg, rsp, rflags, code_seg, rip, in_kmode
 
@@ -487,11 +451,12 @@ FUNC loadState
     // Save new rax
     push rax
 
-    // Stack: data_seg, rsp, rflags, code_seg, rip, in_kmode, rax
+    // Stack: data_seg, rsp, rflags, code_seg, rip, in_kmode
 
-    // Use in_kmode to decide if swapgs is required
-    mov rax, [rsp + 8]
-    cmp rax, 1
+    // IRQ frame includes the error code, but our usage doesn't have it
+    mov rax, [rsp + INT_SFRAME_CS]
+    and rax, 3
+    cmp rax, 0
     je 1f
         swapgs
     1:
@@ -499,13 +464,9 @@ FUNC loadState
     // Restore new rax
     pop rax
 
-    // Stack: data_seg, rsp, rflags, code_seg, rip, in_kmode
-
-    add rsp, 8
-
     // Stack: data_seg, rsp, rflags, code_seg, rip
 
-    bpoint12:
+    // Stack: data_seg, rsp, rflags, code_seg, rip
 
     iretq
 FUNC_END loadState

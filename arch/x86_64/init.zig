@@ -439,7 +439,7 @@ pub export fn init() void {
         },
         .state = .RUNNING,
     };
-    base.context.init();
+    base.context.init(false);
     base.context.setPc(hdr.entry);
     base.context.setStack(bin.alignDown(kernel.mm.memory.USER_MEMORY_END.val - types.SIZE_4KB, 16));
 

@@ -49,7 +49,6 @@
 FUNC irqEntry
     // Direction and alignment check flags are always 0
     cld
-    clac
 
     // Stack: irq_frame, irq_num
 
@@ -90,6 +89,14 @@ FUNC irqEntry
     // Transfer RSP from frame into cpu_state
     mov rax, [rsp + CPU_STATE_SIZE + 8 + INT_SFRAME_RSP]
     mov qword ptr [rsp + RSP_OFST], rax
+
+    // Transfer CS from frame into cpu_state
+    mov rax, [rsp + CPU_STATE_SIZE + 8 + INT_SFRAME_CS]
+    mov qword ptr [rsp + CS_OFST], rax
+
+    // Transfer SS from frame into cpu_state
+    mov rax, [rsp + CPU_STATE_SIZE + 8 + INT_SFRAME_SS]
+    mov qword ptr [rsp + SS_OFST], rax
 
     // cpu_state is arg 1 (pointer arg)
     lea rdi, [rsp]
@@ -138,18 +145,16 @@ FUNC irqEntry
     mov rax, [rsp + RSP_OFST]
     mov qword ptr [rsp + CPU_STATE_SIZE + 8 + INT_SFRAME_RSP], rax
 
-    // RDI contains cpu_state, as required by in_kmode
-    lea rdi, [rsp]
+    // Transfer CS from cpu_state back into frame
+    mov rax, [rsp + CS_OFST]
+    mov qword ptr [rsp + CPU_STATE_SIZE + 8 + INT_SFRAME_CS], rax
 
-    call inKmode
+    // Transfer SS from cpu_state back into frame
+    mov rax, [rsp + SS_OFST]
+    mov qword ptr [rsp + CPU_STATE_SIZE + 8 + INT_SFRAME_SS], rax
 
     // Set cpu_state address for restore_regs
     lea rdi, [rsp]
-
-    // Save in_kmode
-    push rax
-
-    // Stack: irq_frame, irq_num, cpu_state, in_kmode
 
     // After this call, we can only modify rflags, rip, and rsp
     call loadRegs
@@ -157,29 +162,23 @@ FUNC irqEntry
     // Save new rax
     push rax
 
-    // Stack: irq_frame, irq_num, cpu_state, in_kmode, rax
-
-    // Move in_kmode to rax
-    mov rax, [rsp + 8]
+    // Stack: irq_frame, irq_num, cpu_state, rax
 
     // Set Data and Code Segments for return
-    mov qword ptr [rsp + 16 + CPU_STATE_SIZE + 8 + INT_SFRAME_SS], SS_0
-    mov qword ptr [rsp + 16 + CPU_STATE_SIZE + 8 + INT_SFRAME_CS], CS_0
-
+    mov rax, [rsp + 8 + CPU_STATE_SIZE + 8 + INT_SFRAME_CS]
+    and rax, 3
     cmp rax, 0
-    jne 1f
-        mov qword ptr [rsp + 16 + CPU_STATE_SIZE + 8 + INT_SFRAME_SS], SS_3
-        mov qword ptr [rsp + 16 + CPU_STATE_SIZE + 8 + INT_SFRAME_CS], CS_3
+    je 1f
         swapgs
     1:
 
     // Restore rax
     pop rax
 
-    // Stack: irq_frame, irq_num, cpu_state, in_kmode
+    // Stack: irq_frame, irq_num, cpu_state
 
     // Sanitize stack for return (get rid of error code)
-    add rsp, 8 + CPU_STATE_SIZE + 8 + 8
+    add rsp, CPU_STATE_SIZE + 8 + 8
 
     // Stack: irq_frame
 
@@ -237,6 +236,9 @@ FUNC syscallEntry
 
     // Save user stack
     mov [rdi + RSP_OFST], rbx
+
+    mov qword ptr [rdi + CS_OFST], CS_3
+    mov qword ptr [rdi + SS_OFST], SS_3
 
     // Save regs consumes old_rdi from stack
     call saveRegs
