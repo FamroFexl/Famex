@@ -373,6 +373,7 @@ pub export fn init() void {
         .createTime = kernel.getUnixClock(),
         .pid = @intCast(kernel.pids.alloc(0, std.math.maxInt(i32),process)),
     };
+    process.timerList.init();
     process.threads.init();
     process.children.init();
     process.addrSpace.start = kernel.mm.memory.USER_MEMORY_START;
@@ -439,6 +440,7 @@ pub export fn init() void {
         },
         .state = .RUNNING,
     };
+    base.timerList.init();
     base.context.init(false);
     base.context.setPc(hdr.entry);
     base.context.setStack(bin.alignDown(kernel.mm.memory.USER_MEMORY_END.val - types.SIZE_4KB, 16));

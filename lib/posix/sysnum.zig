@@ -15,5 +15,8 @@ pub const SysNum = enum(u8) {
     CLOCK_NANOSLEEP = 16,
     ALARM = 17,
     SIGSUSPEND = 18,
+    PAUSE = 19,
+    SIGTIMEDWAIT = 20,
+    PTHREAD_KILL = 21,
     _,
 };

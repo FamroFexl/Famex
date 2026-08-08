@@ -68,6 +68,7 @@ pub const SmpCall = io.irq.SmpCall;
 
 pub const RcuAsync = pm.ipc.rcu.RcuAsync;
 pub const RcuPtr = pm.ipc.rcu.RcuPtr;
+pub const rcu = pm.ipc.rcu;
 pub const Mutex = pm.ipc.Mutex;
 pub const Semaphore = pm.ipc.Semaphore;
 

@@ -75,13 +75,24 @@ pub fn sigsuspend(sigmask : *const posix.signal.sigset_t) i32 {
     return syscallReg(syscallRet(.SIGSUSPEND, sigmask, 0, 0, 0, 0, 0));
 }
 
+pub fn pause() i32 {
+    return syscallReg(syscallRet(.PAUSE, 0, 0, 0, 0, 0, 0));
+}
+
+pub fn sigtimedwait(set : *const posix.signal.sigset_t, info : *allowzero posix.signal.siginfo_t, timeout : *const posix.times.timespec) i32 {
+    return syscallReg(syscallRet(.SIGTIMEDWAIT, set, info, timeout, 0, 0, 0));
+}
+
 pub fn pthread_sigmask(how : posix.signal.SigSet, set : *const posix.signal.sigset_t, oset : *allowzero posix.signal.sigset_t) i32 {
     return syscallReg(syscallRet(.PTHREAD_SIGMASK, how, set, oset, 0, 0, 0));
 }
 
+pub fn pthread_kill(thread : posix.types.pthread_t, sig : posix.signal.Signal) i32 {
+    return syscallReg(syscallRet(.PTHREAD_KILL, thread, sig, 0, 0, 0, 0));
+}
+
 pub fn sched_yield() i32 {
-    _ = syscallRet(.SCHED_YIELD, 0, 0, 0, 0, 0, 0);
-    return 0;
+    return syscallReg(syscallRet(.SCHED_YIELD, 0, 0, 0, 0, 0, 0));
 }
 
 pub fn clock_nanosleep(clockId : posix.types.clockid_t, flags : i32, rqtp : *posix.times.timespec, rmtp : *posix.times.timespec) i32 {

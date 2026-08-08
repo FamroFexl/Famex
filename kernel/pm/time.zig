@@ -61,25 +61,25 @@ pub const Time = struct {
 
     pub fn dist(this : @This(), other : @This()) @This() {
         const between = kernel.bin.dist(this.nsec, other.nsec);
-        return .{.nsec = between};
+        return .Nsec(between);
     }
 
-    pub fn add(this : *@This(), unit : TimeUnit, val : u64) void {
+    pub fn add(this : *@This(), unit : TimeUnit, val : u64) Time {
         var in : @This() = undefined;
         set(&in, unit, val);
         const overflow = @addWithOverflow(this.nsec, in.nsec);
 
         std.debug.assert(overflow[1] == 0);
 
-        this.nsec = overflow[0];
+        return .Nsec(overflow[0]);
     }
 
-    pub fn sub(this : *@This(), unit : TimeUnit, val : u64) void {
+    pub fn sub(this : *@This(), unit : TimeUnit, val : u64) Time {
         var in : @This() = undefined;
         set(&in, unit, val);
         const underflow = @subWithOverflow(this.nsec, in.nsec);
 
-        this.nsec = if (underflow[1] == 1) 0 else underflow[0];
+        return .Nsec(if (underflow[1] == 1) 0 else underflow[0]);
     }
 };
 
@@ -156,7 +156,7 @@ pub fn unixToTime(time : Time) lib.posix.times.tm {
 pub fn timeToTimespec(time : Time) lib.posix.times.timespec {
     var newTime = time;
     const sec = time.get(.SEC, false);
-    newTime.sub(.SEC, sec);
+    newTime = newTime.sub(.SEC, sec);
 
     return .{
         .tv_sec = sec,
@@ -362,8 +362,14 @@ pub const TimerEvent = struct {
         spinlock.lock();
 
         // Delete the node if it exists
-        if (!this.link.empty())
-            tree.erase(&this.link);
+        if (!this.link.empty()) {
+            const curTree : *TimerTree = switch (this.tag) {
+            .MONOTONIC => monoTimers.getGlobal(this.cpuId),
+            .UNIX => unixTimers.getGlobal(this.cpuId),
+            };
+
+            curTree.erase(&this.link);
+        }
 
         this.expiration = newExpiration;
 
@@ -405,12 +411,15 @@ pub const TimerEvent = struct {
     }
 
     pub fn remove(this : *@This()) void {
+        if (this.link.empty())
+            return;
+
         const tree : *TimerTree = switch (this.tag) {
-            .MONOTONIC => monoTimers.getLocal(),
-            .UNIX => unixTimers.getLocal(),
+            .MONOTONIC => monoTimers.getGlobal(this.cpuId),
+            .UNIX => unixTimers.getGlobal(this.cpuId),
         };
 
-        const spinlock = timerLock.getLocal();
+        const spinlock = timerLock.getGlobal(this.cpuId);
 
         {
             spinlock.lock();
@@ -423,7 +432,7 @@ pub const TimerEvent = struct {
     }
 
     /// Timer event handler for IRQs
-    pub fn handler() void {
+    pub fn handler() void { kernel.noIrq();
         const time = getMonoClock();
 
         var temp : kernel.Stack = .{};
@@ -462,8 +471,9 @@ pub const TimerEvent = struct {
             const expiration = cast.u64(cast.i128(event.expiration) - cast.i128(offset));
 
             if (expiration > time.nsec) {
-                if (nextTime > expiration)
+                if (nextTime > expiration) {
                     nextTime = expiration;
+                }
                 break;
             }
 
@@ -486,8 +496,9 @@ pub const TimerEvent = struct {
             rbNode.clear();
         }
 
-        if (nextTime != std.math.maxInt(u64))
+        if (nextTime != std.math.maxInt(u64)) {
             setLocalTimer(.Nsec(nextTime - time.nsec));
+        }
     }
 };
 

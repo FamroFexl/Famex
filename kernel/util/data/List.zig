@@ -42,6 +42,9 @@ pub fn remove(list : *@This(), node : *Node) void {
     _ = list;
     node.next.prev = node.prev;
     node.prev.next = node.next;
+
+    node.prev = node;
+    node.next = node;
 }
 
 pub fn removeFront(list : *@This()) ?*Node {

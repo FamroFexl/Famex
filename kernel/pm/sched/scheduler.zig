@@ -94,9 +94,6 @@ fn loadThread(new : *kernel.Thread, state : *kernel.CpuState) void {
         // Set syscall stack
         perCpuStart.syscallStack = kernel.bin.alignDown(cast.toInt(new.stack.start) + new.stack.size, 16);
     }
-    else {
-
-    }
 
     perCpuStart.hasFpuState = new.fpuContext != null;
 
@@ -149,7 +146,8 @@ fn createIdle(idle : *kernel.KThread) void {
     idle.* = .{.base = .{
         .owner = kernel.kernelProcess,
     }};
-    idle.base.context.init();
+    idle.base.timerList.init();
+    idle.base.context.init(true);
     idle.base.context.setPc(@intFromPtr(&cpu.idleEntry));
     idle.base.context.setStack(kernel.mm.memory.KERNEL_MEMORY.val);
     idle.base.context.setStack(@intFromPtr(kernel.pmallocBytes(kernel.config.IRQ_STACK_SIZE)) + kernel.config.IRQ_STACK_SIZE);

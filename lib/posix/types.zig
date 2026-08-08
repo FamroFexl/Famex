@@ -67,3 +67,5 @@ pub const time_t = u64;
 pub const timer_t = u64;
 
 pub const ssize_t = i64;
+
+pub const pthread_t = u32;

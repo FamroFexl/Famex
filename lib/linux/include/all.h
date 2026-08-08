@@ -1,3 +1,5 @@
+
+
 #pragma once
 #define atomic_thread_fence(order) __c11_atomic_thread_fence(order)
 #define smp_wmb() atomic_thread_fence(memory_order_release)

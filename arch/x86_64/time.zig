@@ -247,14 +247,16 @@ fn setupLat() void {
         kernel.print("  LAPIC Timer stops during sleep states or Enhanced Intel SpeedStep transitions!\n", .{});
     }
 
-    const leaf15 = cpu.cpuid(cpu.cpuid_db.leaf_0x15_0, 0x15, 0);
-
-    if (leaf15.cpu_crystal_hz > 0) {
-        timer.tps = leaf15.cpu_crystal_hz;
-    }
-    else {
-        timer.calibrate(.Msec(50));
-    }
+    timer.calibrate(.Msec(50));
+    // Apparently cpu_crystal_hz doesn't report for LAPIC
+    // const leaf15 = cpu.cpuid(cpu.cpuid_db.leaf_0x15_0, 0x15, 0);
+    //
+    // if (leaf15.cpu_crystal_hz > 0) {
+    //     timer.tps = leaf15.cpu_crystal_hz;
+    // }
+    // else {
+    //     timer.calibrate(.Msec(50));
+    // }
 }
 
 fn getCmos() Cmos {

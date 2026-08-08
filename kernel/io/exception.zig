@@ -40,29 +40,20 @@ pub fn pageFault(data : *ExceptionData, state : *kernel.CpuState) void {
     const addr = data.pfault.addr;
     const vmSpace = &kernel.cThread().owner.addrSpace;
 
-    const area = cast.toPtr(*kernel.mm.vmm.VmArea, vmSpace.tree.find(addr.val, addr.val) orelse {
+    const start = bin.alignDown(addr.val, types.SIZE_4KB);
+    const end = bin.alignUp(addr.val, types.SIZE_4KB);
+
+    const area = cast.toPtr(*kernel.mm.vmm.VmArea, vmSpace.tree.find(addr.val, addr.val) orelse brk: {
         const uThread = kernel.cThread().container().uThread;
         const uStack = uThread.uStack;
 
         // Stack fault
-        if (uThread.uStack.start.val - kernel.config.USER_STACK_GUARD_GAP <= data.pfault.addr.val) {
-            const start = bin.alignDown(data.pfault.addr.val, types.SIZE_4KB);
-            const end = uStack.start.val;
+        if (uStack.start.val - kernel.config.USER_STACK_GUARD_GAP <= data.pfault.addr.val) {
             uStack.start.val = start;
 
-            _ = uThread.base.owner.addrSpace.tree.storeRange(start, uThread.uStack.end.val, uThread.uStack);
+            _ = uThread.base.owner.addrSpace.tree.storeRange(start, uStack.end.val, uStack);
 
-            // TODO fix pfe state iterator off by 4kb at end
-            var pfeState = kernel.PfeState(.MAP).create(&uThread.base.owner.addrSpace, .asVirt(start), .asVirt(end + types.SIZE_4KB), .LEVEL_4KB);
-            while (pfeState.next()) |pfe| {
-                pfe.* = paging.PFE_DEFAULTS[0];
-                pfe.setUser(0, true);
-                pfe.setExec(0, uStack.flags.exec);
-
-                pfe.setEntry(0, kernel.allocPage4k());
-            }
-
-            return;
+            break :brk cast.toPtr(*anyopaque, uStack);
         }
 
         // User copy fault
@@ -102,9 +93,6 @@ pub fn pageFault(data : *ExceptionData, state : *kernel.CpuState) void {
         @panic("thread kill!");
         // Kill thread
     }
-
-    const start = bin.alignDown(addr.val, types.SIZE_4KB);
-    const end = bin.alignUp(addr.val, types.SIZE_4KB);
 
     var pfeState = kernel.PfeState(.MAP).create(vmSpace, .asVirt(start), .asVirt(end), .LEVEL_4KB);
     const pfe = pfeState.next().?;
@@ -146,12 +134,13 @@ pub fn pageFault(data : *ExceptionData, state : *kernel.CpuState) void {
             pfe.* = paging.PFE_DEFAULTS[0];
             pfe.setEntry(0, kernel.allocPage4k());
 
-            // TODO mas.next doesn't work
             var mas = lib.linux.MapleTree.MaState.create(&vmSpace.tree, start - 1, end - 1);
             mas.lock();
 
-            //while (mas.next(end - 1)) |link| {
-            while (mas.find(end - 1)) |link| {
+            var entry = mas.find(end - 1);
+            while (entry) |link| {
+                defer entry = mas.next(end - 1);
+
                 const newArea = cast.toPtr(*kernel.mm.vmm.VmArea, link);
                 read = newArea.flags.read or read;
                 write = newArea.flags.write or write;
@@ -209,7 +198,7 @@ pub fn pageFault(data : *ExceptionData, state : *kernel.CpuState) void {
         }
     }
     // Demand paging fault
-    else if (area.areaType == .USER_HEAP) {
+    else if (area.areaType == .USER_HEAP or area.areaType == .USER_STACK) {
         if (data.pfault.access == .READ) {
             // Set to read-only zeroed page
             pfe.* = kernel.mm.vmm.EMPTY_PAGE;

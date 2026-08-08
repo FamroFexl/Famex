@@ -44,14 +44,21 @@ export fn main() void {
 
     sys.print("time {}\n", .{sys.time(@ptrFromInt(0))});
 
+    sys.print("hello1\n", .{});
+
     _ = sys.alarm(2);
-    //_ = sys.alarm(0);
 
-    sys.print("hello2\n", .{});
+    const sigset : posix.signal.sigset_t = 1 << @intFromEnum(posix.signal.Signal.SIGALRM);
+    var siginfo : posix.signal.siginfo_t = undefined;
+    const signo = sys.sigtimedwait(&sigset, &siginfo, &.{
+        .tv_sec = 5,
+        .tv_nsec = 0,
+    });
 
-    const sigset : posix.signal.sigset_t = 0;
-    const out = sys.sigsuspend(&sigset);
-    sys.print("out {}\n", .{out});
+    sys.print("signo {}\n", .{signo});
+    // const sigset : posix.signal.sigset_t = 0;
+    // const out = sys.sigsuspend(&sigset);
+    // sys.print("out {}\n", .{out});
 
     sys.print("time {}\n", .{sys.time(@ptrFromInt(0))});
 

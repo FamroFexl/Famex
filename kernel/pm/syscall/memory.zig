@@ -24,13 +24,13 @@ pub fn mmap(state : *cpu.CpuState) SysRet {
     //const uThread = kernel.cThread().container().uThread;
 
     if (len == 0)
-        return .fail(posix.errno.EINVAL);
+        return .fail(.EINVAL);
 
     if (flags.PRIVATE and flags.SHARED)
-        return .fail(posix.errno.ENOTSUP);
+        return .fail(.ENOTSUP);
 
     if (!arch.mm.validAccess(prot.READ, prot.WRITE, prot.EXEC))
-        return .fail(posix.errno.ENOTSUP);
+        return .fail(.ENOTSUP);
 
     if (flags.ANONYMOUS and fildes == -1 and off == 0) {
         const lenAligned = bin.alignUp(len, types.SIZE_4KB) + types.SIZE_4KB;

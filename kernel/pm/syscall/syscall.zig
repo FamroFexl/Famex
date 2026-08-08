@@ -29,15 +29,25 @@ pub const Vdso = struct {
 
 pub const ProcTimer = struct {
     inUse : bool = false,   // Timer has been allocated
-    sigevent : posix.signal.sigevent = undefined,
+    armed : bool = false,   // Timer is currently active
+
+    signo : posix.signal.Signal = undefined,
+    signot : posix.signal.SigevNot = undefined,
+    sigval : posix.signal.sigval = undefined,
+
+    reset : ?kernel.Time = null, // Interval to reset to
+    overrun : u64 = 0,           // Number of times the timer has overrun
+
     timerType : union(enum) {
         normalTimer : kernel.TimerEvent,
         cpuTimer : struct {
             clockId : posix.types.clockid_t,
-            expiration : posix.types.time_t = undefined,
-            armed : bool = false,   // CPU Timer is currently active
+            expiration : kernel.Time,
         }
     } = undefined,
+
+    originProc : *kernel.Process,   // The process this timer belongs to
+    link : kernel.List.Node,    // Link for cpuTimer
 };
 
 pub const SysRet = struct {
@@ -49,8 +59,8 @@ pub const SysRet = struct {
         return .{.ret = out};
     }
 
-    pub fn fail(out : u64) @This() {
-        return .{.ret = (ERR_BASE - out) + 1};
+    pub fn fail(err : posix.errno.Errno) @This() {
+        return .{.ret = (ERR_BASE - cast.u64(@intFromEnum(err))) + 1};
     }
 
     pub fn isFail(this : @This()) bool {
@@ -123,7 +133,10 @@ fn syscall(state : *cpu.CpuState) void {
         .CLOCK_NANOSLEEP => time.clock_nanosleep(state),
         .ALARM => signal.alarm(state),
         .SIGSUSPEND => signal.sigsuspend(state),
-        else => SysRet.fail(posix.errno.ENOSYS),
+        .PAUSE => signal.pause(state),
+        .SIGTIMEDWAIT => signal.sigtimedwait(state),
+        .PTHREAD_KILL => signal.pthread_kill(state),
+        else => SysRet.fail(.ENOSYS),
     }).ret;
 }
 

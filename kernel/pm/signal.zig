@@ -16,7 +16,7 @@ pub const SigData = struct {
     spinlock : kernel.Spinlock = .create(),
 };
 
-const SigRTLink = struct {
+pub const SigRTLink = struct {
     signal : posix.signal.siginfo_t,
     link : kernel.Queue.Node,
 };
@@ -74,7 +74,7 @@ pub fn checkForWake(uThread : *kernel.UThread) bool {
     return false;
 }
 
-pub fn sigSend(recType : enum {THREAD, PROCESS}, receiver : *anyopaque, signal : posix.signal.siginfo_t) error{RTQueueFull}!void {
+pub fn sigSend(recType : enum {THREAD, PROCESS}, receiver : *anyopaque, signal : posix.signal.siginfo_t) error{RTQueueFull, TimerIsQueued}!void {
     const signo = @intFromEnum(signal.si_signo);
 
     if (!posix.signal.sigValid(signo))
@@ -87,25 +87,45 @@ pub fn sigSend(recType : enum {THREAD, PROCESS}, receiver : *anyopaque, signal :
 
         sigData.spinlock.lock();
 
-        if (sigData.pendingRTNum + 1 == posix.limits.SIGQUEUE_MAX) {
-            sigData.spinlock.unlock();
-            kernel.pfree(SigRTLink, link);
-            return error.RTQueueFull;
-        }
+        const sigRTQueue = &sigData.pendingRT[posix.signal.SIGRTMIN - cast.u64(signo)];
 
-        sigData.pendingRTNum += 1;
+        if (signal.si_code != .SI_TIMER) {
+            if (sigData.pendingRTNum + 1 == posix.limits.SIGQUEUE_MAX) {
+                sigData.spinlock.unlock();
+                kernel.pfree(SigRTLink, link);
+                return error.RTQueueFull;
+            }
+
+            sigData.pendingRTNum += 1;
+        }
+        else {
+            var node = sigRTQueue.head;
+
+            // Check for an existing queued timer signal
+            while (node) |queue| : (node = queue.next) {
+                const sigRTLink : *SigRTLink = @fieldParentPtr("link", queue);
+                if (sigRTLink.signal.si_code == .SI_TIMER and sigRTLink.signal.si_status == signal.si_status) {
+                    return error.TimerIsQueued;
+                }
+            }
+        }
 
         link.signal = signal;
 
         kernel.bin.setFlag(signo, &sigData.pendingMask);
 
-        sigData.pendingRT[posix.signal.SIGRTMIN - cast.u64(signo)].push(&link.link);
+        sigRTQueue.push(&link.link);
     }
     else {
         sigData.spinlock.lock();
 
-        if (kernel.bin.getFlag(signo, sigData.pendingMask))
-            return;
+        if (kernel.bin.getFlag(signo, sigData.pendingMask)) {
+            const curSigInfo = &sigData.pending[signo];
+
+            if (curSigInfo.si_code == .SI_TIMER and curSigInfo.si_status == signal.si_status) {
+                return error.TimerIsQueued;
+            }
+        }
 
         kernel.bin.setFlag(signo, &sigData.pendingMask);
 
@@ -296,19 +316,13 @@ pub fn sigHandle(state : *cpu.CpuState) void {
 pub fn sigreturn(state : *cpu.CpuState) kernel.pm.syscall.syscall.SysRet {
     var sigFrame : SigFrame = undefined;
 
-    kernel.print("cur thread {*}\n", .{kernel.cThread()});
-
     arch.signal.popSigFrame(state, &sigFrame) catch {
         // Try SIGSEGV signal, else terminate process
     };
 
     const newState : *cpu.CpuState = cast.toPtr(*cpu.CpuState, &sigFrame.ucontext.uc_mcontext);
-    if (newState.getStack() > mem.USER_MEMORY_END.val) {
-        // Try SIGSEGV signal, else terminate process
-        @panic("sigreturn stack error!");
-    }
 
-    newState.sanitizeRetFlags();
+    newState.sanitizeUcontext();
 
     state.* = newState.*;
 

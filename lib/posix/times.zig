@@ -43,6 +43,11 @@ pub const timespec = extern struct {
     tv_nsec : i64,          // Nanoseconds [0, 999999999].
 };
 
+pub const itimerspec = extern struct {
+    it_interval : timespec, // Timer period
+    it_value : timespec,    // Timer expiration.
+};
+
 pub const tm = extern struct {
     tm_sec : i32 = 0,       // Seconds [0,60].
     tm_min : i32 = 0,       // Minutes [0,59].

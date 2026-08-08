@@ -59,6 +59,8 @@ pub fn main(init: std.process.Init) !void {
     gen_pair("RSP_OFST", @offsetOf(reg.CpuState, "rsp"));
     gen_pair("FS_BASE_OFST", @offsetOf(reg.CpuState, "fs_base"));
     gen_pair("GS_BASE_OFST", @offsetOf(reg.CpuState, "gs_base"));
+    gen_pair("CS_OFST", @offsetOf(reg.CpuState, "cs"));
+    gen_pair("SS_OFST", @offsetOf(reg.CpuState, "ss"));
 
     try writer.interface.flush();
 }

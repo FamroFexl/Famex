@@ -17,6 +17,9 @@ const lock_data = switch (builtin.mode) {
 
 /// Verifies the lock is held by this cpu
 pub fn lockHeld(lock : *anyopaque) void {
+    kernel.irqSave();
+    defer kernel.irqRestore();
+
     if (builtin.mode == .Debug) {
         const data : *LockData  = lock_data.getLocal();
         for (0..data.cur_lock) |i| {
@@ -29,6 +32,9 @@ pub fn lockHeld(lock : *anyopaque) void {
 
 /// Adds a lock to the list
 pub fn lockAdd(lock : *anyopaque) void {
+    kernel.irqSave();
+    defer kernel.irqRestore();
+
     if (builtin.mode == .Debug) {
         const data : *LockData  = lock_data.getLocal();
 
@@ -43,16 +49,31 @@ pub fn lockAdd(lock : *anyopaque) void {
 
 /// Removes the last lock
 pub fn lockRemove(lock : *anyopaque) void {
+    kernel.irqSave();
+    defer kernel.irqRestore();
+
     if (builtin.mode == .Debug) {
         const data : *LockData  = lock_data.getLocal();
-        if (data.held_locks[data.cur_lock - 1] != lock)
+        if (data.cur_lock == 0)
             @panic("Lock was already freed!");
+        if (data.held_locks[data.cur_lock - 1] != lock) {
+            if (data.held_locks[data.cur_lock - 2] == lock)
+                @panic("Last lock wasn't freed!");
+            for (1..data.cur_lock) |i| {
+                if (data.held_locks[data.cur_lock - i] == lock)
+                    kernel.util.log.panic("{} locks weren't freed before this!", .{i});
+            }
+            @panic("Lock was already freed!");
+        }
         data.cur_lock -= 1;
     }
 }
 
 /// Verifies no locks are held
 pub fn noLocksHeld() void {
+    kernel.irqSave();
+    defer kernel.irqRestore();
+
     if (builtin.mode == .Debug and lock_data.getLocal().cur_lock != 0) {
         @panic("Locks were held!");
     }

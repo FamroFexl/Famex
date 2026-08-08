@@ -63,6 +63,11 @@
           "name": "kernel",
           "owner": 0,
           "module": 2
+        },
+        {
+          "name": "lib",
+          "owner": 0,
+          "module": 3
         }
       ]
     },

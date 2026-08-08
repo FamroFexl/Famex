@@ -122,8 +122,8 @@ pub const CpuState = extern struct {
         }
     }
 
-    /// Used for sanitizing ucontext flags
-    pub fn sanitizeRetFlags(state : *@This()) void {
+    /// Sanitizes ucontext at least so it can be interrupted and can't enter privileged mode
+    pub fn sanitizeUcontext(state : *@This()) void {
         state.rflags.set1 = 1;
         state.rflags.irq_enable = true;
         state.rflags.iopl = 0;
@@ -139,6 +139,9 @@ pub const CpuState = extern struct {
         state.rflags.__pad2 = 0;
         state.rflags.__pad3 = 0;
         state.rflags.__pad4 = 0;
+
+        state.cs = @offsetOf(Gdtr.Layout, "umode_code") | 3;
+        state.ss = @offsetOf(Gdtr.Layout, "umode_data") | 3;
     }
 };
 
@@ -506,7 +509,6 @@ pub const Tss = packed struct(u832) {
     iom_base    : u16 = std.math.maxInt(u16),   // 16-bit offset to the I/O permission bit map from the TSS base (disabled)
 
     comptime { std.debug.assert(@offsetOf(Tss, "rsp0") == 4);}
-    //comptime { //std.debug.assert(@sizeOf(@This()) == 104); }
 
     extern fn getTss() callconv(.c) u16;
     pub const get = getTss;

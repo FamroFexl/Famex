@@ -50,6 +50,7 @@ pub const Process = struct {
     sigAlarm : kernel.TimerEvent = .create(.MONOTONIC, .Msec(100), kernel.pm.signal.sigAlarmCallback),
     timers : [lib.posix.limits.TIMER_MAX]kernel.pm.syscall.syscall.ProcTimer = [_]kernel.pm.syscall.syscall.ProcTimer{.{}} ** lib.posix.limits.TIMER_MAX,   // Process timers
     timersLock : kernel.Spinlock = .create(),   // Process timers lock
+    timerList : kernel.List = undefined, // Other timers who track this process' cpu time
 
     threads : util.data.List = undefined,
     children : util.data.List = undefined,
@@ -86,6 +87,8 @@ pub const Thread = struct {
     tid : Tid = undefined,
 
     ktime : kernel.Time = .zero(),
+    timerList : kernel.List = undefined, // Other timers who track this thread's cpu time
+    timersLock : kernel.Spinlock = .create(),   // Just for list lock
 
     irqSaveDepth : u64 = 0,
     preemptDepth : u8 = 0,
@@ -159,13 +162,13 @@ pub const Thread = struct {
         this.migrateDepth -= 1;
     }
 
-    pub fn yield(this : *@This()) void { kernel.irqSaved();
+    pub fn yield(this : *@This()) void { kernel.irqSaved(); kernel.util.locks.noLocksHeld();
         const scheduler = &sched.schedData.getLocal().sched.get(this.sched.policy);
         scheduler.onYield(scheduler, this);
         sched.switchThread();
     }
 
-    pub fn sleep(this : *@This()) void { kernel.irqSaved();
+    pub fn sleep(this : *@This()) void { kernel.irqSaved(); kernel.util.locks.noLocksHeld();
         const scheduler = &sched.schedData.getLocal().sched.get(this.sched.policy);
         scheduler.onSleep(scheduler, this);
         sched.switchThread();
@@ -362,51 +365,81 @@ pub fn startTimeReset() u64 {
     return out;
 }
 
+// Timer list is protected by spinlock, while timers are protected by timersLock.
+// This prevents deadlocks since we have two different locks and the spinlock must be
+// acquired before the timersLock
+fn checkListTimers(list : *kernel.List, cpuTime : u64) void {
+    var iter = list.iterator();
+    for (iter.next()) |next| {
+        const timer : *kernel.pm.syscall.syscall.ProcTimer = @fieldParentPtr("link", next);
+        timer.originProc.timersLock.lock();
+
+        if (!timer.armed or timer.timerType.cpuTimer.expiration > cpuTime) {
+            timer.originProc.timersLock.unlock();
+
+            continue;
+        }
+
+        const cpuTimer = &timer.timerType.cpuTimer;
+        if (timer.reset) |iv| {
+            cpuTimer.expiration.nsec += iv.nsec;
+        }
+        else {
+            timer.armed = false;
+        }
+
+        if (timer.signot != .SIGEV_SIGNAL) {
+            timer.originProc.timersLock.unlock();
+            continue;
+        }
+
+        const signo = timer.signo;
+        const sigval = timer.sigval;
+        const origin = timer.originProc;
+
+        const timerNum = (@intFromPtr(timer) - @intFromPtr(&timer.originProc.timers)) / @sizeOf(kernel.pm.syscall.syscall.ProcTimer);
+
+        timer.originProc.timersLock.unlock();
+
+        var overrun = false;
+
+        kernel.pm.signal.sigSend(.PROCESS, origin, .{
+            .si_signo = signo,
+            .si_value = sigval,
+            .si_code = .SI_TIMER,
+            .si_status = timerNum,
+        }) catch |err| switch (err) {
+            error.TimerIsQueued => {
+                overrun = true;
+
+                timer.originProc.timersLock.lock();
+                timer.overrun += 1;
+                timer.originProc.timersLock.unlock();
+            },
+            else => {},
+        };
+
+        if (!overrun) {
+            timer.originProc.timersLock.lock();
+            timer.overrun = 0;
+            timer.originProc.timersLock.unlock();
+        }
+    }
+}
+
 fn checkCpuTimers(thread : *Thread) void {
     const process = thread.owner;
 
-    process.timersLock.lock();
-    defer process.timersLock.unlock();
+    process.spinlock.lock();
+    checkListTimers(&process.timerList, process.ktime.nsec + process.utime.nsec);
+    process.spinlock.unlock();
 
-    // Iterate through all timers
-    for (&thread.owner.timers) |*timer| {
-        if (timer.inUse and timer.timerType == .cpuTimer) {
-            const cpuTimer = &timer.timerType.cpuTimer;
-            if (!cpuTimer.armed)
-                continue;
-
-            var threadTime : u64 = undefined;
-
-            const clock = lib.posix.times.getClockFromId(timer.timerType.cpuTimer.clockId);
-            if (clock == .THREAD_CPUTIME_ID) {
-                thread.spinlock.lock();
-                defer thread.spinlock.unlock();
-
-                threadTime = thread.ktime.nsec + switch (thread.container()) {
-                    .uThread => |uThread| brk: {break :brk uThread.utime.nsec;},
-                    .kThread => 0
-                };
-            }
-            else if (clock == .PROCESS_CPUTIME_ID) {
-                process.spinlock.lock();
-                defer process.spinlock.unlock();
-
-                threadTime = process.utime.nsec + process.ktime.nsec;
-            }
-
-            if (threadTime >= cpuTimer.expiration) {
-                if (timer.sigevent.sigev_notify == .SIGEV_SIGNAL) {
-                    kernel.pm.signal.sigSend(.PROCESS, process, .{
-                        .si_signo = timer.sigevent.sigev_signo,
-                        .si_value = timer.sigevent.sigev_value,
-                    }) catch {};
-                }
-                else if (timer.sigevent.sigev_notify == .SIGEV_THREAD) {
-
-                }
-            }
-        }
-    }
+    thread.spinlock.lock();
+    checkListTimers(&thread.timerList, thread.ktime.nsec + switch (thread.container()) {
+        .uThread => |uThread| brk: {break :brk uThread.utime.nsec;},
+        .kThread => 0,
+    });
+    thread.spinlock.unlock();
 }
 
 pub fn addKtime() void {
@@ -429,10 +462,9 @@ pub fn addUtime() void {
     const utime = startTimeReset();
 
     const cThread = sched.cThread();
-    const uThread : *UThread = @fieldParentPtr("base", cThread);
 
     cThread.spinlock.lock();
-    uThread.utime.nsec += utime;
+    cThread.container().uThread.utime.nsec += utime;
     cThread.spinlock.unlock();
 
     cThread.owner.spinlock.lock();
@@ -441,8 +473,6 @@ pub fn addUtime() void {
 
     checkCpuTimers(cThread);
 }
-
-pub extern fn inKmode(state : *kernel.CpuState) callconv(.c) bool;
 
 fn setupKernelProc() void {
     pids.set(0, &kernelProcess);

@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const cpuStateSize = switch (@import("builtin").cpu.arch) {
-    .x86_64 => [20]u64,
+    .x86_64 => [22]u64,
     else => undefined,
 };
 
@@ -145,7 +145,7 @@ pub const SigSet = enum(i32) {
     _,
 };
 
-pub const SigevVal = enum(i32) {
+pub const SigevNot = enum(i32) {
     SIGEV_NONE = 0,     // No asynchronous notification is delivered when the event of interest occurs
     SIGEV_SIGNAL = 1,   // A queued signal, with an application-defined value, is generated when the event of interest occurs
     SIGEV_THREAD = 2    // A notification function is called to perform notification
@@ -182,10 +182,10 @@ pub const sigaction = extern struct {
 };
 
 pub const sigevent = extern struct {
-    sigev_notify : SigevVal,                    // Notification type.
+    sigev_notify : SigevNot,                    // Notification type.
     sigev_signo : Signal,                          // Signal number.
     sigev_value : sigval,                       // Signal value.
-    sigev_notify_function : u64,                // Notification function
+    sigev_notify_function : u64 = undefined,                // Notification function
     sigev_notify_attributes : u8 = undefined,   // Notification attributes
 };
 
