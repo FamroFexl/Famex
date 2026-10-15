@@ -119,7 +119,7 @@ pub fn sigqueue(state : *cpu.CpuState) SysRet {
     const signo : i32 = @bitCast(@as(u32, @truncate(state.getArgSys(1).*)));
     const value = @as(posix.signal.sigval, @bitCast(state.getArgSys(2).*));
 
-    const process = cast.toPtr(*kernel.Process, kernel.pm.process.pids.find(@intCast(pid)) orelse
+    const process = cast.toPtr(*kernel.Process, kernel.pm.process.pids.get(@intCast(pid)) orelse
         return .fail(.ESRCH)
     );
 
@@ -288,11 +288,13 @@ pub fn sigtimedwait(state : *cpu.CpuState) SysRet {
     }
 
     // Set timeout
-    waitEvent.event.reset(kernel.pm.time.timespecToTime(timeoutOut), false);
+    const expired = waitEvent.event.reset(kernel.pm.time.timespecToTime(timeoutOut), false);
 
-    kernel.irqSave();
-    uThread.base.sleep();
-    kernel.irqRestore();
+    if (!expired) {
+        kernel.irqSave();
+        uThread.base.sleep();
+        kernel.irqRestore();
+    }
 
     {
         uThread.base.spinlock.lock();
@@ -344,9 +346,9 @@ pub fn pthread_kill(state : *cpu.CpuState) SysRet {
         return .fail(.EINVAL);
 
     kernel.pm.signal.sigSend(.THREAD, thread, .{
-        .si_signo = sig,
+        .si_signo = @enumFromInt(sig),
         .si_pid = kernel.cThread().owner.pid,
-    });
+    }) catch {};
 
     return .ok(0);
 }
@@ -365,7 +367,7 @@ pub fn alarm(state : *cpu.CpuState) SysRet {
         sigAlarm.remove();
     }
     else {
-        sigAlarm.reset(.Sec(seconds), false);
+        _ = sigAlarm.reset(.Sec(seconds), false);
     }
 
     process.spinlock.unlock();

@@ -146,8 +146,8 @@ pub const MaState = struct {
         maple.mas_set_range(&state.val, start, end);
     }
 
-    pub fn emptyArea(state : *@This(), start : anytype, end : anytype, size : anytype) void {
-        _ = maple.mas_empty_area(&state.val, start, end, size);
+    pub fn emptyArea(state : *@This(), start : anytype, end : anytype, size : anytype) i32 {
+        return maple.mas_empty_area(&state.val, start, end, size);
     }
 
     pub fn store(state : *@This(), entry : ?*anyopaque) void {

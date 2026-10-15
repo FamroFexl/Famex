@@ -6,3 +6,4 @@ pub const mman = @import("mman.zig");
 pub const signal = @import("signal.zig");
 pub const limits = @import("limits.zig");
 pub const sysnum = @import("sysnum.zig");
+pub const resource = @import("resource.zig");

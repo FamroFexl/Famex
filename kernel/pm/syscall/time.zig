@@ -36,7 +36,6 @@ pub fn threadWake(event : *kernel.TimerEvent) void {
     wakeEvent.thread.spinlock.unlock();
 
     wakeEvent.thread.wake();
-    kernel.reschedule();
 }
 
 pub fn clock_nanosleep(state : *cpu.CpuState) SysRet {
@@ -67,29 +66,36 @@ pub fn clock_nanosleep(state : *cpu.CpuState) SysRet {
     var wakeEvent : ThreadWake = .{
         .thread = thread,
         .event = kernel.TimerEvent.create(
-            switch(clock) { .MONOTONIC => .MONOTONIC, .REALTIME => .UNIX, else => undefined},
+            switch(clock) { .MONOTONIC => .MONOTONIC, .REALTIME => .UNIX, else => unreachable},
             .zero(),
             threadWake,
         ),
     };
 
+    var abs = false;
     if (kernel.bin.getFlag(posix.times.TIMER_ABSTIME, kernel.bin.convert(u64, flags))) {
         if (newTime.nsec <= curTime.nsec)
             return .ok(0);
 
-        wakeEvent.event.reset(newTime, true);
+        abs = true;
+    }
+
+    const expired = wakeEvent.event.reset(newTime, abs);
+
+    if (!expired) {
+        thread.spinlock.lock();
+        thread.state = .INTERRUPTABLE;
+        thread.spinlock.unlock();
+
+        kernel.irqSave();
+        thread.sleep();
+        kernel.irqRestore();
     }
     else {
-        wakeEvent.event.reset(newTime, false);
+        thread.spinlock.lock();
+        thread.wakeReason = .TIMER_EXPIRED;
+        thread.spinlock.unlock();
     }
-
-    thread.spinlock.lock();
-    thread.state = .INTERRUPTABLE;
-    thread.spinlock.unlock();
-
-    kernel.irqSave();
-    thread.sleep();
-    kernel.irqRestore();
 
     thread.spinlock.lock();
     const wakeReason = thread.wakeReason;
@@ -194,7 +200,7 @@ pub fn clock_gettime(state : *cpu.CpuState) SysRet {
         },
         .THREAD_CPUTIME_ID => brk: {
             const tid = posix.times.getTidFromId(clockId);
-            const thread = cast.toPtr(*kernel.Thread, kernel.tids.find(tid) orelse return .fail(.EINVAL));
+            const thread = cast.toPtr(*kernel.Thread, kernel.tids.get(tid) orelse return .fail(.EINVAL));
 
             thread.spinlock.lock();
             defer thread.spinlock.unlock();
@@ -250,8 +256,13 @@ fn timerCallback(event : *kernel.TimerEvent) void {
 
     timer.originProc.timersLock.lock();
 
-    if (timer.reset) |iv| {
-        event.reset(iv, false);
+    if (!timer.armed) {
+        timer.originProc.timersLock.unlock();
+        return;
+    }
+
+    if (timer.reset) |res| {
+        _ = event.reset(res, false);
     }
     else {
         timer.armed = false;
@@ -277,23 +288,22 @@ fn timerCallback(event : *kernel.TimerEvent) void {
         .si_signo = signo,
         .si_value = sigval,
         .si_code = .SI_TIMER,
-        .si_status = timerNum,
+        .si_status = @intCast(timerNum),
     }) catch |err| switch (err) {
-        error.TimerIsQueued => {
-            overrun = true;
-
-            timer.originProc.timersLock.lock();
-            timer.overrun += 1;
-            timer.originProc.timersLock.unlock();
-        },
-        else => {},
+        error.TimerIsQueued => overrun = true,
+        else => unreachable,
     };
 
-    if (!overrun) {
-        timer.originProc.timersLock.lock();
-        timer.overrun = 0;
-        timer.originProc.timersLock.unlock();
+    timer.originProc.timersLock.lock();
+
+    if (overrun) {
+        timer.overrun += 1;
     }
+    else {
+        timer.overrun = 0;
+    }
+
+    timer.originProc.timersLock.unlock();
 }
 
 pub fn timer_create(state : *cpu.CpuState) SysRet {
@@ -307,6 +317,20 @@ pub fn timer_create(state : *cpu.CpuState) SysRet {
     }
 
     const process = kernel.cThread().owner;
+
+    switch (posix.times.getClockFromId(clockid)) {
+        .PROCESS_CPUTIME_ID => {
+            if (posix.times.getPidFromId(clockid) != process.pid)
+                return .fail(.ENOTSUP);
+        },
+        .THREAD_CPUTIME_ID => {
+            if (posix.times.getTidFromId(clockid) != kernel.cThread().tid)
+                return .fail(.ENOTSUP);
+        },
+        .MONOTONIC => {},
+        .REALTIME => {},
+        else => return .fail(.EINVAL),
+    }
 
     process.timersLock.lock();
 
@@ -353,37 +377,8 @@ pub fn timer_create(state : *cpu.CpuState) SysRet {
             process.timersLock.unlock();
             timer[0].timerType.normalTimer = .create(.UNIX, .zero(), timerCallback);
         },
-        .THREAD_CPUTIME_ID => {
+        .THREAD_CPUTIME_ID, .PROCESS_CPUTIME_ID => {
             timer[0].timerType.cpuTimer.clockId = clockid;
-
-            const timerThread = cast.toPtr(*kernel.Thread, kernel.pm.process.tids.find(posix.times.getTidFromId(clockid)) orelse {
-                timer[0].inUse = false;
-
-                process.timersLock.unlock();
-                return .fail(.EINVAL);
-            });
-
-            process.timersLock.unlock();
-
-            timerThread.spinlock.lock();
-            timerThread.timerList.insertFront(&timer[0].link);
-            timerThread.spinlock.unlock();
-        },
-        .PROCESS_CPUTIME_ID => {
-            timer[0].timerType.cpuTimer.clockId = clockid;
-
-            const timerProc = cast.toPtr(*kernel.Process, kernel.pm.process.pids.find(posix.times.getPidFromId(clockid)) orelse {
-                timer[0].inUse = false;
-
-                process.timersLock.unlock();
-                return .fail(.EINVAL);
-            });
-
-            process.timersLock.unlock();
-
-            timerProc.spinlock.lock();
-            timerProc.timerList.insertFront(&timer[0].link);
-            timerProc.spinlock.unlock();
         },
         else => {
             process.timersLock.unlock();
@@ -421,38 +416,10 @@ pub fn timer_delete(state : *cpu.CpuState) SysRet {
     }
 
     switch (&timer.timerType) {
-        .cpuTimer => |cTimer| brk: {
-            if (timer.link.empty())
-                break :brk;
-
-            switch (posix.times.getClockFromId(cTimer.clockId)) {
-                .PROCESS_CPUTIME_ID => {
-                    const clockProc = cast.toPtr(*kernel.Process, kernel.pm.process.pids.find(posix.times.getPidFromId(cTimer.clockId)) orelse undefined);
-
-                    process.timersLock.unlock();
-
-                    clockProc.spinlock.lock();
-                    clockProc.timerList.remove(&timer.link);
-                    clockProc.spinlock.unlock();
-
-                    process.timersLock.lock();
-                },
-                .THREAD_CPUTIME_ID => {
-                    const clockThread = cast.toPtr(*kernel.Thread, kernel.pm.process.tids.find(posix.times.getTidFromId(cTimer.clockId)) orelse undefined);
-
-                    process.timersLock.unlock();
-
-                    clockThread.spinlock.lock();
-                    clockThread.timerList.remove(&timer.link);
-                    clockThread.spinlock.unlock();
-
-                    process.timersLock.lock();
-                },
-            }
-        },
         .normalTimer => |nTimer| {
             nTimer.remove();
-        }
+        },
+        .cpuTimer => {},
     }
 
     timer.inUse = false;
@@ -497,32 +464,44 @@ pub fn timer_gettime(state : *cpu.CpuState) SysRet {
     if (timerid >= posix.limits.TIMER_MAX)
         return .fail(.EINVAL);
 
-    var spec : posix.times.itimerspec = undefined;
-    if (mem.copyFromUser(&spec, value, @sizeOf(posix.times.itimerspec)) != 0)
-        return .fail(.EFAULT);
-
     const process = kernel.cThread().owner;
 
     process.timersLock.lock();
-    defer process.timersLock.unlock();
 
     const timer = process.timers[timerid];
 
     if (!timer.inUse)
         return .fail(.EINVAL);
 
-    const remaining = switch (timer.timerType) {
-        .cpuTimer => |cTimer| {
+    const remaining : u64 = switch (timer.timerType) {
+        .cpuTimer => |cTimer| brk: {
+            const cur = kernel.pm.process.getCpuTime(cTimer.clockId);
 
+            if (cur <= cTimer.expiration) break :brk 0;
+
+            break :brk cur - cTimer.expiration;
         },
         .normalTimer => |nTimer| brk: {
             if (nTimer.remaining()) |rem| {
-                break :brk rem;
+                break :brk rem.nsec;
             }
-            break :brk .zero();
+            break :brk 0;
         },
     };
 
+    const reload = timer.reset orelse .zero();
+
+    process.timersLock.unlock();
+
+    var spec : posix.times.itimerspec = undefined;
+
+    spec.it_value = kernel.pm.time.timeToTimespec(remaining);
+    spec.it_interval = kernel.pm.time.timeToTimespec(reload);
+
+    if (mem.copyToUser(value, &spec, @sizeOf(posix.times.itimerspec)) != 0)
+        return .fail(.EFAULT);
+
+    return .ok(0);
 }
 
 pub fn timer_settime(state : *cpu.CpuState) SysRet {
@@ -544,13 +523,60 @@ pub fn timer_settime(state : *cpu.CpuState) SysRet {
     const process = kernel.cThread().owner;
 
     process.timersLock.lock();
-    defer process.timersLock.unlock();
 
     const timer = process.timers[timerid];
 
-    if (!timer.inUse)
+    if (!timer.inUse) {
+        process.timersLock.unlock();
         return .fail(.EINVAL);
+    }
+
+    var specOut : posix.times.itimerspec = undefined;
+
+    if (ovalue != 0) {
+        specOut.it_interval = kernel.pm.time.timeToTimespec(timer.reset orelse .zero());
+
+        const leftover = switch (timer.timerType) {
+            .normalTimer => |nTimer| nTimer.remaining() orelse .zero(),
+            .cpuTimer => |cTimer| brk: {
+                break :brk .Nsec(cTimer.expiration - kernel.pm.process.getCpuTime(cTimer.clockId));
+            },
+        };
+        // Remaining
+        specOut.it_value = kernel.pm.time.timeToTimespec(leftover);
+    }
 
     const valueTime = kernel.pm.time.timespecToTime(spec.it_value);
     const intervalTime = kernel.pm.time.timespecToTime(spec.it_interval);
+
+    const absTime = kernel.bin.getFlag(posix.times.TIMER_ABSTIME, flags);
+
+    if (valueTime.nsec == 0) {
+        timer.armed = false;
+    }
+    else {
+        switch (timer.timerType) {
+            .cpuTimer => |*cTimer| {
+                if (absTime) {
+                    cTimer.expiration = valueTime;
+                }
+                else {
+                    const curTime = kernel.pm.process.getCpuTime(cTimer.clockId);
+
+                    cTimer.expiration = .Nsec(curTime + valueTime.nsec);
+                }
+            },
+            .normalTimer => |*nTimer| {
+                _ = nTimer.reset(valueTime, absTime);
+            }
+        }
+    }
+
+    if (intervalTime.nsec != 0)
+        timer.reset = intervalTime;
+
+    process.timersLock.unlock();
+
+    if (ovalue != 0 and mem.copyToUser(ovalue, &specOut, @sizeOf(posix.times.itimerspec)) != 0)
+        return .fail(.EFAULT);
 }

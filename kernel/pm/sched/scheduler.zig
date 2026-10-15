@@ -83,8 +83,14 @@ pub fn switchThread() void { kernel.noIrq();
 fn loadThread(new : *kernel.Thread, state : *kernel.CpuState) void {
     const data = schedData.getLocal();
 
+    data.spinlock.lock();
     data.current.context = state.*;
     data.current = new;
+    data.spinlock.unlock();
+
+    new.spinlock.lock();
+    defer new.spinlock.unlock();
+
     state.* = new.context;
 
     kernel.io.irq.irqSaveDepth.getLocal().* = &new.irqSaveDepth;
@@ -100,37 +106,36 @@ fn loadThread(new : *kernel.Thread, state : *kernel.CpuState) void {
     _ = new.owner.addrSpace.rootPt.switchTo();
 }
 
-pub fn threadFromSched(node : *kernel.List.Node) *kernel.Thread {
-    return @fieldParentPtr("schedLink", node);
-}
+pub const SchedList = kernel.ListTyped(kernel.Thread, "schedLink");
 
 pub fn schedule(state : *kernel.CpuState) void { kernel.noIrq(); kernel.util.locks.noLocksHeld();
     const data = schedData.getLocal();
-    data.flags.reschedule = false;
 
     var next : *kernel.Thread = undefined;
     var timeslice : ?kernel.Time = null;
-    {
-        data.spinlock.lock();
-        defer data.spinlock.unlock();
 
-        for (0..std.meta.fields(Policy).len) |i| {
-            const sched = &data.sched.get(@enumFromInt(i));
+    data.spinlock.lock();
 
-            if (sched.pickNext(sched)) |thread| {
-                next = thread;
-                timeslice = sched.getTimeslice(sched, thread);
-                break;
-            }
+    data.flags.reschedule = false;
+
+    for (0..std.meta.fields(Policy).len) |i| {
+        const sched = &data.sched.get(@enumFromInt(i));
+
+        if (sched.pickNext(sched)) |thread| {
+            next = thread;
+            timeslice = sched.getTimeslice(sched, thread);
+            break;
         }
     }
+
+    data.spinlock.unlock();
 
     if (next != cThread()) {
         loadThread(next, state);
     }
 
     if (timeslice) |time| {
-        data.timer.reset(time, false);
+        _ = data.timer.reset(time, false);
     }
 }
 
@@ -146,7 +151,6 @@ fn createIdle(idle : *kernel.KThread) void {
     idle.* = .{.base = .{
         .owner = kernel.kernelProcess,
     }};
-    idle.base.timerList.init();
     idle.base.context.init(true);
     idle.base.context.setPc(@intFromPtr(&cpu.idleEntry));
     idle.base.context.setStack(kernel.mm.memory.KERNEL_MEMORY.val);

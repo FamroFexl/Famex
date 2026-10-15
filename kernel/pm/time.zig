@@ -169,7 +169,9 @@ pub fn timespecToTime(timespec : lib.posix.times.timespec) Time {
 }
 
 pub const Timer = struct {
-    pub var TIMERS : kernel.List = undefined;
+    const TimerList = kernel.ListTyped(Timer, "link");
+
+    pub var TIMERS : TimerList = undefined;
 
     tps : u64,     // Ticks per second
     getRaw : *const fn (*@This()) u64,
@@ -177,7 +179,7 @@ pub const Timer = struct {
     max : u64,      // Max value the timer can store
     name : [8]u8,
     local : bool = false,   // Is local timer
-    link : kernel.List.Node,
+    link : TimerList.Node,
 
     pub fn calibrate(this : *@This(), duration : Time) void {
         const start = this.max;
@@ -196,13 +198,10 @@ pub const Timer = struct {
     }
 
     pub fn byName(name : []const u8) ?*@This() {
-        var next = TIMERS.next;
-        while (next != &TIMERS) {
-            const timer : *@This() = @fieldParentPtr("link", next);
-            if (std.mem.eql(u8, name, timer.name[0..name.len])) {
-                return timer;
-            }
-            next = next.next;
+        var iter = TIMERS.iterator();
+        while (iter.next()) |next| {
+            if (std.mem.eql(u8, name, next.name[0..name.len]))
+                return next;
         }
 
         return null;
@@ -226,13 +225,15 @@ pub const Timer = struct {
 };
 
 pub const Clock = struct {
-    pub var CLOCKS : kernel.List = undefined;
+    const ClockList = kernel.ListTyped(Clock, "link");
+
+    pub var CLOCKS : ClockList = undefined;
 
     tps : u64,  // Ticks per second
     getRaw : *const fn(*@This()) u64,
     setRaw : *const fn (*@This(), u64) void,
     name : [8]u8,
-    link : kernel.List.Node,
+    link : ClockList.Node,
 
     pub fn calibrate(this : *@This(), duration : Time) void {
         const calStart = CALIBRATION_CLOCK.get();
@@ -246,13 +247,10 @@ pub const Clock = struct {
     }
 
     pub fn byName(name : []const u8) ?*@This() {
-        var next = CLOCKS.next;
-        while (next != &CLOCKS) {
-            const timer : *@This() = @fieldParentPtr("link", next);
-            if (std.mem.eql(u8, name, timer.name[0..name.len])) {
-                return timer;
-            }
-            next = next.next;
+        var iter = CLOCKS.iterator();
+        while (iter.next()) |next| {
+            if (std.mem.eql(u8, name, next.name[0..name.len]))
+                return next;
         }
 
         return null;
@@ -336,7 +334,8 @@ pub const TimerEvent = struct {
     }
 
     /// Set or reset an initialized timer with relative or absolute time
-    pub fn reset(this : *@This(), expiration : Time, absolute : bool) void {
+    /// Returns if the timer is already expired
+    pub fn reset(this : *@This(), expiration : Time, absolute : bool) bool {
         this.cpuId = kernel.getCpuId();
 
         const monoClock = getMonoClock().nsec;
@@ -348,10 +347,8 @@ pub const TimerEvent = struct {
         const newExpiration = expiration.nsec + if (absolute) 0 else curTime;
 
         // Already expired
-        if (absolute and newExpiration <= curTime) {
-            this.callback(this);
-            return;
-        }
+        if (absolute and newExpiration <= curTime)
+            return true;
 
         const tree : *TimerTree = switch (this.tag) {
             .MONOTONIC => monoTimers.getLocal(),
@@ -386,7 +383,7 @@ pub const TimerEvent = struct {
 
         if (tree.first() != &this.link) {
             spinlock.unlock();
-            return;
+            return false;
         }
 
         var time : u64 = std.math.maxInt(u64);
@@ -404,10 +401,12 @@ pub const TimerEvent = struct {
 
         // No events are waiting. There is no need to set the local timer
         if (node1 == null and node2 == null) {
-            return;
+            return false;
         }
 
         setLocalTimer(.Nsec(time - monoClock));
+
+        return false;
     }
 
     pub fn remove(this : *@This()) void {

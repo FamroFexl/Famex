@@ -27,6 +27,10 @@ pub fn unlock() void {
     kernel.Thread.preemptRestore(kernel.cThread());
 }
 
+pub fn locked() bool {
+    return kernel.cThread().preemptDepth > 0;
+}
+
 pub fn asyncFree(state : *RcuAsync, callback : fn (*RcuAsync) void) void {
     TREE.push(state, callback);
 }

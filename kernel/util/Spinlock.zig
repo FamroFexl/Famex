@@ -20,6 +20,9 @@ pub fn create() @This() {
 
 pub fn tryLock(spinlock : *@This()) bool {
     kernel.irqSave();
+
+    locks.lockTryAdd(spinlock);
+
     _ = spinlock.val.cmpxchgStrong(false, true, .acquire, .monotonic) orelse {
         locks.lockAdd(spinlock);
         return true;
@@ -31,6 +34,8 @@ pub fn tryLock(spinlock : *@This()) bool {
 
 pub fn lock(spinlock : *@This()) void {
     kernel.irqSave();
+
+    locks.lockTryAdd(spinlock);
 
     _ = spinlock.val.cmpxchgStrong(false, true, .acquire, .monotonic) orelse {
         locks.lockAdd(spinlock);

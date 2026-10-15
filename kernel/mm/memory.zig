@@ -150,7 +150,7 @@ pub fn vmallocBytes(size : usize) *anyopaque {
     var mas = lib.linux.MapleTree.MaState.create(&vmSpace.tree, 0, 0);
     mas.lock();
 
-    mas.emptyArea(vmSpace.start.val, vmSpace.end.val, aligned);
+    _ = mas.emptyArea(vmSpace.start.val, vmSpace.end.val, aligned);
 
     area.start = .asVirt(mas.val.index);
     area.end = .asVirt(area.start.val + aligned);

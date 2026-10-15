@@ -2,7 +2,7 @@ const std = @import("std");
 
 const cpuStateSize = switch (@import("builtin").cpu.arch) {
     .x86_64 => [22]u64,
-    else => undefined,
+    else => unreachable,
 };
 
 const types = @import("types.zig");

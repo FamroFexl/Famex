@@ -60,7 +60,7 @@ fn onPreempt(sched : *const scheduler.Scheduler, thread : *kernel.Thread) void {
     this.fifo.spinlock.lock();
     defer this.fifo.spinlock.unlock();
 
-    this.fifo.priority[priority].insertFront(&thread.schedLink);
+    this.fifo.priority[priority].insertFront(thread);
 }
 
 fn pickNext(sched : *const scheduler.Scheduler) ?*kernel.Thread {

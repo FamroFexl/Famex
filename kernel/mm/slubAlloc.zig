@@ -25,8 +25,10 @@ pub var cacheline_pool : SlubPool = undefined;
 
 pub var object_pools : [*]std.atomic.Value(?*SlubPool) = undefined;
 
+const SlabList = kernel.ListTyped(Slab, "link");
+
 const Slab = struct {
-    link : List.Node,
+    link : SlabList.Node,
     pool : *SlubPool,
     local_free : Stack,
     remote_free : util.data.AtomStack,
@@ -63,12 +65,12 @@ const Slab = struct {
         if (inuse == 0 and slab.frozen.load(.seq_cst)) {
             pool.spinlock.lock();
 
-            pool.slabs_partial.remove(&slab.link);
-            pool.slabs_empty.insertFront(&slab.link);
+            pool.slabs_partial.remove(slab);
+            pool.slabs_empty.insertFront(slab);
 
             // Max free slabs has been reached, release the LRU free slab
             if (pool.cur_slabs_empty == pool.max_slabs_empty) {
-                const old_slab : *Slab = @fieldParentPtr("link", pool.slabs_empty.removeBack().?);
+                const old_slab = pool.slabs_empty.removeBack().?;
 
                 pool.spinlock.unlock();
                 old_slab.free();
@@ -85,8 +87,8 @@ const Slab = struct {
             pool.spinlock.lock();
             defer pool.spinlock.unlock();
 
-            pool.slabs_full.remove(&slab.link);
-            pool.slabs_partial.insertFront(&slab.link);
+            pool.slabs_full.remove(slab);
+            pool.slabs_partial.insertFront(slab);
         }
     }
 
@@ -104,9 +106,9 @@ pub const SlubPool = struct {
     order : u8,             // Slab size in page orders
     alignment : u16,        // Object alignment
 
-    slabs_full : List,      // List of full slabs
-    slabs_partial : List,   // List of partially full slabs
-    slabs_empty : List,     // List of empty slabs
+    slabs_full : SlabList,      // List of full slabs
+    slabs_partial : SlabList,   // List of partially full slabs
+    slabs_empty : SlabList,     // List of empty slabs
     obj_init : *const fn (*anyopaque) void,
 
     spinlock : util.Spinlock,
@@ -219,14 +221,14 @@ pub const SlubPool = struct {
 
                 // move cpu slab to slab_full
                 slab.full.store(true, .seq_cst);
-                pool.slabs_full.insertFront(&slab.link);
+                pool.slabs_full.insertFront(slab);
 
                 if (!pool.slabs_partial.empty()) {
-                    slab = @fieldParentPtr("link", pool.slabs_partial.removeFront().?);
+                    slab = pool.slabs_partial.removeFront().?;
                     pool.spinlock.unlock();
                 }
                 else if (!pool.slabs_empty.empty()) {
-                    slab = @fieldParentPtr("link", pool.slabs_empty.removeFront().?);
+                    slab = pool.slabs_empty.removeFront().?;
                     pool.spinlock.unlock();
                 }
                 else {

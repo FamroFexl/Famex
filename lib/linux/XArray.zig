@@ -37,6 +37,7 @@ pub fn get(this : *@This(), index : u32) ?*anyopaque {
 
 pub fn alloc(this : *@This(), min : u32, max : u32, entry : *anyopaque) u32 {
     var id : u32 = undefined;
+
     _ = xarray.xa_alloc(&this.val, &id, entry, .{
         .min = min,
         .max = max,

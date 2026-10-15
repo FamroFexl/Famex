@@ -15,14 +15,16 @@ const acpica = @import("lib").acpica;
 var apicRegMap : mem.Vaddr = undefined;
 var X2_APIC : bool = false;
 
-var ioApics : kernel.List = undefined;
+const IoApicList = kernel.ListTyped(IoApicEntry, "link");
+
+var ioApics : IoApicList = undefined;
 
 // Used in case there are multiple I/O APICs available for use
 pub const IoApicEntry = struct {
     id : u8,    // I/O APIC ID
     irqBase: u32,   // Global IRQ base
     addr : kernel.Paddr,    // I/O APIC physical address
-    link : kernel.List.Node,
+    link : IoApicList.Node,
 };
 
 pub const LapicVerReg = packed struct(u32) {
@@ -457,7 +459,7 @@ pub fn setup() void {
                 ioEntry.addr = .asPhys(ioApic.Address);
                 ioEntry.irqBase = ioApic.GlobalIrqBase;
 
-                ioApics.insertFront(&ioEntry.link);
+                ioApics.insertFront(ioEntry);
             },
             acpica.ACPI_MADT_TYPE_NMI_SOURCE => {
                 const nmi = cast.toPtr(*align(1) acpica.ACPI_MADT_NMI_SOURCE, entry);

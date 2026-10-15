@@ -13,6 +13,8 @@ const sched = @import("sched.zig");
 const time = @import("time.zig");
 const memory = @import("memory.zig");
 const signal = @import("signal.zig");
+const creds = @import("creds.zig");
+const file = @import("file.zig");
 
 pub var VDSO_PAGE : kernel.Paddr = undefined;
 pub var VDSO : *Vdso = undefined;
@@ -46,8 +48,7 @@ pub const ProcTimer = struct {
         }
     } = undefined,
 
-    originProc : *kernel.Process,   // The process this timer belongs to
-    link : kernel.List.Node,    // Link for cpuTimer
+    originProc : *kernel.Process = undefined,
 };
 
 pub const SysRet = struct {

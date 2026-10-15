@@ -24,42 +24,6 @@ fn sighandler(signo : i32, siginfo : *posix.signal.siginfo_t, ucontext : *posix.
 export fn main() void {
     sys.print("hello!\n", .{});
 
-    var act : posix.signal.sigaction = .{
-        .sa_flags = .{.SA_ONSTACK = true},
-        .sa_handler = @enumFromInt(@intFromPtr(&sighandler)),
-        .sa_mask = 0,
-    };
-    _ = sys.sigaction(@intFromEnum(posix.signal.Signal.SIGALRM), &act, @ptrFromInt(0));
-
-    const addr = sys.mmap(@ptrFromInt(8), 0x4000, .{
-        .READ = true, .WRITE = true,
-    }, .{ .ANONYMOUS = true }, -1, 0);
-
-    const altStack : posix.signal.stack_t = .{
-        .ss_flags = .{},
-        .ss_size = 0x2000,
-        .ss_sp = addr,
-    };
-    _ = sys.sigaltstack(&altStack, @ptrFromInt(0));
-
-    sys.print("time {}\n", .{sys.time(@ptrFromInt(0))});
-
-    sys.print("hello1\n", .{});
-
-    _ = sys.alarm(2);
-
-    const sigset : posix.signal.sigset_t = 1 << @intFromEnum(posix.signal.Signal.SIGALRM);
-    var siginfo : posix.signal.siginfo_t = undefined;
-    const signo = sys.sigtimedwait(&sigset, &siginfo, &.{
-        .tv_sec = 5,
-        .tv_nsec = 0,
-    });
-
-    sys.print("signo {}\n", .{signo});
-    // const sigset : posix.signal.sigset_t = 0;
-    // const out = sys.sigsuspend(&sigset);
-    // sys.print("out {}\n", .{out});
-
     sys.print("time {}\n", .{sys.time(@ptrFromInt(0))});
 
     sys.print("after signal!\n", .{});

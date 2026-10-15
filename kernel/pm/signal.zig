@@ -55,7 +55,7 @@ fn sigDefault(signo : anytype) enum {TERMINATE, ABORT, IGNORE, STOP, CONTINUE} {
 }
 
 /// Only wake the thread on a signal if it can receive it
-pub fn checkForWake(uThread : *kernel.UThread) bool {
+fn checkForWake(uThread : *kernel.UThread) bool {
     uThread.sigData.spinlock.lock();
     const threadPending = uThread.sigData.pendingMask;
     const mask = uThread.sigMask;
@@ -120,7 +120,7 @@ pub fn sigSend(recType : enum {THREAD, PROCESS}, receiver : *anyopaque, signal :
         sigData.spinlock.lock();
 
         if (kernel.bin.getFlag(signo, sigData.pendingMask)) {
-            const curSigInfo = &sigData.pending[signo];
+            const curSigInfo = &sigData.pending[@intCast(signo)];
 
             if (curSigInfo.si_code == .SI_TIMER and curSigInfo.si_status == signal.si_status) {
                 return error.TimerIsQueued;
@@ -140,12 +140,17 @@ pub fn sigSend(recType : enum {THREAD, PROCESS}, receiver : *anyopaque, signal :
             const check = checkForWake(uThread);
 
             uThread.base.spinlock.lock();
-            defer uThread.base.spinlock.unlock();
 
             if (uThread.base.state == .INTERRUPTABLE and check) {
                 uThread.base.state = .RUNNING;
                 uThread.base.wakeReason = .SIGNAL_RECEIVED;
+
+                uThread.base.spinlock.unlock();
+
                 uThread.base.wake();
+            }
+            else {
+                uThread.base.spinlock.unlock();
             }
         },
         .PROCESS => {
@@ -160,12 +165,17 @@ pub fn sigSend(recType : enum {THREAD, PROCESS}, receiver : *anyopaque, signal :
 
                 const check = checkForWake(uThread);
                 uThread.base.spinlock.lock();
-                defer uThread.base.spinlock.unlock();
 
                 if (uThread.base.state == .INTERRUPTABLE and check) {
                     uThread.base.state = .RUNNING;
                     uThread.base.wakeReason = .SIGNAL_RECEIVED;
+
+                    uThread.base.spinlock.unlock();
+
                     uThread.base.wake();
+                }
+                else {
+                    uThread.base.spinlock.unlock();
                 }
             }
         }

@@ -1,6 +1,7 @@
 pub const util = @import("util/root.zig");
 pub const mm = @import("mm/root.zig");
 pub const pm = @import("pm/root.zig");
+pub const fs = @import("fs/root.zig");
 pub const io = @import("io/root.zig");
 pub const config = @import("config.zig");
 
@@ -79,6 +80,7 @@ pub const getMonoClock = pm.time.getMonoClock;
 
 pub const cast = util.cast;
 pub const lockHeld = util.locks.lockHeld;
+pub const noLocksHeld = util.locks.noLocksHeld;
 
 pub const pmalloc = mm.memory.pmalloc;
 pub const pmallocBytes = mm.memory.pmallocBytes;
@@ -104,6 +106,7 @@ pub const PfeState = mm.paging.PfeState;
 
 pub const bin = util.binary;
 pub const Spinlock = util.Spinlock;
+pub const RefCount = util.RefCount;
 pub const RwLock = util.RwLock;
 pub const types = util.types;
 
@@ -112,6 +115,9 @@ pub const Bitmap = util.data.Bitmap;
 pub const List = util.data.List;
 pub const Queue = util.data.Queue;
 pub const Stack = util.data.Stack;
+
+pub const ListTyped = util.data.ListTyped;
+pub const LruList = util.LruList;
 
 pub const log = util.log;
 pub const print = log.print;

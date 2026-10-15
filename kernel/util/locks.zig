@@ -30,8 +30,7 @@ pub fn lockHeld(lock : *anyopaque) void {
     }
 }
 
-/// Adds a lock to the list
-pub fn lockAdd(lock : *anyopaque) void {
+pub fn lockTryAdd(lock : *anyopaque) void {
     kernel.irqSave();
     defer kernel.irqRestore();
 
@@ -42,6 +41,17 @@ pub fn lockAdd(lock : *anyopaque) void {
             if (data.held_locks[i] == lock)
                 @panic("Lock was already held!");
         }
+    }
+}
+
+/// Adds a lock to the list
+pub fn lockAdd(lock : *anyopaque) void {
+    kernel.irqSave();
+    defer kernel.irqRestore();
+
+    if (builtin.mode == .Debug) {
+        const data : *LockData  = lock_data.getLocal();
+
         data.held_locks[data.cur_lock] = lock;
         data.cur_lock += 1;
     }
@@ -49,6 +59,7 @@ pub fn lockAdd(lock : *anyopaque) void {
 
 /// Removes the last lock
 pub fn lockRemove(lock : *anyopaque) void {
+    _ = lock;
     kernel.irqSave();
     defer kernel.irqRestore();
 
@@ -56,15 +67,17 @@ pub fn lockRemove(lock : *anyopaque) void {
         const data : *LockData  = lock_data.getLocal();
         if (data.cur_lock == 0)
             @panic("Lock was already freed!");
-        if (data.held_locks[data.cur_lock - 1] != lock) {
-            if (data.held_locks[data.cur_lock - 2] == lock)
-                @panic("Last lock wasn't freed!");
-            for (1..data.cur_lock) |i| {
-                if (data.held_locks[data.cur_lock - i] == lock)
-                    kernel.util.log.panic("{} locks weren't freed before this!", .{i});
-            }
-            @panic("Lock was already freed!");
-        }
+        // This prevents interlocking (lock A, lock B, unlock A, unlock B),
+        // and only nested locking (lock A, lock B, unlock B, unlock A)
+        //if (data.held_locks[data.cur_lock - 1] != lock) {
+            //if (data.held_locks[data.cur_lock - 2] == lock)
+            //    @panic("Last lock wasn't freed!");
+            //for (1..data.cur_lock) |i| {
+            //    if (data.held_locks[data.cur_lock - i] == lock)
+            //        kernel.util.log.panic("{} locks weren't freed before this!", .{i});
+            //}
+            //@panic("Lock was already freed!");
+        //}
         data.cur_lock -= 1;
     }
 }

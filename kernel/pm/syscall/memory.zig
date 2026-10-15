@@ -11,6 +11,44 @@ const cpu = arch.cpu;
 const SysRet = @import("syscall.zig").SysRet;
 
 const posix = @import("lib").posix;
+const MapleTree = @import("lib").linux.MapleTree;
+
+// pub fn mprotect(state : *cpu.CpuState) SysRet {
+//     const addr = cast.toPtr(*allowzero anyopaque, state.getArgSys(0).*);
+//     const len = state.getArgSys(1).*;
+//     const prot = bin.convert(posix.mman.PROT, state.getArgSys(2).*);
+//
+//     if (@intFromPtr(addr) % types.SIZE_4KB != 0)
+//         return .fail(.EINVAL);
+//
+//     if (len % types.SIZE_4KB != 0)
+//         return .fail(.ENOMEM);
+//
+//     if (!arch.mm.validAccess(prot.READ, prot.WRITE, prot.EXEC))
+//         return .fail(.ENOTSUP);
+//
+//     const process = kernel.cThread().owner;
+//
+//     var maState = MapleTree.MaState.create(&process.addrSpace, @intFromPtr(addr), @intFromPtr(addr) + len - 1);
+//     maState.lock();
+//     defer maState.unlock();
+//
+//     const out = maState.emptyArea(&maState, @intFromPtr(addr), @intFromPtr(addr) + len - 1, 1);
+//
+//     // Area isn't full
+//     if (out != 0)
+//         return .fail(.ENOMEM);
+//
+//     var area = cast.toPtr(*kernel.mm.vmm.VmArea, process.addrSpace.tree.load(@intFromPtr(addr)).?);
+//     while (are)
+// }
+
+// pub fn execve(state : *cpu.CpuState) SysRet {
+//     const path = cast.toPtr([*:0]allowzero const u8, state.getArgSys(0).*);
+//     const argv = cast.toPtr([*:null]allowzero [*:0]allowzero const u8, state.getArgSys(1).*);
+//     const envp = cast.toPtr([*:null]allowzero [*:0]allowzero const u8, state.getArgSys(2).*);
+//
+// }
 
 pub fn mmap(state : *cpu.CpuState) SysRet {
     const addr = cast.toPtr(*allowzero anyopaque, state.getArgSys(0).*);
@@ -21,7 +59,6 @@ pub fn mmap(state : *cpu.CpuState) SysRet {
     const off : posix.types.off_t = state.getArgSys(5).*;
 
     var addrSpace = kernel.cThread().owner.addrSpace;
-    //const uThread = kernel.cThread().container().uThread;
 
     if (len == 0)
         return .fail(.EINVAL);

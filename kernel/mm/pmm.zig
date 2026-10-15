@@ -302,7 +302,7 @@ fn mapKernelImage(kernel_root_pt : *paging.Ptable) void {
         "mm: Limine kernel base doesn't match the expected base!\n", .{});
 
     const elf_hdr = cast.toPtr(*elf.ElfHdr, kernel.Limine.executable_file_request.response.*.executable_file.address);
-    log.apanic(!elf_hdr.isElf(), "mm: Kernel ELF file wasn't found! Cannot remap kernel image!\n", .{});
+    log.apanic(!elf_hdr.isValid(), "mm: Kernel ELF file wasn't found! Cannot remap kernel image!\n", .{});
     for(0..elf_hdr.ph_num) |i| {
         const phdr = elf_hdr.getPhdrByIndex(i).?;
         if(phdr.type != .LOAD) continue;

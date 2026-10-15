@@ -75,12 +75,10 @@ pub const ElfHdr = extern struct {
         RISCV            = 243,   // RISC-V
     };
 
-    /// Check if ELF signature matches
-    pub fn isElf(hdr : *@This()) bool {
-        return std.mem.eql(u8, &hdr.id.magic, "\x7fELF");
-    }
-
     pub fn isValid(hdr : *@This()) bool {
+        if (!std.mem.eql(u8, &hdr.id.magic, "\x7fELF"))
+            return false;
+
         if (hdr.id.class != .C64 and hdr.id.data != .LSB)
             return false;
 
@@ -157,32 +155,6 @@ pub const ElfSecHdr = extern struct {
         alloc : bool,   // Section is allocated in memory image of program
         execinstr : bool,  // Section contains executable instructions
         unused1 : u61,
-    };
-};
-
-pub const ElfSymHdr = extern struct {
-    name : u32,             // Symbol name
-    other : u8,             // Reserved
-    type : STT,             // Symbol type
-    binding : STB,          // Symbol binding
-    sh_ndx : u16,           // Section table index
-    value : u64,            // Symbol value
-    size : u64,             // Size of object
-
-    /// Symbol binding type
-    pub const STB = enum(u4) {
-        LOCAL,          // Not visible outside object file
-        GLOBAL,         // Global symbol, visible to all object files
-        WEAK,           // Global symbol, but with lower precedence than STB_GLOBAL
-    };
-
-    /// Symbol type
-    pub const STT = enum(u4) {
-        NOTYPE,         // No type specified (absolute symbol)
-        OBJECT,         // Data object
-        FUNC,           // Function entry point
-        SECTION,        // Symbol associated with section
-        FILE,           // Source file associated with the object file
     };
 };
 

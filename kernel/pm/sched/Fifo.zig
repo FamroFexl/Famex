@@ -3,7 +3,7 @@ const cast = kernel.cast;
 
 const scheduler = @import("scheduler.zig");
 
-priority : [kernel.config.SCHED_PRIORITY_MAX]kernel.List,
+priority : [kernel.config.SCHED_PRIORITY_MAX]scheduler.SchedList,
 spinlock : kernel.Spinlock,
 
 pub fn getScheduler() scheduler.Scheduler {
@@ -40,7 +40,7 @@ pub fn enqueue(sched : *const scheduler.Scheduler, thread : *kernel.Thread) void
     this.spinlock.lock();
     defer this.spinlock.unlock();
 
-    this.priority[priority].insertBack(&thread.schedLink);
+    this.priority[priority].insertBack(thread);
 }
 
 pub fn dequeue(sched : *const scheduler.Scheduler, thread : *kernel.Thread) void {
@@ -53,7 +53,7 @@ pub fn dequeue(sched : *const scheduler.Scheduler, thread : *kernel.Thread) void
 
     // Check if the thread to remove is running. If so, stop it
 
-    this.priority[priority].remove(&thread.schedLink);
+    this.priority[priority].remove(thread);
 }
 
 pub fn onSleep(sched : *const scheduler.Scheduler, thread : *kernel.Thread) void {
@@ -74,8 +74,8 @@ pub fn onYield(sched : *const scheduler.Scheduler, thread : *kernel.Thread) void
     this.spinlock.lock();
     defer this.spinlock.unlock();
 
-    list.remove(&thread.schedLink);
-    list.insertBack(&thread.schedLink);
+    list.remove(thread);
+    list.insertBack(thread);
 }
 
 pub fn onPreempt(sched : *const scheduler.Scheduler, thread : *kernel.Thread) void {
@@ -96,7 +96,7 @@ pub fn pickNext(sched : *const scheduler.Scheduler) ?*kernel.Thread {
         i -= 1;
         var prio = &this.priority[i];
         if (prio.front()) |front| {
-            return scheduler.threadFromSched(front);
+            return front;
         }
     }
     return null;
@@ -118,13 +118,13 @@ pub fn setPriority(sched : *const scheduler.Scheduler, thread : *kernel.Thread, 
     this.spinlock.lock();
     defer this.spinlock.unlock();
 
-    this.priority[priority].remove(&thread.schedLink);
+    this.priority[priority].remove(thread);
 
     if (priority < newPriority) {
-        list.insertBack(&thread.schedLink);
+        list.insertBack(thread);
     }
     else {
-        list.insertFront(&thread.schedLink);
+        list.insertFront(thread);
     }
 }
 

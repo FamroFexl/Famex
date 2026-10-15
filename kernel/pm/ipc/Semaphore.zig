@@ -3,47 +3,40 @@ const std = @import("std");
 const kernel = @import("kernel");
 const Queue = kernel.util.data.Queue;
 
-queue : kernel.util.data.Queue,
-maxCount : u64,
-curCount : u64,
-spinlock : kernel.util.Spinlock,
+queue : kernel.util.WaitQueue = undefined,
+maxCount : u64 = undefined,
+curCount : u64 = 0,
+spinlock : kernel.util.Spinlock = .create(),
 
 pub fn init(semaphore : *@This(), maxCount : anytype) void {
+    semaphore.* = .{};
     semaphore.queue.init();
-    semaphore.spinlock.init();
     semaphore.maxCount = maxCount;
 }
 
 pub fn acquire(semaphore : *@This()) void {
     semaphore.spinlock.lock();
 
-    if (semaphore.curCount == semaphore.maxCount) {
-        semaphore.queue.push(&kernel.cThread().sleepLink);
-        semaphore.spinlock.unlock();
-        kernel.cThread().sleep();
+    const thread = kernel.cThread();
+
+    while (semaphore.curCount == semaphore.maxCount) {
+        semaphore.queue.sleep(thread, &semaphore.spinlock, .UNINTERRUPTIBLE);
     }
-    else {
-        semaphore.curCount += 1;
-        semaphore.spinlock.unlock();
-    }
+
+    semaphore.curCount += 1;
+
+    semaphore.spinlock.unlock();
 }
 
 pub fn release(semaphore : *@This()) void {
     semaphore.spinlock.lock();
     defer semaphore.spinlock.unlock();
 
-    const node = semaphore.queue.pop() orelse {
+    if (semaphore.queue.wakeNext()) {
         semaphore.curCount -= 1;
-        semaphore.spinlock.unlock();
+
         return;
-    };
+    }
 
     semaphore.spinlock.unlock();
-
-    const thread : *kernel.Thread = @fieldParentPtr("sleepLink", node);
-    thread.spinlock.lock();
-    thread.state = .RUNNING;
-    thread.spinlock.unlock();
-
-    thread.wake();
 }

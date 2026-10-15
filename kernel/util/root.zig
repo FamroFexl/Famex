@@ -7,3 +7,6 @@ pub const cast = @import("cast.zig");
 pub const locks = @import("locks.zig");
 pub const Spinlock = @import("Spinlock.zig");
 pub const RwLock = @import("RwLock.zig");
+pub const RefCount = @import("RefCount.zig");
+pub const WaitQueue = @import("WaitQueue.zig");
+pub const LruList = @import("lruList.zig").LruList;

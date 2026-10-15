@@ -18,7 +18,7 @@ pub fn module(b : *std.Build, options : *const std.Build.Module.CreateOptions, m
     lib_module.addImport("linux", linuxModule);
 
     const posixModule = posix.module(b, options);
-    modules.put("posix", posixModule) catch undefined;
+    modules.put("posix", posixModule) catch unreachable;
     lib_module.addImport("posix", posixModule);
 
     return lib_module;

@@ -25,6 +25,27 @@ pub var pids : lib.linux.XArray = undefined;
 /// Map of Thread IDs to threads
 pub var tids : lib.linux.XArray = undefined;
 
+pub var pgids : lib.linux.XArray = undefined;
+
+const PgidList = kernel.ListTyped(Pgid, "sessionLink");
+
+pub const Session = struct {
+    pid : Pid, // Pid of the session leader
+    list : PgidList, // List of all pgid members
+};
+
+const PgidProcList = kernel.ListTyped(Process, "pgidLink");
+
+pub const Pgid = struct {
+    pid : Pid,  // Pid of the process group
+    list : PgidProcList, // List of all process members
+    sessionLink : PgidList.Node, // Link for sessions
+    session : *Session, // Session pointer
+};
+
+const ProcessList = kernel.ListTyped(Process, "link");
+const ThreadList = kernel.ListTyped(Thread, "link");
+
 pub const Process = struct {
     spinlock : kernel.Spinlock = .create(),
 
@@ -40,6 +61,9 @@ pub const Process = struct {
 
     pid : Pid,
 
+    pgid : *Pgid = undefined,
+    pgidLink : PgidProcList.Node = undefined,
+
     sigAction : [lib.posix.signal.SIGRTMAX]lib.posix.signal.sigaction = [_]lib.posix.signal.sigaction{.{
         .sa_flags = .{},
         .sa_handler = .SIG_DFL,
@@ -50,10 +74,11 @@ pub const Process = struct {
     sigAlarm : kernel.TimerEvent = .create(.MONOTONIC, .Msec(100), kernel.pm.signal.sigAlarmCallback),
     timers : [lib.posix.limits.TIMER_MAX]kernel.pm.syscall.syscall.ProcTimer = [_]kernel.pm.syscall.syscall.ProcTimer{.{}} ** lib.posix.limits.TIMER_MAX,   // Process timers
     timersLock : kernel.Spinlock = .create(),   // Process timers lock
-    timerList : kernel.List = undefined, // Other timers who track this process' cpu time
 
-    threads : util.data.List = undefined,
-    children : util.data.List = undefined,
+    threads : ThreadList = undefined,
+    children : ProcessList = undefined,
+
+    link : ProcessList.Node,
 
     creds : struct {
         ruid : lib.posix.types.uid_t = undefined,   // Real User ID
@@ -64,6 +89,10 @@ pub const Process = struct {
         egid : lib.posix.types.uid_t = undefined,   // Effective Group ID
         sgid : lib.posix.types.uid_t = undefined,   // Saved Group ID
     } = undefined,
+
+    flags : packed struct {
+        HAS_EXECED : bool,  // Process has switched execution
+    },
 
     const State = enum {
         RUNNING,       // The process is running
@@ -87,8 +116,6 @@ pub const Thread = struct {
     tid : Tid = undefined,
 
     ktime : kernel.Time = .zero(),
-    timerList : kernel.List = undefined, // Other timers who track this thread's cpu time
-    timersLock : kernel.Spinlock = .create(),   // Just for list lock
 
     irqSaveDepth : u64 = 0,
     preemptDepth : u8 = 0,
@@ -97,7 +124,7 @@ pub const Thread = struct {
     /// Kernel stack data
     stack : Stack = undefined,
 
-    schedLink : kernel.List.Node = undefined,
+    schedLink : sched.SchedList.Node = undefined,
     sched : struct {
         policy : sched.Policy,
         priority : u8,  // FIFO/RR real-time priority
@@ -105,16 +132,16 @@ pub const Thread = struct {
     } = undefined,
 
     /// Semaphore and mutex sleep link
-    sleepLink : util.data.Queue.Node = undefined,
+    sleepLink : kernel.util.WaitQueue.Node = undefined,
     wakeReason : enum {
         TIMER_EXPIRED,
         SIGNAL_RECEIVED
     } = undefined,
 
     /// Process thread link
-    link : kernel.List.Node = undefined,
+    link : ThreadList.Node = undefined,
 
-    const State = enum {
+    pub const State = enum {
         RUNNING,           // Is running or waiting to start running
         INTERRUPTABLE,     // Interruptable sleep
         UNINTERRUPTIBLE,   // Uninterruptable sleep
@@ -169,6 +196,14 @@ pub const Thread = struct {
     }
 
     pub fn sleep(this : *@This()) void { kernel.irqSaved(); kernel.util.locks.noLocksHeld();
+        this.spinlock.lock();
+
+        if (this.state != .RUNNING) {
+            this.spinlock.unlock();
+            return;
+        }
+        this.spinlock.unlock();
+
         const scheduler = &sched.schedData.getLocal().sched.get(this.sched.policy);
         scheduler.onSleep(scheduler, this);
         sched.switchThread();
@@ -365,81 +400,78 @@ pub fn startTimeReset() u64 {
     return out;
 }
 
-// Timer list is protected by spinlock, while timers are protected by timersLock.
-// This prevents deadlocks since we have two different locks and the spinlock must be
-// acquired before the timersLock
-fn checkListTimers(list : *kernel.List, cpuTime : u64) void {
-    var iter = list.iterator();
-    for (iter.next()) |next| {
-        const timer : *kernel.pm.syscall.syscall.ProcTimer = @fieldParentPtr("link", next);
-        timer.originProc.timersLock.lock();
+pub fn getCpuTime(clockId : lib.posix.types.clockid_t) ?u64 {
+    switch (lib.posix.times.getClockFromId(clockId)) {
+        .PROCESS_CPUTIME_ID => {
+            const process = kernel.cast.toPtr(*kernel.Process, pids.get(@intCast(lib.posix.times.getPidFromId(clockId))) orelse return null);
+            process.spinlock.lock();
+            defer process.spinlock.unlock();
 
-        if (!timer.armed or timer.timerType.cpuTimer.expiration > cpuTime) {
-            timer.originProc.timersLock.unlock();
+            return process.ktime.nsec + process.utime.nsec;
+        },
+        .THREAD_CPUTIME_ID => {
+            const thread = kernel.cast.toPtr(*kernel.Thread, tids.get(@intCast(lib.posix.times.getTidFromId(clockId))) orelse return null);
 
-            continue;
-        }
+            thread.spinlock.lock();
+            defer thread.spinlock.unlock();
 
-        const cpuTimer = &timer.timerType.cpuTimer;
-        if (timer.reset) |iv| {
-            cpuTimer.expiration.nsec += iv.nsec;
-        }
-        else {
-            timer.armed = false;
-        }
-
-        if (timer.signot != .SIGEV_SIGNAL) {
-            timer.originProc.timersLock.unlock();
-            continue;
-        }
-
-        const signo = timer.signo;
-        const sigval = timer.sigval;
-        const origin = timer.originProc;
-
-        const timerNum = (@intFromPtr(timer) - @intFromPtr(&timer.originProc.timers)) / @sizeOf(kernel.pm.syscall.syscall.ProcTimer);
-
-        timer.originProc.timersLock.unlock();
-
-        var overrun = false;
-
-        kernel.pm.signal.sigSend(.PROCESS, origin, .{
-            .si_signo = signo,
-            .si_value = sigval,
-            .si_code = .SI_TIMER,
-            .si_status = timerNum,
-        }) catch |err| switch (err) {
-            error.TimerIsQueued => {
-                overrun = true;
-
-                timer.originProc.timersLock.lock();
-                timer.overrun += 1;
-                timer.originProc.timersLock.unlock();
-            },
-            else => {},
-        };
-
-        if (!overrun) {
-            timer.originProc.timersLock.lock();
-            timer.overrun = 0;
-            timer.originProc.timersLock.unlock();
-        }
+            return thread.ktime.nsec + switch (thread.container()) {
+                .uThread => |uThread| uThread.utime.nsec,
+                .kThread => 0
+            };
+        },
+        else => return null,
     }
 }
 
 fn checkCpuTimers(thread : *Thread) void {
     const process = thread.owner;
 
-    process.spinlock.lock();
-    checkListTimers(&process.timerList, process.ktime.nsec + process.utime.nsec);
-    process.spinlock.unlock();
+    process.timersLock.lock();
 
-    thread.spinlock.lock();
-    checkListTimers(&thread.timerList, thread.ktime.nsec + switch (thread.container()) {
-        .uThread => |uThread| brk: {break :brk uThread.utime.nsec;},
-        .kThread => 0,
-    });
-    thread.spinlock.unlock();
+    // Iterate through all timers
+    for (&thread.owner.timers) |*timer| {
+        if (!timer.inUse or timer.timerType != .cpuTimer or !timer.armed)
+            continue;
+
+        const curTime = getCpuTime(timer.timerType.cpuTimer.clockId) orelse undefined;
+
+        if (curTime > timer.timerType.cpuTimer.expiration.nsec)
+            continue;
+
+        if (timer.reset) |res|
+             timer.timerType.cpuTimer.expiration.nsec += res.nsec;
+
+        if (timer.signot != .SIGEV_SIGNAL)
+            continue;
+
+        const timerNum = (@intFromPtr(timer) - @intFromPtr(&thread.owner.timers)) / @sizeOf(kernel.pm.syscall.syscall.ProcTimer);
+
+        var overrun = false;
+
+        process.timersLock.unlock();
+
+        kernel.pm.signal.sigSend(.PROCESS, process, .{
+            .si_signo = timer.signo,
+            .si_value = timer.sigval,
+            .si_code = .SI_TIMER,
+            .si_status = @intCast(timerNum),
+        }) catch |err| switch (err) {
+            error.TimerIsQueued => overrun = true,
+            else => unreachable,
+        };
+
+        process.timersLock.lock();
+
+        if (overrun) {
+            timer.overrun += 1;
+        }
+        else {
+            timer.overrun = 0;
+        }
+    }
+
+    process.timersLock.unlock();
 }
 
 pub fn addKtime() void {
@@ -482,6 +514,17 @@ fn setupKernelProc() void {
     kernelProcess.parent = null;
     kernelProcess.threads.init();
     kernelProcess.children.init();
+
+    kernelProcess.pgid = kernel.pmalloc(Pgid);
+    pgids.set(0, kernelProcess.pgid);
+    kernelProcess.pgid.pid = 0;
+    kernelProcess.pgid.list.init();
+    kernelProcess.pgid.list.insertFront(kernelProcess);
+
+    kernelProcess.pgid.session = kernel.pmalloc(Session);
+    kernelProcess.pgid.session.pid = 0;
+    kernelProcess.pgid.session.list.init();
+    kernelProcess.pgid.session.list.insertFront(kernelProcess.pgid);
 }
 
 pub fn setup() void {
@@ -489,6 +532,7 @@ pub fn setup() void {
 
     pids.init(true);
     tids.init(true);
+    pgids.init(false);
 
     kernel.pm.sched.scheduler.setup();
 
